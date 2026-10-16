@@ -1,0 +1,111 @@
+/* SuperSplat Mobile Override Layer (v0.4)
+ * 激活条件: body.mobile-mode (由 mobile.js 挂载)
+ * 规则依据: ui-ux-pro-max skill — touch-target 44px+, bottom-nav, safe-area, no-hover
+ */
+
+/* ---------- 1. 全局 ---------- */
+body.mobile-mode {
+    --ssm-toolbar-h: 56px;
+    --ssm-btn-size: 44px;
+    --ssm-safe-top: env(safe-area-inset-top, 0px);
+    --ssm-safe-bottom: env(safe-area-inset-bottom, 0px);
+    overscroll-behavior: none;
+}
+
+/* 所有面板: 宽度自适应, 不允许横向溢出 */
+body.mobile-mode .pcui-panel {
+    max-width: calc(100vw - 16px) !important;
+}
+
+/* ---------- 2. 右侧模式工具条 → 底部模式栏 ---------- */
+body.mobile-mode #right-toolbar {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    transform: none !important;
+    border-radius: 0 !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-height: 64px !important;
+    height: auto !important;
+    padding: 10px 8px calc(var(--ssm-safe-bottom) + 10px) !important;
+    background: rgba(21, 24, 28, 0.95) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    z-index: 200 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+}
+
+/* 触摸目标 44x44, 不收缩 */
+body.mobile-mode #right-toolbar .pcui-button,
+body.mobile-mode #right-toolbar button {
+    width: var(--ssm-btn-size) !important;
+    height: var(--ssm-btn-size) !important;
+    min-width: var(--ssm-btn-size) !important;
+    flex-shrink: 0 !important;
+    margin: 0 !important;
+}
+
+/* ---------- 3. 底部工具条 (撤销/重做等) 上移避让 ---------- */
+body.mobile-mode #bottom-toolbar {
+    bottom: calc(var(--ssm-safe-bottom) + 76px) !important;
+    max-width: calc(100vw - 16px) !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+}
+
+/* ---------- 3b. 场景面板 / 状态条 ---------- */
+body.mobile-mode #scene-panel {
+    max-width: calc(100vw - 24px) !important;
+    left: 12px !important;
+    right: 12px !important;
+}
+body.mobile-mode #status-bar {
+    display: none;
+}
+
+/* ---------- 4. 菜单/面板: 宽度兜底 + 高度受限可滚动 ---------- */
+body.mobile-mode .pcui-menu,
+body.mobile-mode .menu-panel {
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 140px) !important;
+    overflow-y: auto !important;
+}
+
+/* ---------- 5. overlay 收敛 ---------- */
+body.mobile-mode #view-cube-container,
+body.mobile-mode #perf-overlay,
+body.mobile-mode #overdraw-legend,
+body.mobile-mode #camera-info-overlay {
+    display: none;
+}
+body.mobile-mode.show-overlays #view-cube-container,
+body.mobile-mode.show-overlays #perf-overlay {
+    display: block;
+}
+
+/* ---------- 6. 时间轴面板避让 ---------- */
+body.mobile-mode #timeline-panel {
+    bottom: calc(var(--ssm-safe-bottom) + 76px) !important;
+    max-width: calc(100vw - 16px) !important;
+}
+
+/* ---------- 7. 表单/数值输入: 触摸友好 ---------- */
+body.mobile-mode .pcui-vector-input,
+body.mobile-mode .pcui-number-input,
+body.mobile-mode .pcui-text-input {
+    min-height: 36px !important;
+    font-size: 14px !important;
+}
+
+/* ---------- 8. press 反馈 ---------- */
+body.mobile-mode .pcui-button:active {
+    filter: brightness(1.5);
+    transition: filter 80ms ease-out;
+}
