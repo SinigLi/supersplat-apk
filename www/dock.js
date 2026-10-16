@@ -387,7 +387,7 @@ waitUI(function () {
       });
       // v6.3：外观/浮层面板——SS 原生打开时会内联写 top 锚定定位，把全屏面板顶出屏幕（真机 top:-376）；
       // 可见时强制钳位回原点，并注入与场景页同款头部（返回钮+标题）
-      [['appearance-panel','外观','right-toolbar-appearance'], ['overlays-panel','浮层','right-toolbar-overlays']].forEach(function(def){
+      [['appearance-panel','外观','right-toolbar-appearance'], ['overlays-panel','浮层','right-toolbar-overlays'], ['settings-panel','设置','right-toolbar-settings']].forEach(function(def){
         var p = document.getElementById(def[0]);
         if (!p || p.querySelector(':scope > .sd-sheet-header')) return;
         var hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">' + def[1] + '</span>', 'sd-sheet-header');

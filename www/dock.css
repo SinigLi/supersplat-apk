@@ -97,18 +97,19 @@ body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
 body.sd-scene-open .sd-dock { display:none !important; }
 
 /* 显示组两面板（外观/浮层）v6：同样全屏列表风格 */
-body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel {
-  position:fixed !important; inset:0 !important; width:100vw !important; max-width:100vw !important;
-  max-height:100vh !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1300 !important;
+body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel, body.sd-docks-ready #settings-panel {
+  position:fixed !important; inset:0 !important; width:100% !important; max-width:100% !important;
+  height:100% !important; max-height:100% !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1300 !important;
   display:flex; flex-direction:column; background:#181b1f;
 }
-body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > * { flex-shrink:0; }
+body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > *, body.sd-docks-ready #settings-panel > * { flex-shrink:0; }
 
 /* 修复：PCUI 隐藏态必须赢过 v6 全屏规则的 display:flex（真机启动时弹窗隐身却占屏的根因） */
 body.sd-docks-ready #dialog.pcui-hidden, body.sd-docks-ready [id$="-dialog"].pcui-hidden {
   display:none !important; visibility:hidden !important;
 }
-body.sd-docks-ready #appearance-panel.pcui-hidden, body.sd-docks-ready #overlays-panel.pcui-hidden {
+body.sd-docks-ready #appearance-panel.pcui-hidden, body.sd-docks-ready #overlays-panel.pcui-hidden,
+body.sd-docks-ready #settings-panel.pcui-hidden {
   display:none !important; visibility:hidden !important;
 }
 body.sd-docks-ready #scene-panel.pcui-hidden { display:none !important; }
