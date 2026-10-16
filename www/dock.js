@@ -1,10 +1,26 @@
-/* SuperSplat Dock Overhaul (v1)
- * 交互定稿（2026-10-16 原型 v8）：三停靠组 + 拖动吸附 + 实时换向 + 收缩成球 + 子面板多开
- * 顶=文件组 / 底=编辑组 / 右=视图组
- * 实现：把 SuperSplat 现有按钮 DOM（含事件）重挂进 dock，功能零重写
+/* SuperSplat Dock Overhaul — 移动端分组工具栏
+ * 当前版本：v6.5（2026-10-17 定版）
+ *
+ * 架构总览（详见仓库 DOCK.md）：
+ *   三个停靠组：顶=菜单组（文件/编辑/选择/渲染/帮助/场景） 底=编辑组（选择/变换/裁剪/测量+撤销/重做） 右=视图组（相机/显示/定位）
+ *   核心思路：把 SS 原有按钮 DOM（含事件）重挂进 dock —— 功能零重写，只管布局与手势
+ *   全屏层（z1300）：所有弹窗（#dialog 系列）+ 场景/外观/浮层/设置面板，统一全屏列表风+左上角返回
+ *
+ * ⚠ 维护红线（历次真机事故总结，改前必读）：
+ *   1. 给 PCUI 组件写 display 时必须同时考虑 .pcui-hidden 态（v6.1 启动鬼影弹窗根因）
+ *   2. 全屏规则用 100% 不用 100vw/vh（滚动条差 → 真机右侧漏缝）；z-index 统一 1300
+ *   3. SS 打开外观/浮层/设置面板时会内联写 top 锚定定位，必须 MutationObserver 钳位回原点（v6.3 top:-376 根因）
+ *   4. 动态生成按钮的关闭逻辑用 dataset 标记定位（data-role），不能靠文本匹配（v6.4 高亮不灭根因）
+ *   5. SS 原生可能随时插入新面板：新面板报问题时先查它是否在 dock.js 全屏名单外
  */
 (function () {
 'use strict';
+
+/* ===================== 配置区说明 =====================
+ * GROUPS：底栏二级分组（ids 为 SS 原按钮 id，收养后功能不变）
+ * DOCKS：三个停靠组；menuOptions=顶栏菜单模式，viewOptions=右栏一级分组模式
+ * MENU_ORDER：SS #menu 下 .menu-panel 追加顺序（menu.ts append 顺序，SS 升级需核对）
+ */
 
 // 等编辑器 UI 装配完成
 function waitUI(cb) {
@@ -59,6 +75,8 @@ waitUI(function () {
 
   // 顶部菜单组需要名称映射（收养的是 label 按钮）
   const MENU_NAMES = ['文件','编辑','选择','渲染','帮助'];
+
+  /* ===================== dock 构建 ===================== */
 
   // 把 SS 原按钮搬进容器（保事件）；原按钮可能在 #bottom-toolbar 里
   function adopt(id, container) {
@@ -202,6 +220,11 @@ waitUI(function () {
     applyDockPos(st);
   }
 
+  /* ===================== 子面板开关与定位 =====================
+   * 流程：清残留内联 → 按停靠方向设 sd-side/sd-up → 隐藏量真实 rect → 计算钳屏位置 → 双 rAF 校准
+   * 多面板同开用 slot 错层（slot*(宽/高+8)）防重叠
+   */
+
   function toggleNamed(name, g, dock) {
     const st = docks.find(s => s.dock === dock);
     const wrap = allPanels.get(name);
@@ -313,6 +336,10 @@ waitUI(function () {
     return Object.keys(dist).sort((a,b)=>dist[a]-dist[b])[0];
   }
 
+  /* ===================== 拖动吸附 =====================
+   * pointerdown 只记状态不清对边定位（防未拖动永久丢失锚定）；
+   * move 用增量判阈值（CDP 合成事件 movementX 恒 0）；上下边距离加权 0.8 更易命中横排
+   */
   function setupDrag(st) {
     const { dock, handle } = st;
     let drag = null;
@@ -375,6 +402,10 @@ waitUI(function () {
     host.appendChild(b);
   }
 
+  /* ===================== 全屏层接管（弹窗/场景/外观/浮层/设置） =====================
+   * 弹窗（#dialog 系列）：v6 全屏列表风，返回钮绝对定位盖 header；SS 重开时自会清 hidden
+   * 三面板（场景/外观/浮层/设置）：注入 sd-sheet-header + MutationObserver 钳位（见文件头红线 2/3）
+   */
   function watchDialogs() {
     const decorate = () => {
       document.querySelectorAll('#dialog, [id$="-dialog"]').forEach(d => {
@@ -446,6 +477,8 @@ waitUI(function () {
     msgEl.textContent = t; msgEl.style.opacity = 1;
     clearTimeout(msgTimer); msgTimer = setTimeout(()=>msgEl.style.opacity=0, 900);
   }
+
+  /* ===================== 启动 ===================== */
 
   addEventListener('resize', () => docks.forEach(st => { st.freePos = null; applyDockPos(st); closeAll(st); }));
 
