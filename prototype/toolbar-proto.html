@@ -156,7 +156,13 @@ function toggleGroup(g) {
   const wrap = document.querySelector(`.sub-wrap[data-grp="${g.id}"]`);
   const btn = dock.querySelector(`[data-grp="${g.id}"]`);
   if (openPanels.has(g.id)) { openPanels.delete(g.id); wrap.classList.remove('open'); btn.classList.remove('active'); }
-  else { openPanels.add(g.id); placeWrap(g.id); wrap.classList.add('open'); btn.classList.add('active'); }
+  else {
+    openPanels.add(g.id); btn.classList.add('active');
+    placeWrap(g.id);
+    wrap.classList.add('open');
+    // 双帧校准：布局稳定后重算一次，消除换边后的时序偏差
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (openPanels.has(g.id)) placeWrap(g.id); }));
+  }
 }
 
 function updateDots() {
@@ -187,21 +193,32 @@ function applyDockPos() {
 function placeWrap(grpId) {
   const btn = dock.querySelector(`[data-grp="${grpId}"]`);
   const wrap = document.querySelector(`.sub-wrap[data-grp="${grpId}"]`);
-  // 隐藏后量尺寸再算（w/h 需真实值；面板 display 未隐藏但 opacity:0，可直接量）
+  // 先清掉上次展开残留的内联定位和旧方向 class，再按当前 dock 方向量尺寸
+  wrap.style.left = ''; wrap.style.top = '';
+  const vertical = (dockPos==='left' || dockPos==='right');
+  wrap.classList.toggle('side', vertical);
+  wrap.classList.toggle('up', !vertical);
+  // 隐藏量尺寸（避免闪烁），拿到真实宽高
   wrap.style.visibility = 'hidden'; wrap.classList.add('open');
   const b = btn.getBoundingClientRect(), w = wrap.getBoundingClientRect();
   wrap.style.visibility = '';
   const slot = Array.from(openPanels).indexOf(grpId);
-  if (dockPos==='bottom' || dockPos==='top') {
-    wrap.classList.remove('side'); wrap.classList.add('up');
-    wrap.style.left = Math.max(8, Math.min(b.left + b.width/2 - w.width/2, innerWidth - w.width - 8)) + 'px';
-    const baseY = dockPos==='bottom' ? b.top - w.height - 10 : b.bottom + 10;
-    wrap.style.top = (dockPos==='bottom' ? baseY - slot*(w.height + 8) : baseY + slot*(w.height + 8)) + 'px';
+  if (!vertical) {
+    // 横排面板：锚在按钮上方/下方，水平以按钮为中心，双重钑屏内
+    const stagger = slot * (w.height + 8);
+    let left = b.left + b.width/2 - w.width/2;
+    left = Math.max(8, Math.min(left, innerWidth - w.width - 8));
+    let top = dockPos==='bottom' ? b.top - w.height - 10 - stagger : b.bottom + 10 + stagger;
+    top = Math.max(8, Math.min(top, innerHeight - w.height - 8));
+    wrap.style.left = left + 'px'; wrap.style.top = top + 'px';
   } else {
-    wrap.classList.remove('up'); wrap.classList.add('side');
-    wrap.style.top = Math.max(8, Math.min(b.top + b.height/2 - w.height/2, innerHeight - w.height - 8)) + 'px';
-    const baseX = dockPos==='left' ? b.right + 10 : b.left - w.width - 10;
-    wrap.style.left = (dockPos==='left' ? baseX + slot*(w.width + 8) : baseX - slot*(w.width + 8)) + 'px';
+    // 纵排面板：锚在按钮右侧/左侧，垂直以按钮为中心，双重钑屏内
+    const stagger = slot * (w.width + 8);
+    let top = b.top + b.height/2 - w.height/2;
+    top = Math.max(8, Math.min(top, innerHeight - w.height - 8));
+    let left = dockPos==='left' ? b.right + 10 + stagger : b.left - w.width - 10 - stagger;
+    left = Math.max(8, Math.min(left, innerWidth - w.width - 8));
+    wrap.style.left = left + 'px'; wrap.style.top = top + 'px';
   }
 }
 function placeAll() { openPanels.forEach(placeWrap); }
