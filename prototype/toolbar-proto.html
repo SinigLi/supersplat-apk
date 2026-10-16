@@ -8,7 +8,10 @@
 :root { --btn: 52px; --gap: 10px; --edge: env(safe-area-inset-bottom, 0px); }
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
 html,body { height:100%; overflow:hidden; }
-body { font-family: system-ui, sans-serif; background:#2b2e33; color:#e8e8e8; touch-action: manipulation; }
+body { font-family: system-ui, sans-serif; background:#2b2e33; color:#e8e8e8; touch-action: manipulation;
+       overscroll-behavior: none; }
+/* 拖动期间禁止浏览器手势（下拉刷新/页面缩放抢事件） */
+body.drag-any { touch-action: none; overscroll-behavior: contain; }
 
 #canvas-sim { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#555; font-size:14px; user-select:none; }
 
@@ -184,7 +187,10 @@ function applyDockPos() {
 function placeWrap(grpId) {
   const btn = dock.querySelector(`[data-grp="${grpId}"]`);
   const wrap = document.querySelector(`.sub-wrap[data-grp="${grpId}"]`);
+  // 隐藏后量尺寸再算（w/h 需真实值；面板 display 未隐藏但 opacity:0，可直接量）
+  wrap.style.visibility = 'hidden'; wrap.classList.add('open');
   const b = btn.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+  wrap.style.visibility = '';
   const slot = Array.from(openPanels).indexOf(grpId);
   if (dockPos==='bottom' || dockPos==='top') {
     wrap.classList.remove('side'); wrap.classList.add('up');
@@ -215,12 +221,16 @@ let drag = null;
 
 handle.addEventListener('pointerdown', (e) => {
   e.preventDefault(); e.stopPropagation();
+  handle.setPointerCapture(e.pointerId);
   const r = dock.getBoundingClientRect();
-  drag = { startX:e.clientX, startY:e.clientY, baseX:r.left, baseY:r.top, moved:false, free:null };
+  // 关键：拖动时把 class 带的对边定位清为 auto，否则 fixed 同时有 top+bottom 会把 dock 拉伸满屏
+  dock.style.right = 'auto'; dock.style.bottom = 'auto';
+  drag = { startX:e.clientX, startY:e.clientY, baseX:r.left, baseY:r.top, moved:false, free:null, pid:e.pointerId };
   dock.classList.add('dragging');
+  document.body.classList.add('drag-any');
 });
 addEventListener('pointermove', (e) => {
-  if (!drag) return;
+  if (!drag || e.pointerId !== drag.pid) return;
   const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
   if (!drag.moved && Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
   drag.moved = true;
@@ -231,17 +241,21 @@ addEventListener('pointermove', (e) => {
   dock.style.left = nl + 'px';
   dock.style.top  = nt + 'px';
   drag.free = { left: nl, top: nt };
-}, {passive:true});
-addEventListener('pointerup', () => {
+  e.preventDefault();
+}, {passive:false});
+function endDrag(e) {
   if (!drag) return;
+  if (e && e.pointerId !== undefined && e.pointerId !== drag.pid) return;
   const moved = drag.moved, free = drag.free;
   dock.classList.remove('dragging');
+  document.body.classList.remove('drag-any');
   drag = null;
   if (!moved || !free) return;
-  // 吸附最近边（按 dock 中心距离）
+  // 吸附最近边（按 dock 中心距离；顶/底加权让上下吸附更容易命中）
   const r = dock.getBoundingClientRect();
   const cx = r.left + r.width/2, cy = r.top + r.height/2;
-  const dist = { top: cy, bottom: innerHeight - cy, left: cx, right: innerWidth - cx };
+  const dist = { top: cy*0.8, bottom: (innerHeight - cy)*0.8, left: cx, right: innerWidth - cx };
+  window.__dbg = { dist, cx: Math.round(cx), cy: Math.round(cy), iw: innerWidth, ih: innerHeight, rw: Math.round(r.width), rh: Math.round(r.height) };
   dockPos = Object.keys(dist).sort((a,b)=>dist[a]-dist[b])[0];
   // 沿边保留偏移（钳到屏内）
   const m = 8;
@@ -249,10 +263,16 @@ addEventListener('pointerup', () => {
   else freePos = { top: Math.max(m, Math.min(free.top, innerHeight - r.height - m)) };
   closeAllPanels();
   applyDockPos();
+  dock.offsetHeight;                      // 强制重排：新 flex 方向生效
   requestAnimationFrame(placeAll);
+  requestAnimationFrame(() => requestAnimationFrame(placeAll));  // 双帧保险：布局稳定后再校一次
   document.querySelectorAll('#dock-switcher button').forEach(x=>x.classList.toggle('on', x.dataset.pos===dockPos));
   showMsg('已吸附: ' + ({top:'顶部',bottom:'底部',left:'左侧',right:'右侧'})[dockPos]);
-});
+}
+addEventListener('pointerup', endDrag);
+addEventListener('pointercancel', endDrag);
+// 兜底：拖动期间拦截 touchmove，防浏览器下拉刷新/缩放抢手势
+addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, {passive:false});
 
 // ================= 停靠边切换器 =================
 document.querySelectorAll('#dock-switcher button').forEach(b => {
