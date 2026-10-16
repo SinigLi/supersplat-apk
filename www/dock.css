@@ -76,11 +76,12 @@ body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column
   inset:0 !important; width:100vw !important; max-height:100vh !important; z-index:1200;
   border-radius:0 !important; background:#181b1f; padding:0 !important; }
 .sd-sheet-header { flex-shrink:0; display:flex; align-items:center; gap:0.6rem;
-  padding:0.55rem 0.8rem; background:#22262b; }
+  padding:0.55rem 0.8rem; background:#22262b; position:relative; z-index:5; }
 .sd-sheet-title { color:#eee; font-size:1rem; font-weight:600; flex:1; }
-.sd-back-btn { flex-shrink:0; display:flex; align-items:center; gap:0.25rem; padding:0.35rem 0.7rem;
-  border-radius:0.5rem; background:rgba(255,255,255,.08); color:#ccc; font-size:0.9rem; cursor:pointer; }
-.sd-back-btn:active { background:rgba(255,255,255,.2); }
+.sd-back-btn { flex-shrink:0; display:flex; align-items:center; gap:0.25rem; padding:0.7rem 1rem; margin:-0.2rem -0.3rem;
+  min-width:3.2rem; min-height:2.6rem; justify-content:center;
+  border-radius:0.5rem; background:rgba(255,255,255,.1); color:#ddd; font-size:0.95rem; cursor:pointer; }
+.sd-back-btn:active { background:rgba(255,255,255,.28); }
 body.sd-scene-open #scene-panel > .panel-header { display:flex !important; flex-shrink:0; flex-wrap:wrap; gap:0.3rem;
   position:static !important; height:auto !important; padding:0.4rem 0.8rem !important; background:#1d2126 !important; }
 body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header):not(.sd-sheet-header) { flex:1; overflow-y:auto; min-height:0; }
