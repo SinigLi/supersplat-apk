@@ -95,6 +95,15 @@ body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel {
 }
 body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > * { flex-shrink:0; }
 
+/* 修复：PCUI 隐藏态必须赢过 v6 全屏规则的 display:flex（真机启动时弹窗隐身却占屏的根因） */
+body.sd-docks-ready #dialog.pcui-hidden, body.sd-docks-ready [id$="-dialog"].pcui-hidden {
+  display:none !important; visibility:hidden !important;
+}
+body.sd-docks-ready #appearance-panel.pcui-hidden, body.sd-docks-ready #overlays-panel.pcui-hidden {
+  display:none !important; visibility:hidden !important;
+}
+body.sd-docks-ready #scene-panel.pcui-hidden { display:none !important; }
+
 /* v6 弹窗统一重构：全屏 + 列表布局 + 上下滚动 + 左上角返回 */
 body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
   position:fixed !important; left:0 !important; right:auto !important; top:0 !important;
