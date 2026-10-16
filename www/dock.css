@@ -119,24 +119,8 @@ body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) > * {
 /* 弹窗内长列表兕底滚动 */
 body.sd-docks-ready #dialog .pcui-scroll-view { max-height:none; overflow-y:auto; }
 
-/* SS 弹窗移动端自适应：默认合适大小，超出屏自动收缩，内层滚动。
-   根因：settings-dialog #dialog 固定 400px + overflow:visible，管住外框再让内容滚 */
-body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
-  width:min(25rem, calc(100vw - 1rem)) !important;
-  max-width:calc(100vw - 1rem) !important;
-  max-height:calc(100vh - 6rem) !important;
-  overflow:visible !important;
-  top:44% !important;
-}
-/* 弹窗内容层滚动：PCUI 弹窗主体是 #dialog 的直接子容器（header 之外的部分） */
-body.sd-docks-ready #dialog > .pcui-container:not([id="header"]),
-body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) {
-  overflow-y:auto !important; overflow-x:hidden !important;
-  max-height:calc(100vh - 10.5rem); min-height:0;
-  scrollbar-width:thin;
-}
-/* 全局兕底：弹窗内长列表也滚 */
-body.sd-docks-ready #dialog .pcui-scroll-view { max-height:calc(100vh - 220px); overflow-y:auto; }
+/* 全局兑底：弹窗内长列表也滚（尺寸已由 v6 全屏规则接管） */
+body.sd-docks-ready #dialog .pcui-scroll-view { max-height:none; overflow-y:auto; }
 
 /* #menu 子树（菜单子面板容器）被画布图层压住：搬到 body 后全屏接管但本身不拦点击，
    子元素（dock、子面板）恢复交互；checkEvent 的 contains 语义不变 */
