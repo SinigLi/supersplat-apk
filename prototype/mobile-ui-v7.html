@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SuperSplat 移动端 UI 原型 v7</title>
+<style>
+/* ===== 基础：rem 随屏宽 ===== */
+html { font-size: clamp(13px, 4.2vw, 18px); }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { background:#0d0f12; font-family:system-ui,sans-serif; overflow:hidden; height:100vh; }
+
+/* ===== 模拟画布区 ===== */
+#canvas-sim { position:absolute; inset:0; background:radial-gradient(circle at 50% 40%, #1c2530 0%, #0d0f12 70%); display:flex; align-items:center; justify-content:center; color:#2a3a4a; font-size:0.9rem; }
+
+/* ===== 一级分组栏（可拖动，先放顶部） ===== */
+.sd-dock { position:fixed; z-index:1000; display:flex; gap:0.45rem; padding:0.45rem;
+        background:rgba(21,24,28,.95); border-radius:0.9rem;
+        box-shadow:0 4px 16px rgba(0,0,0,.5); align-items:center;
+        touch-action:none; user-select:none; }
+.sd-dock.sd-top { top:calc(env(safe-area-inset-top,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row;
+                  overflow-x:auto; overflow-y:hidden; max-width:calc(100vw - 16px); }
+.sd-grp-btn { width:2.5rem; height:2.5rem; border-radius:0.6rem; background:#2a2f36; border:none;
+              display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+              color:#ccc; cursor:pointer; flex-shrink:0; position:relative; }
+.sd-grp-btn .sd-ico { font-size:0.95rem; line-height:1; }
+.sd-grp-btn .sd-name { font-size:0.55rem; line-height:1; color:#99a; }
+.sd-grp-btn.sd-active { background:#2b4a6f; color:#fff; }
+.sd-grp-btn.sd-active .sd-name { color:#9cf; }
+.sd-handle { width:0.2rem; height:1.6rem; border-radius:0.1rem; background:#3a4048; margin-right:0.2rem; flex-shrink:0; cursor:grab; }
+.sd-menu-grp { width:auto !important; min-width:2.5rem; padding:0 0.55rem; }
+.sd-menu-grp .sd-name { font-size:0.7rem; color:#ccc; }
+
+/* ===== 二级子面板 ===== */
+.sd-sub-wrap { position:fixed; z-index:999; background:rgba(26,29,33,.97); border-radius:0.8rem;
+               padding:0.45rem; display:flex; gap:0.4rem; opacity:0; pointer-events:none;
+               transition:opacity .15s ease; border:1px solid rgba(255,255,255,.06); }
+.sd-sub-wrap.sd-open { opacity:1; pointer-events:auto; }
+.sd-sub-wrap.sd-up { flex-direction:row; max-width:calc(100vw - 16px); overflow-x:auto; overflow-y:hidden; }
+.sd-sub-wrap.sd-side { flex-direction:column; max-height:calc(100vh - 140px); overflow-y:auto; overflow-x:hidden; }
+.sd-sub-wrap::-webkit-scrollbar { display:none; }
+.sd-tool-btn { width:2.25rem; height:2.25rem; min-width:2.25rem; border-radius:0.5rem; background:#2a2f36; border:none;
+               display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; color:#ccc; cursor:pointer; }
+.sd-tool-btn .sd-ico { font-size:0.9rem; line-height:1; }
+.sd-tool-btn .sd-name { font-size:0.5rem; line-height:1; color:#889; }
+.sd-tool-btn.sd-on { background:#2b4a6f; color:#fff; }
+.sd-tool-btn.sd-on .sd-name { color:#9cf; }
+
+/* ===== 菜单子面板（文件/编辑/…）列表行 ===== */
+.sd-menu-panel { flex-direction:column; gap:0; padding:0.3rem; }
+.sd-menu-row { display:flex; align-items:center; gap:0.6rem; padding:0.55rem 0.7rem; border-radius:0.5rem;
+               color:#ccc; font-size:0.85rem; cursor:pointer; white-space:nowrap; }
+.sd-menu-row:active { background:rgba(255,255,255,.08); }
+.sd-menu-row .mi { font-size:0.9rem; width:1.2rem; text-align:center; }
+
+/* ===== 全屏页（弹窗/场景管理器统一模式） ===== */
+.sd-page { position:fixed; inset:0; z-index:1200; background:#16181c; display:flex; flex-direction:column;
+           transform:translateY(100%); transition:transform .22s ease; }
+.sd-page.sd-show { transform:translateY(0); }
+.sd-page-bar { flex-shrink:0; display:flex; align-items:center; gap:0.6rem; padding:0.5rem 0.7rem;
+               background:#22262b; padding-top:calc(env(safe-area-inset-top,0px) + 0.5rem); }
+.sd-back { width:2.2rem; height:2.2rem; border-radius:0.5rem; background:rgba(255,255,255,.08); border:none;
+           color:#ccc; font-size:1.1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+.sd-back:active { background:rgba(255,255,255,.2); }
+.sd-page-title { flex:1; color:#eee; font-size:1rem; font-weight:600; }
+.sd-page-act { flex-shrink:0; display:flex; gap:0.45rem; }
+.sd-page-act .sd-tool-btn { width:2.2rem; height:2.2rem; min-width:2.2rem; }
+.sd-page-body { flex:1; overflow-y:auto; padding:0.7rem; display:flex; flex-direction:column; gap:0.5rem; min-height:0; }
+.sd-page-body::-webkit-scrollbar { display:none; }
+
+/* ===== 全屏页内列表行 ===== */
+.sd-list-row { display:flex; align-items:center; gap:0.7rem; padding:0.75rem 0.8rem; background:#1f2329;
+               border-radius:0.6rem; color:#ccc; font-size:0.9rem; cursor:pointer; }
+.sd-list-row:active { background:#2a3038; }
+.sd-list-row .mi { font-size:1rem; width:1.4rem; text-align:center; flex-shrink:0; }
+.sd-list-row .chev { margin-left:auto; color:#556; }
+.sd-list-sec { color:#778; font-size:0.75rem; padding:0.4rem 0.2rem 0; }
+.sd-list-item { display:flex; align-items:center; gap:0.6rem; padding:0.6rem 0.8rem; background:#1f2329;
+                border-radius:0.6rem; color:#aaa; font-size:0.85rem; }
+.sd-list-item .dot { width:0.55rem; height:0.55rem; border-radius:50%; background:#4a9eff; flex-shrink:0; }
+.sd-list-item .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* 开关行 */
+.sd-switch-row { display:flex; align-items:center; justify-content:space-between; padding:0.75rem 0.8rem;
+                 background:#1f2329; border-radius:0.6rem; color:#ccc; font-size:0.9rem; }
+.sd-sw { width:2.6rem; height:1.5rem; border-radius:0.75rem; background:#3a4048; position:relative; cursor:pointer; flex-shrink:0; transition:background .15s; }
+.sd-sw::after { content:''; position:absolute; top:0.15rem; left:0.15rem; width:1.2rem; height:1.2rem; border-radius:50%;
+                background:#889; transition:all .15s; }
+.sd-sw.on { background:#2b6f4f; }
+.sd-sw.on::after { left:1.25rem; background:#7fd6a4; }
+
+/* ===== 反馈提示 ===== */
+#sd-msg { position:fixed; left:50%; bottom:6.5rem; transform:translateX(-50%);
+          background:#2563eb; color:#fff; padding:0.5rem 1.1rem; border-radius:1.2rem; font-size:0.85rem;
+          z-index:2000; transition:opacity .3s; opacity:0; pointer-events:none; white-space:nowrap; }
+
+/* ===== 底部 dock 空间占位提示 ===== */
+.sd-dock.sd-bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row;
+                     overflow-x:auto; overflow-y:hidden; max-width:calc(100vw - 16px); }
+</style>
+</head>
+<body>
+<div id="canvas-sim">（泼溅画布区域）</div>
+
+<!-- 顶部一级分组栏：文件/编辑/选择/渲染/帮助/场景 + 可拖把手 -->
+<div class="sd-dock sd-top" id="dockTop">
+  <span class="sd-handle" id="handleTop"></span>
+  <button class="sd-grp-btn sd-menu-grp" data-menu="file">   <span class="sd-name">文件</span></button>
+  <button class="sd-grp-btn sd-menu-grp" data-menu="edit">   <span class="sd-name">编辑</span></button>
+  <button class="sd-grp-btn sd-menu-grp" data-menu="select"> <span class="sd-name">选择</span></button>
+  <button class="sd-grp-btn sd-menu-grp" data-menu="render"> <span class="sd-name">渲染</span></button>
+  <button class="sd-grp-btn sd-menu-grp" data-menu="help">   <span class="sd-name">帮助</span></button>
+  <button class="sd-grp-btn sd-menu-grp" id="btnScene">      <span class="sd-name">场景</span></button>
+</div>
+
+<!-- 底部编辑栏：选择/变换/裁剪/测量 + 撤销/重做 -->
+<div class="sd-dock sd-bottom" id="dockBottom">
+  <span class="sd-handle" id="handleBottom"></span>
+  <button class="sd-grp-btn" data-sub="subSelect"><span class="sd-ico">🎯</span><span class="sd-name">选择</span></button>
+  <button class="sd-grp-btn" data-sub="subXform"><span class="sd-ico">✥</span><span class="sd-name">变换</span></button>
+  <button class="sd-grp-btn" data-sub="subCrop"><span class="sd-ico">✂️</span><span class="sd-name">裁剪</span></button>
+  <button class="sd-grp-btn" data-sub="subMeasure"><span class="sd-ico">📏</span><span class="sd-name">测量</span></button>
+  <button class="sd-grp-btn" data-act="undo"><span class="sd-ico">↶</span><span class="sd-name">撤销</span></button>
+  <button class="sd-grp-btn" data-act="redo"><span class="sd-ico">↷</span><span class="sd-name">重做</span></button>
+</div>
+
+<!-- 右侧视图组：相机/显示/定位 -->
+<div class="sd-dock" id="dockRight" style="right:10px; top:50%; transform:translateY(-50%); flex-direction:column;">
+  <span class="sd-handle" id="handleRight" style="width:1.6rem;height:0.2rem;margin:0 0 0.2rem;cursor:grab;"></span>
+  <button class="sd-grp-btn" data-sub="subCamera"><span class="sd-ico">🎥</span><span class="sd-name">相机</span></button>
+  <button class="sd-grp-btn" data-sub="subDisplay"><span class="sd-ico">🎨</span><span class="sd-name">显示</span></button>
+  <button class="sd-grp-btn" data-sub="subLocate"><span class="sd-ico">🎯</span><span class="sd-name">定位</span></button>
+</div>
+
+<!-- ===== 二级子面板 ===== -->
+<div class="sd-sub-wrap sd-up" id="subSelect">
+  <button class="sd-tool-btn sd-on"><span class="sd-ico">🖱</span><span class="sd-name">单选</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">🔲</span><span class="sd-name">框选</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">🖌</span><span class="sd-name">刷选</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">⚪️</span><span class="sd-name">球选</span></button>
+</div>
+<div class="sd-sub-wrap sd-up" id="subXform">
+  <button class="sd-tool-btn sd-on"><span class="sd-ico">✥</span><span class="sd-name">移动</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">🔄</span><span class="sd-name">旋转</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">⤢</span><span class="sd-name">缩放</span></button>
+</div>
+<div class="sd-sub-wrap sd-up" id="subCrop">
+  <button class="sd-tool-btn"><span class="sd-ico">✂️</span><span class="sd-name">裁剪</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">🗑</span><span class="sd-name">删除</span></button>
+</div>
+<div class="sd-sub-wrap sd-up" id="subMeasure">
+  <button class="sd-tool-btn"><span class="sd-ico">📏</span><span class="sd-name">测距</span></button>
+</div>
+<div class="sd-sub-wrap sd-side" id="subCamera">
+  <button class="sd-tool-btn sd-on"><span class="sd-ico">🔄</span><span class="sd-name">轨道</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">✈️</span><span class="sd-name">飞行</span></button>
+</div>
+<div class="sd-sub-wrap sd-side" id="subDisplay">
+  <button class="sd-tool-btn" data-page="pageDisplay"><span class="sd-ico">🎨</span><span class="sd-name">外观</span></button>
+  <button class="sd-tool-btn" data-page="pageOverlays"><span class="sd-ico">👁</span><span class="sd-name">浮层</span></button>
+</div>
+<div class="sd-sub-wrap sd-side" id="subLocate">
+  <button class="sd-tool-btn"><span class="sd-ico">🎯</span><span class="sd-name">框选</span></button>
+  <button class="sd-tool-btn"><span class="sd-ico">🏠</span><span class="sd-name">原点</span></button>
+  <button class="sd-tool-btn" data-page="pageSettings"><span class="sd-ico">⚙️</span><span class="sd-name">设置</span></button>
+</div>
+
+<!-- 菜单子面板（点击顶栏菜单弹出） -->
+<div class="sd-sub-wrap sd-side sd-menu-panel" id="menuFile" style="top:4.2rem; left:50%; transform:translateX(-50%);">
+  <div class="sd-menu-row" data-toast="新建场景"><span class="mi">📄</span>新建场景</div>
+  <div class="sd-menu-row" data-toast="导入 PLY/SPLAT"><span class="mi">📂</span>导入…</div>
+  <div class="sd-menu-row" data-toast="保存"><span class="mi">💾</span>保存</div>
+  <div class="sd-menu-row" data-page="pageExport"><span class="mi">📤</span>导出…</div>
+  <div class="sd-menu-row" data-toast="发布"><span class="mi">🌐</span>发布…</div>
+</div>
+<div class="sd-sub-wrap sd-side sd-menu-panel" id="menuEdit" style="top:4.2rem; left:50%; transform:translateX(-50%);">
+  <div class="sd-menu-row" data-toast="撤销"><span class="mi">↶</span>撤销</div>
+  <div class="sd-menu-row" data-toast="重做"><span class="mi">↷</span>重做</div>
+  <div class="sd-menu-row" data-toast="全选"><span class="mi">☑️</span>全选</div>
+  <div class="sd-menu-row" data-toast="反选"><span class="mi">🔀</span>反选</div>
+  <div class="sd-menu-row" data-toast="删除选中"><span class="mi">🗑</span>删除</div>
+</div>
+<div class="sd-sub-wrap sd-side sd-menu-panel" id="menuSelect" style="top:4.2rem; left:50%; transform:translateX(-50%);">
+  <div class="sd-menu-row" data-toast="全选"><span class="mi">☑️</span>全选</div>
+  <div class="sd-menu-row" data-toast="反选"><span class="mi">🔀</span>反选</div>
+  <div class="sd-menu-row" data-toast="隐藏选中"><span class="mi">🙈</span>隐藏选中</div>
+  <div class="sd-menu-row" data-toast="显示全部"><span class="mi">👀</span>显示全部</div>
+</div>
+<div class="sd-sub-wrap sd-side sd-menu-panel" id="menuRender" style="top:4.2rem; left:50%; transform:translateX(-50%);">
+  <div class="sd-menu-row" data-page="pageExport"><span class="mi">🖼</span>图像导出…</div>
+  <div class="sd-menu-row" data-page="pageExport"><span class="mi">🎬</span>视频导出…</div>
+</div>
+<div class="sd-sub-wrap sd-side sd-menu-panel" id="menuHelp" style="top:4.2rem; left:50%; transform:translateX(-50%);">
+  <div class="sd-menu-row" data-toast="快捷键"><span class="mi">⌨️</span>快捷键</div>
+  <div class="sd-menu-row" data-toast="视频教程"><span class="mi">🎬</span>视频教程</div>
+  <div class="sd-menu-row" data-toast="关于"><span class="mi">ℹ️</span>关于</div>
+</div>
+
+<!-- ===== 全屏页 ===== -->
+<!-- 场景管理器：右上角三按钮（solo/导入/新建）放标题栏右侧 -->
+<div class="sd-page" id="pageScene">
+  <div class="sd-page-bar">
+    <button class="sd-back" data-close>‹</button>
+    <span class="sd-page-title">场景管理</span>
+    <span class="sd-page-act">
+      <button class="sd-tool-btn" data-toast="独立显示"><span class="sd-ico">👤</span></button>
+      <button class="sd-tool-btn" data-toast="导入 PLY"><span class="sd-ico">📂</span></button>
+      <button class="sd-tool-btn" data-toast="新建场景"><span class="sd-ico">📄</span></button>
+    </span>
+  </div>
+  <div class="sd-page-body">
+    <div class="sd-list-sec">场景内泼溅（点击切换可见）</div>
+    <div class="sd-list-item"><span class="dot"></span><span class="nm">tree_grove.ply</span><span class="chev">👁</span></div>
+    <div class="sd-list-item"><span class="dot" style="background:#777"></span><span class="nm">building_facade.splat</span><span class="chev">🚫</span></div>
+    <div class="sd-list-item"><span class="dot"></span><span class="nm">statue_highres.ply</span><span class="chev">👁</span></div>
+    <div class="sd-list-sec">变换 / 颜色</div>
+    <div class="sd-list-row"><span class="mi">✥</span>位置与旋转<span class="chev">›</span></div>
+    <div class="sd-list-row"><span class="mi">🎨</span>颜色调整<span class="chev">›</span></div>
+  </div>
+</div>
+
+<!-- 设置页 -->
+<div class="sd-page" id="pageSettings">
+  <div class="sd-page-bar"><button class="sd-back" data-close>‹</button><span class="sd-page-title">设置</span></div>
+  <div class="sd-page-body">
+    <div class="sd-list-sec">相机</div>
+    <div class="sd-switch-row">轨道阻尼<span class="sd-sw on"></span></div>
+    <div class="sd-switch-row">反向滚轮缩放<span class="sd-sw"></span></div>
+    <div class="sd-list-sec">显示</div>
+    <div class="sd-switch-row">网格线<span class="sd-sw on"></span></div>
+    <div class="sd-switch-row">包围盒<span class="sd-sw"></span></div>
+    <div class="sd-switch-row">FPS 显示<span class="sd-sw on"></span></div>
+    <div class="sd-list-sec">性能</div>
+    <div class="sd-list-row"><span class="mi">🎚</span>渲染质量：高<span class="chev">›</span></div>
+    <div class="sd-list-row"><span class="mi">🧹</span>清除缓存<span class="chev">›</span></div>
+  </div>
+</div>
+
+<!-- 外观页 -->
+<div class="sd-page" id="pageDisplay">
+  <div class="sd-page-bar"><button class="sd-back" data-close>‹</button><span class="sd-page-title">外观</span></div>
+  <div class="sd-page-body">
+    <div class="sd-switch-row">背景色覆盖<span class="sd-sw on"></span></div>
+    <div class="sd-switch-row">点大小固定<span class="sd-sw"></span></div>
+    <div class="sd-switch-row"> SH 球谐光照<span class="sd-sw on"></span></div>
+    <div class="sd-switch-row">抗锯齿<span class="sd-sw on"></span></div>
+    <div class="sd-list-row"><span class="mi">🎚</span>曝光：0.0<span class="chev">›</span></div>
+  </div>
+</div>
+
+<!-- 浮层页 -->
+<div class="sd-page" id="pageOverlays">
+  <div class="sd-page-bar"><button class="sd-back" data-close>‹</button><span class="sd-page-title">浮层</span></div>
+  <div class="sd-page-body">
+    <div class="sd-switch-row">坐标轴<span class="sd-sw on"></span></div>
+    <div class="sd-switch-row">网格<span class="sd-sw on"></span></div>
+    <div class="sd-switch-row">相机轨迹<span class="sd-sw"></span></div>
+    <div class="sd-switch-row">选区高亮<span class="sd-sw on"></span></div>
+  </div>
+</div>
+
+<!-- 导出页 -->
+<div class="sd-page" id="pageExport">
+  <div class="sd-page-bar"><button class="sd-back" data-close>‹</button><span class="sd-page-title">导出</span></div>
+  <div class="sd-page-body">
+    <div class="sd-list-row"><span class="mi">💾</span>导出 PLY（压缩）<span class="chev">›</span></div>
+    <div class="sd-list-row"><span class="mi">💾</span>导出 PLY（完整）<span class="chev">›</span></div>
+    <div class="sd-list-row"><span class="mi">💾</span>导出 SPLAT<span class="chev">›</span></div>
+    <div class="sd-list-row"><span class="mi">🖼</span>导出图像<span class="chev">›</span></div>
+    <div class="sd-list-row"><span class="mi">🎬</span>导出视频<span class="chev">›</span></div>
+  </div>
+</div>
+
+<div id="sd-msg"></div>
+
+<script>
+// ===== 反馈 =====
+let msgTimer, msgEl = document.getElementById('sd-msg');
+function showMsg(t) { msgEl.textContent = t; msgEl.style.opacity = 1; clearTimeout(msgTimer); msgTimer = setTimeout(()=>msgEl.style.opacity=0, 1400); }
+
+// ===== 一级分组（顶栏菜单 / 子面板）互斥展开 =====
+const allWraps = document.querySelectorAll('.sd-sub-wrap');
+const allGrpBtns = document.querySelectorAll('.sd-grp-btn');
+function closeAllWraps() {
+  allWraps.forEach(w => w.classList.remove('sd-open'));
+  allGrpBtns.forEach(b => b.classList.remove('sd-active'));
+}
+function placeSub(wrap, btn) {
+  wrap.classList.remove('sd-up','sd-side');
+  // 顶栏菜单：向下弹；底栏：向上弹；右侧：向左弹
+  if (wrap.dataset.menu !== undefined || wrap.id.startsWith('menu')) {
+    wrap.classList.add('sd-side');
+    const r = btn.getBoundingClientRect();
+    wrap.style.top = (r.bottom + 6) + 'px';
+    wrap.style.left = '50%'; wrap.style.right = 'auto'; wrap.style.bottom = 'auto';
+    wrap.style.transform = 'translateX(-50%)';
+    // 钳屏：不超高
+    const wr = wrap.getBoundingClientRect();
+    if (wr.bottom > innerHeight - 8) wrap.style.maxHeight = (innerHeight - r.bottom - 16) + 'px';
+  } else if (btn.closest('#dockRight')) {
+    wrap.classList.add('sd-side');
+    const r = btn.getBoundingClientRect();
+    wrap.style.right = (innerWidth - r.left + 6) + 'px';
+    wrap.style.top = Math.min(r.top, innerHeight - 200) + 'px';
+    wrap.style.left = 'auto'; wrap.style.bottom = 'auto'; wrap.style.transform = 'none';
+  } else {
+    wrap.classList.add('sd-up');
+    const r = btn.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect(); // 展开前量不准，展开后再校一次
+    wrap.style.bottom = (innerHeight - r.top + 6) + 'px';
+    wrap.style.left = (r.left + r.width/2) + 'px';
+    wrap.style.top = 'auto'; wrap.style.right = 'auto';
+    wrap.style.transform = 'translateX(-50%)';
+    requestAnimationFrame(() => {
+      const w2 = wrap.getBoundingClientRect();
+      if (w2.left < 8) { wrap.style.left = '8px'; wrap.style.transform = 'none'; }
+      if (w2.right > innerWidth - 8) { wrap.style.left = 'auto'; wrap.style.right = '8px'; wrap.style.transform = 'none'; }
+    });
+  }
+}
+allGrpBtns.forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const subId = btn.dataset.sub || (btn.dataset.menu ? 'menu' + btn.dataset.menu.charAt(0).toUpperCase() + btn.dataset.menu.slice(1) : null);
+    if (!subId && btn.id !== 'btnScene') return;
+    const wrap = subId ? document.getElementById(subId) : null;
+    const wasOpen = wrap ? wrap.classList.contains('sd-open') : document.getElementById('pageScene').classList.contains('sd-show');
+    closeAllWraps();
+    if (btn.id === 'btnScene') { if (!wasOpen) showPage('pageScene'); return; }
+    if (!wrap) return;
+    if (!wasOpen) {
+      wrap.classList.add('sd-open','sd-measure'); placeSub(wrap, btn);
+      wrap.classList.remove('sd-measure');
+      btn.classList.add('sd-active');
+    }
+  });
+});
+// 点空白关闭
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.sd-dock') && !e.target.closest('.sd-sub-wrap') && !e.target.closest('.sd-page')) closeAllWraps();
+});
+// 临时量测态：opacity 保持 0
+const st = document.createElement('style');
+st.textContent = '.sd-measure{opacity:0!important;pointer-events:none!important;transition:none!important}';
+document.head.appendChild(st);
+
+// ===== 工具按钮点击（单选态） =====
+document.querySelectorAll('.sd-sub-wrap').forEach(w => {
+  w.addEventListener('click', (e) => {
+    const t = e.target.closest('.sd-tool-btn');
+    if (!t) return;
+    e.stopPropagation();
+    if (t.dataset.page) { showPage(t.dataset.page); return; }
+    // 同面板内互斥选中
+    w.querySelectorAll('.sd-tool-btn').forEach(b => b.classList.remove('sd-on'));
+    t.classList.add('sd-on');
+    showMsg(t.dataset.toast || (t.querySelector('.sd-name')?.textContent || 'OK'));
+  });
+});
+// 菜单行点击
+document.querySelectorAll('.sd-menu-row').forEach(r => {
+  r.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (r.dataset.page) { showPage(r.dataset.page); return; }
+    showMsg(r.dataset.toast || r.textContent.trim());
+    closeAllWraps();
+  });
+});
+
+// ===== 全屏页开关 =====
+function showPage(id) {
+  closeAllWraps();
+  document.getElementById(id).classList.add('sd-show');
+}
+document.querySelectorAll('[data-close]').forEach(b => {
+  b.addEventListener('click', () => b.closest('.sd-page').classList.remove('sd-show'));
+});
+// 开关
+document.querySelectorAll('.sd-sw').forEach(s => {
+  s.addEventListener('click', () => { s.classList.toggle('on'); showMsg(s.classList.contains('on') ? '已开启' : '已关闭'); });
+});
+document.querySelectorAll('.sd-list-row, .sd-list-item').forEach(r => {
+  r.addEventListener('click', () => showMsg(r.textContent.trim().slice(0,14)));
+});
+
+// ===== 拖动（简版：三 dock 均可拖，松手贴边） =====
+function makeDraggable(dock, handle) {
+  let drag = null;
+  handle.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    const r = dock.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    dock.style.transition = 'none';
+    try { handle.setPointerCapture(e.pointerId); } catch(_) {}
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    // 清对边定位
+    dock.style.right = 'auto'; dock.style.bottom = 'auto';
+    dock.style.transform = 'none';
+    let x = e.clientX - drag.dx, y = e.clientY - drag.dy;
+    x = Math.max(4, Math.min(innerWidth - dock.offsetWidth - 4, x));
+    y = Math.max(4, Math.min(innerHeight - dock.offsetHeight - 4, y));
+    dock.style.left = x + 'px'; dock.style.top = y + 'px';
+  });
+  handle.addEventListener('pointerup', (e) => {
+    if (!drag) return; drag = null;
+    // 吸附最近边
+    const r = dock.getBoundingClientRect();
+    const cx = r.left + r.width/2, cy = r.top + r.height/2;
+    const d = [cx, innerWidth-cx, cy*0.8, (innerHeight-cy)*0.8];
+    const side = ['left','right','top','bottom'][d.indexOf(Math.min(...d))];
+    dock.style.left = 'auto'; dock.style.top = 'auto'; dock.style.right = 'auto'; dock.style.bottom = 'auto';
+    if (side === 'left') { dock.style.left = '10px'; dock.style.top = Math.max(8, Math.min(innerHeight - r.height - 8, r.top)) + 'px'; }
+    if (side === 'right') { dock.style.right = '10px'; dock.style.top = Math.max(8, Math.min(innerHeight - r.height - 8, r.top)) + 'px'; }
+    if (side === 'top') { dock.style.top = '10px'; dock.style.left = Math.max(8, Math.min(innerWidth - r.width - 8, r.left)) + 'px'; }
+    if (side === 'bottom') { dock.style.bottom = '10px'; dock.style.left = Math.max(8, Math.min(innerWidth - r.width - 8, r.left)) + 'px'; }
+    closeAllWraps();
+    showMsg('已贴' + ({left:'左',right:'右',top:'顶',bottom:'底'})[side] + '边');
+  });
+}
+makeDraggable(document.getElementById('dockTop'), document.getElementById('handleTop'));
+makeDraggable(document.getElementById('dockBottom'), document.getElementById('handleBottom'));
+makeDraggable(document.getElementById('dockRight'), document.getElementById('handleRight'));
+</script>
+</body>
+</html>
