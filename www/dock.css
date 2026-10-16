@@ -73,7 +73,8 @@ html { font-size: clamp(13px, 4.2vw, 18px); }
 
 /* 场景管理器 v6：全屏列表风格，原三按钮保留（标题栏下方），内容滚动 */
 body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important;
-  inset:0 !important; width:100vw !important; max-height:100vh !important; z-index:1200;
+  inset:0 !important; width:100% !important; max-width:100% !important; height:100% !important; max-height:100% !important;
+  z-index:1300 !important;
   border-radius:0 !important; background:#181b1f; padding:0 !important; }
 .sd-sheet-header { flex-shrink:0; display:flex; align-items:center; gap:0.6rem;
   padding:0.55rem 0.8rem; background:#22262b; position:relative; z-index:5; }
@@ -93,7 +94,7 @@ body.sd-scene-open .sd-dock { display:none !important; }
 /* 显示组两面板（外观/浮层）v6：同样全屏列表风格 */
 body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel {
   position:fixed !important; inset:0 !important; width:100vw !important; max-width:100vw !important;
-  max-height:100vh !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1200;
+  max-height:100vh !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1300 !important;
   display:flex; flex-direction:column; background:#181b1f;
 }
 body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > * { flex-shrink:0; }
@@ -107,6 +108,9 @@ body.sd-docks-ready #appearance-panel.pcui-hidden, body.sd-docks-ready #overlays
 }
 body.sd-docks-ready #scene-panel.pcui-hidden { display:none !important; }
 
+/* 全屏层统一抬高：弹窗/外观/浮层与场景页同层 1300，压过所有 dock（真机右栏浮球曾叠在面板上） */
+body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"],
+body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel { z-index:1300 !important; }
 /* v6 弹窗统一重构：全屏 + 列表布局 + 上下滚动 + 左上角返回 */
 body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
   position:fixed !important; left:0 !important; right:auto !important; top:0 !important;
