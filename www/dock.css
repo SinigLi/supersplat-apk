@@ -86,6 +86,8 @@ body.sd-scene-open #scene-panel > .panel-header { display:flex !important; flex-
 body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header):not(.sd-sheet-header) { flex:1; overflow-y:auto; min-height:0; }
 body.mobile-mode #scene-panel { display:none !important; }
 body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
+/* 场景管理器打开时隐藏所有 dock，防圆球叠在面板上 */
+body.sd-scene-open .sd-dock { display:none !important; }
 
 /* 显示组两面板（外观/浮层）v6：同样全屏列表风格 */
 body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel {

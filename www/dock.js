@@ -137,8 +137,17 @@ waitUI(function () {
       const sceneBtn = makeShell('<span class="sd-ico">🗂</span><span class="sd-name">场景</span>', 'sd-grp-btn');
       sceneBtn.onclick = (e) => {
         e.stopPropagation();
-        document.body.classList.toggle('sd-scene-open');
-        sceneBtn.classList.toggle('sd-active', document.body.classList.contains('sd-scene-open'));
+        const open = document.body.classList.toggle('sd-scene-open');
+        sceneBtn.classList.toggle('sd-active', open);
+        // 设备端样式竞态兑底：打开时内联强制全屏，关闭时清除内联
+        const spPanel = document.getElementById('scene-panel');
+        if (spPanel) {
+          if (open) {
+            spPanel.style.cssText += ';position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;inset:0!important;z-index:1200!important;';
+          } else {
+            spPanel.style.cssText = spPanel.style.cssText.replace(/;?position:fixed!important;left:0!important[^;]*;/g, ';');
+          }
+        }
       };
       dock.appendChild(sceneBtn);
     } else if (def.viewOptions) {
@@ -375,8 +384,7 @@ waitUI(function () {
           if (!d.classList.contains('pcui-hidden') && d.style.display === 'none') d.style.display = '';
         }).observe(d, { attributes:true, attributeFilter:['class','style'] });
       });
-      const sp = document.getElementById('scene-panel');
-      if (sp && !sp.querySelector(':scope > .sd-sheet-header')) {
+      const sp = document.getElementById('scene-panel');      if (sp && !sp.querySelector(':scope > .sd-sheet-header')) {
         // v6：全屏风头部——左上角返回 + 标题；原三按钮保留在下方 panel-header 行
         const hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">场景管理</span>', 'sd-sheet-header');
         sp.insertBefore(hd, sp.firstChild);
