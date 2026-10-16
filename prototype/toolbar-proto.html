@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>分级工具栏原型</title>
+<style>
+:root { --btn: 52px; --gap: 10px; --edge: env(safe-area-inset-bottom, 0px); }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+html,body { height:100%; overflow:hidden; }
+body { font-family: system-ui, sans-serif; background:#2b2e33; color:#e8e8e8; touch-action: manipulation; }
+
+/* 模拟画布区 */
+#canvas-sim { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#555; font-size:14px; user-select:none; }
+
+/* ===== 分组停靠栏组件（position 由 JS 设置：top/bottom/left/right） ===== */
+#dock { position:fixed; z-index:100; display:flex; gap:var(--gap); padding:10px;
+        background:rgba(21,24,28,.95); border-radius:14px;
+        box-shadow:0 4px 16px rgba(0,0,0,.5); transition:all .25s ease; }
+#dock.bottom { bottom:calc(var(--edge) + 10px); left:50%; transform:translateX(-50%); flex-direction:row; }
+#dock.top    { top:calc(env(safe-area-inset-top,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row; }
+#dock.left   { left:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
+#dock.right  { right:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
+
+/* 大类按钮 */
+.grp-btn { width:var(--btn); height:var(--btn); border-radius:12px; border:1px solid rgba(255,255,255,.1);
+           background:#3a3f46; color:#ccc; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           font-size:10px; gap:2px; cursor:pointer; position:relative; }
+.grp-btn .ico { font-size:20px; }
+.grp-btn.active { background:#2563eb; color:#fff; border-color:#3b82f6; }
+.grp-btn .dot { position:absolute; top:4px; right:4px; width:8px; height:8px; border-radius:50%;
+                background:#f59e0b; display:none; }
+.grp-btn.has-active .dot { display:block; }   /* 子工具激活角标 */
+
+/* ===== 子工具浮层：锚定大类按钮，方向随 dock 边位自动 ===== */
+.sub-wrap { position:fixed; z-index:99; display:flex; gap:8px; padding:8px;
+            background:rgba(30,33,38,.97); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.5);
+            opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease; }
+.sub-wrap.open { opacity:1; pointer-events:auto; }
+/* bottom dock → 子层在上方，横向排 */
+.sub-wrap.up   { flex-direction:row; transform:translateY(8px); }
+.sub-wrap.up.open { transform:translateY(0); }
+/* left dock → 子层在右侧，纵向排 */
+.sub-wrap.side { flex-direction:column; transform:translateX(-8px); }
+.sub-wrap.side.open { transform:translateX(0); }
+
+/* 子工具按钮（命令型/工具型） */
+.tool-btn { min-width:46px; height:46px; padding:0 8px; border-radius:10px; border:1px solid rgba(255,255,255,.08);
+            background:#2f3338; color:#bbb; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            font-size:10px; gap:2px; cursor:pointer; }
+.tool-btn .ico { font-size:18px; }
+.tool-btn.tool-type.active { background:#2563eb; color:#fff; border-color:#3b82f6; }
+.tool-btn.cmd-type:active { filter:brightness(1.6); }
+.tool-btn.cmd-type.flash { background:#f59e0b; color:#000; }
+
+/* 停靠位置切换器（原型演示用） */
+#dock-switcher { position:fixed; top:calc(env(safe-area-inset-top,0px) + 8px); right:8px; z-index:200;
+                 display:flex; gap:6px; }
+#dock-switcher button { width:40px; height:32px; border-radius:8px; border:1px solid #555;
+                        background:#222; color:#999; font-size:12px; cursor:pointer; }
+#dock-switcher button.on { background:#2563eb; color:#fff; border-color:#3b82f6; }
+#hint { position:fixed; top:calc(env(safe-area-inset-top,0px) + 46px); right:8px; font-size:11px; color:#777; z-index:200; text-align:right;}
+</style>
+</head>
+<body>
+<div id="canvas-sim">（画布区域 — 原型模拟）</div>
+
+<div id="dock-switcher">
+  <button data-pos="bottom" class="on">底</button>
+  <button data-pos="top">顶</button>
+  <button data-pos="left">左</button>
+  <button data-pos="right">右</button>
+</div>
+<div id="hint">点大类展开/收起<br>可同时展开多个<br>右上角切停靠边</div>
+
+<div id="dock"></div>
+
+<script>
+// ===== 工具分组数据（对应 SuperSplat 真实工具） =====
+const GROUPS = [
+  { id:'select', ico:'🎯', name:'选择', tools:[
+    {id:'picker',  ico:'👆', name:'点选',  type:'tool'},
+    {id:'brush',   ico:'🖌️', name:'笔刷',  type:'tool'},
+    {id:'polygon', ico:'🪢', name:'套索',  type:'tool'},
+    {id:'sphere',  ico:'🔮', name:'球选',  type:'tool'},
+    {id:'eyedrop', ico:'💧', name:'吸管',  type:'tool'},
+  ]},
+  { id:'xform', ico:'🔢', name:'变换', tools:[
+    {id:'move',    ico:'✥', name:'移动',  type:'tool'},
+    {id:'rotate',  ico:'🔄', name:'旋转',  type:'tool'},
+    {id:'scale',   ico:'⤢', name:'缩放',  type:'tool'},
+    {id:'orient',  ico:'🧭', name:'定向',  type:'tool'},
+    {id:'coords',  ico:'🌐', name:'全局/局部', type:'tool'},
+  ]},
+  { id:'shape', ico:'✂️', name:'裁剪', tools:[
+    {id:'box',     ico:'📦', name:'盒体',  type:'tool'},
+    {id:'spheresel',ico:'⚪', name:'球体', type:'tool'},
+  ]},
+  { id:'measure', ico:'📐', name:'测量', tools:[
+    {id:'ruler',   ico:'📏', name:'测距',  type:'tool'},
+    {id:'angle',   ico:'📐', name:'测角',  type:'tool'},
+    {id:'cursor3d',ico:'✚', name:'3D游标', type:'tool'},
+  ]},
+  { id:'misc', ico:'⋯', name:'更多', tools:[
+    {id:'undo',    ico:'↶', name:'撤销',  type:'cmd'},
+    {id:'redo',    ico:'↷', name:'重做',  type:'cmd'},
+    {id:'origin',  ico:'🏠', name:'回原点', type:'cmd'},
+  ]},
+];
+
+const dock = document.getElementById('dock');
+let dockPos = 'bottom';
+const openPanels = new Set();          // 同时展开多个
+
+function build() {
+  dock.innerHTML = '';
+  document.querySelectorAll('.sub-wrap').forEach(e=>e.remove());
+  GROUPS.forEach(g => {
+    const btn = document.createElement('div');
+    btn.className = 'grp-btn'; btn.dataset.grp = g.id;
+    btn.innerHTML = `<span class="ico">${g.ico}</span><span>${g.name}</span><span class="dot"></span>`;
+    btn.onclick = () => toggleGroup(g, btn);
+    dock.appendChild(btn);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sub-wrap'; wrap.dataset.grp = g.id;
+    g.tools.forEach(t => {
+      const tb = document.createElement('div');
+      tb.className = `tool-btn ${t.type==='cmd'?'cmd-type':'tool-type'}`;
+      tb.innerHTML = `<span class="ico">${t.ico}</span><span>${t.name}</span>`;
+      tb.onclick = (ev) => {
+        ev.stopPropagation();
+        if (t.type === 'cmd') {         // 命令型：闪一下，不收面板
+          tb.classList.add('flash'); setTimeout(()=>tb.classList.remove('flash'), 250);
+        } else {                        // 工具型：单选高亮（同组内互斥）
+          wrap.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+          tb.classList.add('active');
+          updateDots();
+        }
+        showMsg(g.name + ' → ' + t.name);
+      };
+      wrap.appendChild(tb);
+    });
+    document.body.appendChild(wrap);
+  });
+  placeAll();
+}
+
+function toggleGroup(g, btn) {
+  const wrap = document.querySelector(`.sub-wrap[data-grp="${g.id}"]`);
+  if (openPanels.has(g.id)) { openPanels.delete(g.id); wrap.classList.remove('open'); btn.classList.remove('active'); }
+  else { openPanels.add(g.id); placeWrap(g.id); wrap.classList.add('open'); btn.classList.add('active'); }
+}
+
+// 子面板定位：dock 在底/顶 → 面板在其上方横排；左/右 → 面板向内纵排
+// 多面板同时展开时向上（或向内）错层，避免互相遮挡
+function placeWrap(grpId) {
+  const btn = dock.querySelector(`[data-grp="${grpId}"]`);
+  const wrap = document.querySelector(`.sub-wrap[data-grp="${grpId}"]`);
+  const b = btn.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+  const slot = Array.from(openPanels).indexOf(grpId);   // 展开顺序槽位
+  if (dockPos==='bottom' || dockPos==='top') {
+    wrap.classList.remove('side'); wrap.classList.add('up');
+    wrap.style.left = Math.max(8, Math.min(b.left + b.width/2 - w.width/2, innerWidth - w.width - 8)) + 'px';
+    const baseY = dockPos==='bottom' ? b.top - w.height - 10 : b.bottom + 10;
+    wrap.style.top = (dockPos==='bottom' ? baseY - slot*(w.height + 8) : baseY + slot*(w.height + 8)) + 'px';
+  } else {
+    wrap.classList.remove('up'); wrap.classList.add('side');
+    wrap.style.top = Math.max(8, Math.min(b.top + b.height/2 - w.height/2, innerHeight - w.height - 8)) + 'px';
+    const baseX = dockPos==='left' ? b.right + 10 : b.left - w.width - 10;
+    wrap.style.left = (dockPos==='left' ? baseX + slot*(w.width + 8) : baseX - slot*(w.width + 8)) + 'px';
+  }
+}
+function placeAll() { openPanels.forEach(placeWrap); }
+addEventListener('resize', placeAll);
+
+// 大类按钮激活角标：组内有选中工具则亮
+function updateDots() {
+  GROUPS.forEach(g => {
+    const wrap = document.querySelector(`.sub-wrap[data-grp="${g.id}"]`);
+    const has = wrap && wrap.querySelector('.tool-btn.active');
+    dock.querySelector(`[data-grp="${g.id}"]`).classList.toggle('has-active', !!has);
+  });
+}
+
+// 停靠边切换
+document.querySelectorAll('#dock-switcher button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('#dock-switcher button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    dockPos = b.dataset.pos;
+    dock.className = dockPos;
+    placeAll();
+  };
+});
+
+// 反馈提示
+let msgTimer;
+function showMsg(t) {
+  let el = document.getElementById('msg');
+  if (!el) { el = document.createElement('div'); el.id='msg';
+    el.style.cssText='position:fixed;left:50%;top:40%;transform:translateX(-50%);background:#2563eb;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;z-index:300;transition:opacity .3s;opacity:0';
+    document.body.appendChild(el); }
+  el.textContent = t; el.style.opacity = 1;
+  clearTimeout(msgTimer); msgTimer = setTimeout(()=>el.style.opacity=0, 900);
+}
+
+build();
+dock.className = 'bottom';   // 初始停靠底部（否则无定位类，面板飘到顶部）
+placeAll();
+</script>
+</body>
+</html>
