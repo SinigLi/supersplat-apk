@@ -27,10 +27,12 @@ waitUI(function () {
   };
 
   const DOCKS = [
-    { id:'file', label:'文件', pos:'top',    groupIds:['file'], extra:[] },
+    { id:'file', label:'文件', pos:'top',    groupIds:[], menuOptions:true,
+      extra:[] },
     { id:'edit', label:'编辑', pos:'bottom', groupIds:['select','xform','shape','measure'],
       extra:[ {id:'bottom-toolbar-undo', ico:'↶', name:'撤销'}, {id:'bottom-toolbar-redo', ico:'↷', name:'重做'} ] },
-    { id:'view', label:'视图', pos:'right',  groupIds:['view'], extra:[] },
+    { id:'view', label:'视图', pos:'right',  groupIds:[], viewOptions:true,
+      extra:[] },
   ];
 
   const btnEl = id => document.getElementById(id);
@@ -44,6 +46,9 @@ waitUI(function () {
     el.innerHTML = html;
     return el;
   }
+
+  // 顶部菜单组需要名称映射（收养的是 label 按钮）
+  const MENU_NAMES = ['文件','编辑','选择','渲染','帮助'];
 
   // 把 SS 原按钮搬进容器（保事件）；原按钮可能在 #bottom-toolbar 里
   function adopt(id, container) {
@@ -89,13 +94,39 @@ waitUI(function () {
     const label = makeShell(def.label, 'sd-label');
     const collapse = makeShell('▪', 'sd-collapse');
 
-    def.groupIds.forEach(gid => dock.appendChild(makeGroupBtn(gid, dock)));
+    if (def.menuOptions) {
+      // 顶部：收养 SS 五个一级菜单按钮（文件/编辑/选择/渲染/帮助）
+      // 面板定位是点击时锚定按钮自身 → 收养后自动贴新位置弹出，功能零重写
+      document.querySelectorAll('#menu .menu-option').forEach(opt => {
+        opt.classList.add('sd-adopted', 'sd-menu-opt');
+        dock.appendChild(opt);
+      });
+    } else if (def.viewOptions) {
+      // 右侧：视图组也按一级分组——相机模式（轨道/飞行）、外观、浮层、定位（框选/回原点/设置）
+      [['相机模式', ['right-toolbar-orbit-mode','right-toolbar-fly-mode']],
+       ['显示', ['right-toolbar-appearance','right-toolbar-overlays']],
+       ['定位', ['right-toolbar-frame-selection','right-toolbar-camera-origin','right-toolbar-settings']]
+      ].forEach(([name, ids]) => {
+        const g = makeShell(`<span class="sd-ico">${name==='相机模式'?'🎥':name==='显示'?'🎨':'🎯'}</span><span class="sd-name">${name}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
+        const wrap = makeShell('', 'sd-sub-wrap');
+        ids.forEach(id => adopt(id, wrap));
+        document.body.appendChild(wrap);
+        allPanels.set(name, wrap);
+        g.onclick = () => toggleNamed(name, g, dock);
+        dock.appendChild(g);
+      });
+    } else {
+      def.groupIds.forEach(gid => dock.appendChild(makeGroupBtn(gid, dock)));
+    }
     (def.extra || []).forEach(t => { const el = makeExtraBtn(t, dock); if (el) dock.appendChild(el); });
     dock.appendChild(label);
     dock.appendChild(collapse);
     dock.insertBefore(handle, dock.firstChild);
 
     const st = { def, dock, handle, pos: def.pos, freePos: null, openPanels: new Set(), collapsed: false };
+
+    // 拦截 pointerdown 冒泡：SS 的 checkEvent 会因目标不在 #menu 内而关闭菜单面板
+    dock.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     function setCollapsed(v) {
       st.collapsed = v;
@@ -112,6 +143,45 @@ waitUI(function () {
     setupDrag(st);
     docks.push(st);
     applyDockPos(st);
+  }
+
+  function toggleNamed(name, g, dock) {
+    const st = docks.find(s => s.dock === dock);
+    const wrap = allPanels.get(name);
+    if (!st || !wrap) return;
+    if (st.openPanels.has(name)) {
+      st.openPanels.delete(name); wrap.classList.remove('sd-open'); g.classList.remove('sd-active');
+    } else {
+      st.openPanels.add(name); g.classList.add('sd-active');
+      placeNamed(name, g, st);
+      wrap.classList.add('sd-open');
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (st.openPanels.has(name)) placeNamed(name, g, st); }));
+    }
+  }
+
+  function placeNamed(name, g, st) {
+    const wrap = allPanels.get(name);
+    wrap.style.left = ''; wrap.style.top = '';
+    const vertical = (st.pos==='left' || st.pos==='right');
+    wrap.classList.toggle('sd-side', vertical);
+    wrap.classList.toggle('sd-up', !vertical);
+    wrap.style.visibility = 'hidden'; wrap.classList.add('sd-open');
+    const b = g.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    wrap.style.visibility = '';
+    const slot = Array.from(st.openPanels).indexOf(name);
+    if (!vertical) {
+      const stagger = slot * (w.height + 8);
+      let left = Math.max(8, Math.min(b.left + b.width/2 - w.width/2, innerWidth - w.width - 8));
+      let top = st.pos==='bottom' ? b.top - w.height - 10 - stagger : b.bottom + 10 + stagger;
+      top = Math.max(8, Math.min(top, innerHeight - w.height - 8));
+      wrap.style.left = left + 'px'; wrap.style.top = top + 'px';
+    } else {
+      const stagger = slot * (w.width + 8);
+      let top = Math.max(8, Math.min(b.top + b.height/2 - w.height/2, innerHeight - w.height - 8));
+      let left = st.pos==='left' ? b.right + 10 + stagger : b.left - w.width - 10 - stagger;
+      left = Math.max(8, Math.min(left, innerWidth - w.width - 8));
+      wrap.style.left = left + 'px'; wrap.style.top = top + 'px';
+    }
   }
 
   function toggleGroup(gid, dock) {
@@ -235,14 +305,10 @@ waitUI(function () {
     addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, {passive:false});
   }
 
-  // 文件组 v1：单一"菜单"入口，点开弹出 SS 原生菜单（重挂整个菜单根元素）
-  function buildFileMenu() {
-    const menu = document.querySelector('#menu') || document.querySelector('.pcui-menu');
-    const wrap = allPanels.get('file');
-    if (!menu || !wrap) return;
-    menu.classList.add('sd-adopted');
-    // 菜单根通常是横向的菜单条；整体塞进子面板容器
-    wrap.appendChild(menu);
+  // v2：菜单按钮收养进顶部 dock，原菜单条隐藏（面板仍挂在 #menu 下随按钮弹出）
+  function hideMenuBar() {
+    const bar = document.getElementById('menu-bar');
+    if (bar) bar.style.display = 'none';
   }
 
   let msgTimer, msgEl;
@@ -259,7 +325,7 @@ waitUI(function () {
   style.textContent = '#bottom-toolbar,#right-toolbar{display:none!important}';
   document.head.appendChild(style);
   DOCKS.forEach(buildDock);
-  buildFileMenu();
+  hideMenuBar();
   document.body.classList.add('sd-docks-ready');
 });
 })();

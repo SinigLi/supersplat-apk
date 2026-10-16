@@ -56,6 +56,11 @@
 .sd-dock .sd-adopted { min-width:44px !important; min-height:44px !important; flex-shrink:0; }
 .sd-extra .sd-name { font-size:10px; }
 
+/* 顶部菜单一级按钮（文件/编辑/选择/渲染/帮助） */
+.sd-dock .sd-menu-opt { color:#ccc !important; font-size:12px !important; padding:0 10px !important;
+                        border-radius:10px; background:#3a3f46; height:44px !important; display:flex; align-items:center; flex-shrink:0; }
+.sd-dock .sd-menu-opt:hover { color:#fff; }
+
 /* press 反馈 */
 .sd-dock .sd-adopted:active, .sd-grp-btn:active { filter:brightness(1.5); }
 
