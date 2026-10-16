@@ -384,6 +384,31 @@ waitUI(function () {
           if (!d.classList.contains('pcui-hidden') && d.style.display === 'none') d.style.display = '';
         }).observe(d, { attributes:true, attributeFilter:['class','style'] });
       });
+      // v6.3：外观/浮层面板——SS 原生打开时会内联写 top 锚定定位，把全屏面板顶出屏幕（真机 top:-376）；
+      // 可见时强制钳位回原点，并注入与场景页同款头部（返回钮+标题）
+      [['appearance-panel','外观','right-toolbar-appearance'], ['overlays-panel','浮层','right-toolbar-overlays']].forEach(function(def){
+        var p = document.getElementById(def[0]);
+        if (!p || p.querySelector(':scope > .sd-sheet-header')) return;
+        var hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">' + def[1] + '</span>', 'sd-sheet-header');
+        p.insertBefore(hd, p.firstChild);
+        hd.querySelector('.sd-back-btn').addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+        hd.querySelector('.sd-back-btn').onclick = function(e){
+          e.stopPropagation();
+          p.classList.add('pcui-hidden');
+          p.style.display = 'none';
+          var tb = document.getElementById(def[2]);
+          if (tb && tb.classList) tb.classList.remove('active');
+        };
+        new MutationObserver(function(){
+          if (p.classList.contains('pcui-hidden')) return;
+          var cs = getComputedStyle(p);
+          if (cs.display === 'none') return;
+          // SS 内联锚定定位钳位：可见时强制全屏原点
+          p.style.position = 'fixed'; p.style.left = '0'; p.style.top = '0';
+          p.style.right = 'auto'; p.style.bottom = 'auto'; p.style.transform = 'none';
+          p.style.width = '100%'; p.style.height = '100%'; p.style.zIndex = '1300';
+        }).observe(p, { attributes:true, attributeFilter:['class','style'] });
+      });
       const sp = document.getElementById('scene-panel');      if (sp && !sp.querySelector(':scope > .sd-sheet-header')) {
         // v6：全屏风头部——左上角返回 + 标题；原三按钮保留在下方 panel-header 行
         const hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">场景管理</span>', 'sd-sheet-header');
