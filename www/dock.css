@@ -1,8 +1,8 @@
 /* SuperSplat Dock Overhaul v1 — 样式（原型 v8 交互定稿移植） */
-:root { --sd-btn: 52px; --sd-gap: 10px; }
+:root { --sd-btn: 38px; --sd-gap: 7px; }
 
 /* ===== 停靠组容器 ===== */
-.sd-dock { position:fixed; z-index:1000; display:flex; gap:var(--sd-gap); padding:10px;
+.sd-dock { position:fixed; z-index:1000; display:flex; gap:var(--sd-gap); padding:7px;
         background:rgba(21,24,28,.95); border-radius:14px;
         box-shadow:0 4px 16px rgba(0,0,0,.5); align-items:center; }
 .sd-dock.sd-bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row;
@@ -24,7 +24,7 @@
 .sd-handle { min-width:18px; min-height:18px; display:flex; align-items:center; justify-content:center;
              color:#777; font-size:14px; cursor:grab; touch-action:none; flex-shrink:0; letter-spacing:2px; }
 .sd-dock.sd-left .sd-handle, .sd-dock.sd-right .sd-handle { writing-mode:vertical-lr; }
-.sd-dock.sd-collapsed .sd-handle { width:52px; height:52px; background:rgba(21,24,28,.95); border-radius:50%;
+.sd-dock.sd-collapsed .sd-handle { width:40px; height:40px; background:rgba(21,24,28,.95); border-radius:50%;
                                color:#4a9eff; font-size:16px; box-shadow:0 4px 16px rgba(0,0,0,.5); writing-mode:horizontal-tb; }
 
 .sd-label { font-size:11px; color:#888; writing-mode:vertical-lr; letter-spacing:2px; flex-shrink:0; }
@@ -37,7 +37,7 @@
 .sd-grp-btn { width:var(--sd-btn); height:var(--sd-btn); border-radius:12px; border:1px solid rgba(255,255,255,.1);
            background:#3a3f46; color:#ccc; display:flex; flex-direction:column; align-items:center; justify-content:center;
            font-size:10px; gap:2px; cursor:pointer; position:relative; flex-shrink:0; }
-.sd-grp-btn .sd-ico { font-size:20px; }
+.sd-grp-btn .sd-ico { font-size:15px; }
 .sd-grp-btn.sd-active { background:#2563eb; color:#fff; border-color:#3b82f6; }
 .sd-grp-btn .sd-dot { position:absolute; top:4px; right:4px; width:8px; height:8px; border-radius:50%;
                 background:#f59e0b; display:none; }
@@ -56,10 +56,34 @@
 .sd-dock .sd-adopted { min-width:44px !important; min-height:44px !important; flex-shrink:0; }
 .sd-extra .sd-name { font-size:10px; }
 
-/* 顶部菜单一级按钮（文件/编辑/选择/渲染/帮助） */
-.sd-dock .sd-menu-opt { color:#ccc !important; font-size:12px !important; padding:0 10px !important;
-                        border-radius:10px; background:#3a3f46; height:44px !important; display:flex; align-items:center; flex-shrink:0; }
-.sd-dock .sd-menu-opt:hover { color:#fff; }
+/* 顶部菜单组按钮沿用 .sd-grp-btn，无需单独样式 */
+
+/* 子面板滚动：内容太多不出屏（横排横向滚、竖排纵向滚） */
+.sd-sub-wrap { max-width:calc(100vw - 16px); max-height:calc(100vh - 130px); }
+.sd-sub-wrap.sd-up { overflow-x:auto; overflow-y:hidden; }
+.sd-sub-wrap.sd-side { overflow-y:auto; overflow-x:hidden; }
+.sd-sub-wrap::-webkit-scrollbar { display:none; }
+
+/* 收养进来的 SS 菜单面板：静态布局，实底背景（默认色太深与画布几乎同色会看不见） */
+.sd-menu-panel { background:#262b32 !important; border:1px solid rgba(255,255,255,.08); }
+.sd-menu-panel .menu-panel { position:static !important; box-shadow:none !important; background:transparent !important; }
+.sd-menu-panel .menu-row { min-width:150px; }
+
+/* 场景管理器：作为覆盖层弹出（含 PLY 导入） */
+body.sd-scene-open #scene-panel { display:flex !important; position:fixed !important; left:8px; top:60px;
+  width:min(82vw,320px); max-height:calc(100vh - 150px); overflow-y:auto; z-index:1200;
+  background:#181b1f; box-shadow:0 4px 16px rgba(0,0,0,.6); border-radius:12px; padding:8px; }
+body.mobile-mode #scene-panel { display:none !important; }
+body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
+
+/* SS 弹窗移动端自适应：外层限屏，内层滚动（设置/显示/导出/发布/关于等全部对话框） */
+body.sd-docks-ready [id="dialog"], body.sd-docks-ready [id$="-dialog"] { max-width:calc(100vw - 20px) !important; max-height:calc(100vh - 20px) !important;
+                                     overflow-y:auto !important; overflow-x:hidden !important; }
+
+/* #menu 子树（菜单子面板容器）被画布图层压住：搬到 body 后全屏接管但本身不拦点击，
+   子元素（dock、子面板）恢复交互；checkEvent 的 contains 语义不变 */
+body.sd-docks-ready #menu { position:fixed !important; inset:0; pointer-events:none; z-index:1000 !important; background:transparent !important; }
+body.sd-docks-ready #menu > * { pointer-events:auto; }
 
 /* press 反馈 */
 .sd-dock .sd-adopted:active, .sd-grp-btn:active { filter:brightness(1.5); }

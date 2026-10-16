@@ -35,6 +35,16 @@ waitUI(function () {
       extra:[] },
   ];
 
+  // SS 菜单面板在 #menu 下的追加顺序（menu.ts append 顺序）
+  const MENU_ORDER = ['file','open-recent','import-recent','export','edit','selection','render','video-tutorials','help'];
+  const TOP_MENUS = [
+    { key:'file',      name:'文件', ico:'📁' },
+    { key:'edit',      name:'编辑', ico:'✏️' },
+    { key:'selection', name:'选择', ico:'🎯' },
+    { key:'render',    name:'渲染', ico:'🎬' },
+    { key:'help',      name:'帮助', ico:'❓' },
+  ];
+
   const btnEl = id => document.getElementById(id);
   const allPanels = new Map();
   const docks = [];
@@ -95,19 +105,49 @@ waitUI(function () {
     const collapse = makeShell('▪', 'sd-collapse');
 
     if (def.menuOptions) {
-      // 顶部：收养 SS 五个一级菜单按钮（文件/编辑/选择/渲染/帮助）
-      // 面板定位是点击时锚定按钮自身 → 收养后自动贴新位置弹出，功能零重写
-      document.querySelectorAll('#menu .menu-option').forEach(opt => {
-        opt.classList.add('sd-adopted', 'sd-menu-opt');
-        dock.appendChild(opt);
+      // v3：把 SS 五个一级菜单的 .menu-panel 整体搬进各自子面板容器
+      // 菜单行点击绑定在行上（stopPropagation），整体搬后功能保留；
+      // 行点击后 SS 会隐藏面板，用 MutationObserver 同步关闭我们的 wrap
+      const menuRoot = document.getElementById('menu');
+      const panels = {};
+      let pi = 0;
+      document.querySelectorAll('#menu > .menu-panel').forEach(p => { panels[MENU_ORDER[pi++]] = p; });
+      TOP_MENUS.forEach(m => {
+        const btn = makeShell(`<span class="sd-ico">${m.ico}</span><span class="sd-name">${m.name}</span><span class="sd-dot"></span>`, 'sd-grp-btn sd-menu-grp');
+        btn.dataset.grp = 'menu-' + m.key;
+        const wrap = makeShell('', 'sd-sub-wrap sd-menu-panel');
+        wrap.dataset.menukey = 'menu-' + m.key;
+        const p = panels[m.key];
+        if (p) {
+          wrap.appendChild(p);
+          new MutationObserver(() => {
+            if (p.classList.contains('pcui-hidden') && st && st.openPanels.has('menu-' + m.key)) {
+              st.openPanels.delete('menu-' + m.key);
+              wrap.classList.remove('sd-open');
+              btn.classList.remove('sd-active');
+            }
+          }).observe(p, { attributes:true, attributeFilter:['class'] });
+        }
+        (menuRoot || document.body).appendChild(wrap);
+        allPanels.set('menu-' + m.key, wrap);
+        btn.onclick = () => toggleNamed('menu-' + m.key, btn, dock);
+        dock.appendChild(btn);
       });
+      // 场景管理器按钮：点击浮层弹出 #scene-panel（含 PLY 导入）
+      const sceneBtn = makeShell('<span class="sd-ico">🗂</span><span class="sd-name">场景</span>', 'sd-grp-btn');
+      sceneBtn.onclick = (e) => {
+        e.stopPropagation();
+        document.body.classList.toggle('sd-scene-open');
+        sceneBtn.classList.toggle('sd-active', document.body.classList.contains('sd-scene-open'));
+      };
+      dock.appendChild(sceneBtn);
     } else if (def.viewOptions) {
       // 右侧：视图组也按一级分组——相机模式（轨道/飞行）、外观、浮层、定位（框选/回原点/设置）
-      [['相机模式', ['right-toolbar-orbit-mode','right-toolbar-fly-mode']],
+      [['相机', ['right-toolbar-orbit-mode','right-toolbar-fly-mode']],
        ['显示', ['right-toolbar-appearance','right-toolbar-overlays']],
        ['定位', ['right-toolbar-frame-selection','right-toolbar-camera-origin','right-toolbar-settings']]
       ].forEach(([name, ids]) => {
-        const g = makeShell(`<span class="sd-ico">${name==='相机模式'?'🎥':name==='显示'?'🎨':'🎯'}</span><span class="sd-name">${name}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
+        const g = makeShell(`<span class="sd-ico">${name==='相机'?'🎥':name==='显示'?'🎨':'🎯'}</span><span class="sd-name">${name}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
         const wrap = makeShell('', 'sd-sub-wrap');
         ids.forEach(id => adopt(id, wrap));
         document.body.appendChild(wrap);
@@ -125,8 +165,15 @@ waitUI(function () {
 
     const st = { def, dock, handle, pos: def.pos, freePos: null, openPanels: new Set(), collapsed: false };
 
-    // 拦截 pointerdown 冒泡：SS 的 checkEvent 会因目标不在 #menu 内而关闭菜单面板
-    dock.addEventListener('pointerdown', (e) => e.stopPropagation());
+    // 点 dock 外区域时关闭已开的菜单 wrap（SS 行点击自关由 observer 同步）
+    addEventListener('pointerdown', (e) => {
+      if (!st.openPanels.size) return;
+      if (st.dock.contains(e.target)) return;
+      let inWrap = false;
+      st.openPanels.forEach(k => { const w = allPanels.get(k); if (w && w.contains(e.target)) inWrap = true; });
+      if (inWrap) return;
+      closeAll(st);
+    }, true);
 
     function setCollapsed(v) {
       st.collapsed = v;
@@ -153,6 +200,8 @@ waitUI(function () {
       st.openPanels.delete(name); wrap.classList.remove('sd-open'); g.classList.remove('sd-active');
     } else {
       st.openPanels.add(name); g.classList.add('sd-active');
+      const mp = wrap.querySelector('.menu-panel');
+      if (mp) mp.classList.remove('pcui-hidden');
       placeNamed(name, g, st);
       wrap.classList.add('sd-open');
       requestAnimationFrame(() => requestAnimationFrame(() => { if (st.openPanels.has(name)) placeNamed(name, g, st); }));
@@ -305,10 +354,17 @@ waitUI(function () {
     addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, {passive:false});
   }
 
-  // v2：菜单按钮收养进顶部 dock，原菜单条隐藏（面板仍挂在 #menu 下随按钮弹出）
-  function hideMenuBar() {
+  // v3：原菜单条隐藏；#menu 搬到 body 下（修复祖先链叠层导致面板被画布压住不可见），
+  // checkEvent 用 DOM contains 判断，搬移不影响语义；顶部 dock 挂进 #menu，点按钮不会触发全局隐藏
+  function hideMenuBar(menuDock) {
     const bar = document.getElementById('menu-bar');
     if (bar) bar.style.display = 'none';
+    const menu = document.getElementById('menu');
+    if (menu) {
+      menu.classList.add('sd-menu-root');
+      document.body.appendChild(menu);
+      if (menuDock) menu.appendChild(menuDock);
+    }
   }
 
   let msgTimer, msgEl;
@@ -324,8 +380,8 @@ waitUI(function () {
   const style = document.createElement('style');
   style.textContent = '#bottom-toolbar,#right-toolbar{display:none!important}';
   document.head.appendChild(style);
-  DOCKS.forEach(buildDock);
-  hideMenuBar();
+  DOCKS.forEach(d => buildDock(d));
+  hideMenuBar(docks.find(s => s.def.menuOptions)?.dock);
   document.body.classList.add('sd-docks-ready');
 });
 })();
