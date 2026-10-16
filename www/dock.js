@@ -354,14 +354,14 @@ waitUI(function () {
     addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, {passive:false});
   }
 
-  // v4：给弹窗加右上角关闭按钮。
-  // PCUI 弹窗的关闭就是自身 hidden；场景面板则切 sd-scene-open。
+  // v6：弹窗统一改成全屏列表风：左上角返回按钮（替代右上角 ✕）。
+  // PCUI 弹窗关闭就是自身 hidden；返回钮用绝对定位盖在 header 左侧
   function addCloseBtn(host, onClick) {
     if (!host || host.querySelector(':scope > .sd-close-btn')) return;
-    const b = makeShell('✕', 'sd-close-btn');
+    const b = makeShell('‹ 返回', 'sd-back-btn sd-close-btn');
+    b.style.cssText = 'position:absolute;left:0.4rem;top:0.45rem;z-index:20;';
     b.addEventListener('pointerdown', e => e.stopPropagation());
     b.onclick = (e) => { e.stopPropagation(); onClick(); };
-    host.style.position = getComputedStyle(host).position === 'static' ? 'relative' : host.style.position;
     host.appendChild(b);
   }
 
@@ -377,11 +377,11 @@ waitUI(function () {
       });
       const sp = document.getElementById('scene-panel');
       if (sp && !sp.querySelector(':scope > .sd-sheet-header')) {
-        // v5：手机风格底部抽屉头部（标题+关闭钮），原 panel-header 隐藏，关闭钮不再与内容重叠
-        const hd = makeShell('<span class="sd-sheet-title">场景管理</span><span class="sd-sheet-close">✕</span>', 'sd-sheet-header');
+        // v6：全屏风头部——左上角返回 + 标题；原三按钮保留在下方 panel-header 行
+        const hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">场景管理</span>', 'sd-sheet-header');
         sp.insertBefore(hd, sp.firstChild);
-        hd.querySelector('.sd-sheet-close').addEventListener('pointerdown', e => e.stopPropagation());
-        hd.querySelector('.sd-sheet-close').onclick = (e) => {
+        hd.querySelector('.sd-back-btn').addEventListener('pointerdown', e => e.stopPropagation());
+        hd.querySelector('.sd-back-btn').onclick = (e) => {
           e.stopPropagation();
           document.body.classList.remove('sd-scene-open');
           const sb = document.querySelector('[data-dock=file] .sd-grp-btn');

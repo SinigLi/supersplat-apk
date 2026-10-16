@@ -52,10 +52,10 @@ html { font-size: clamp(13px, 4.2vw, 18px); }
 .sd-sub-wrap.sd-up   { flex-direction:row; }
 .sd-sub-wrap.sd-side { flex-direction:column; }
 
-/* 被收养的 SS 按钮：二级比一级再小一号 2.25rem，图标同步缩 */
-.sd-sub-wrap .sd-adopted { min-width:2.25rem !important; min-height:2.25rem !important; max-width:2.25rem !important; flex-shrink:0; }
-.sd-dock .sd-adopted { min-width:2.5rem !important; min-height:2.5rem !important; flex-shrink:0; }
-.sd-sub-wrap .sd-adopted .toolbar-icon, .sd-sub-wrap .sd-adopted svg { transform:scale(.75); transform-origin:center; }
+/* 被收养的 SS 按钮：外框连图标一起缩（v6 强制宽高，不只缩图标） */
+.sd-sub-wrap .sd-adopted { width:2.25rem !important; height:2.25rem !important; min-width:0 !important; max-width:2.25rem !important; padding:0 !important; box-sizing:border-box !important; flex-shrink:0; }
+.sd-dock .sd-adopted { width:2.5rem !important; height:2.5rem !important; min-width:0 !important; padding:0 !important; box-sizing:border-box !important; flex-shrink:0; }
+.sd-sub-wrap .sd-adopted .toolbar-icon, .sd-sub-wrap .sd-adopted svg { transform:scale(.72); transform-origin:center; }
 .sd-extra .sd-name { font-size:10px; }
 
 /* 顶部菜单组按钮沿用 .sd-grp-btn，无需单独样式 */
@@ -71,34 +71,53 @@ html { font-size: clamp(13px, 4.2vw, 18px); }
 .sd-menu-panel .menu-panel { position:static !important; box-shadow:none !important; background:transparent !important; }
 .sd-menu-panel .menu-row { min-width:150px; }
 
-/* 场景管理器 v5：手机风格底部抽屉（独立头部+关闭钮，不重叠） */
+/* 场景管理器 v6：全屏列表风格，原三按钮保留（标题栏下方），内容滚动 */
 body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important;
-  left:0; right:0; bottom:0; top:auto !important;
-  width:100vw; max-height:62vh; z-index:1200; border-radius:1rem 1rem 0 0;
-  background:#181b1f; box-shadow:0 -4px 20px rgba(0,0,0,.6); padding:0 !important; }
-body.sd-scene-open #scene-panel > .panel-header { display:none !important; }
+  inset:0 !important; width:100vw !important; max-height:100vh !important; z-index:1200;
+  border-radius:0 !important; background:#181b1f; padding:0 !important; }
+.sd-sheet-header { flex-shrink:0; display:flex; align-items:center; gap:0.6rem;
+  padding:0.55rem 0.8rem; background:#22262b; }
+.sd-sheet-title { color:#eee; font-size:1rem; font-weight:600; flex:1; }
+.sd-back-btn { flex-shrink:0; display:flex; align-items:center; gap:0.25rem; padding:0.35rem 0.7rem;
+  border-radius:0.5rem; background:rgba(255,255,255,.08); color:#ccc; font-size:0.9rem; cursor:pointer; }
+.sd-back-btn:active { background:rgba(255,255,255,.2); }
+body.sd-scene-open #scene-panel > .panel-header { display:flex !important; flex-shrink:0; flex-wrap:wrap; gap:0.3rem;
+  position:static !important; height:auto !important; padding:0.4rem 0.8rem !important; background:#1d2126 !important; }
 body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header):not(.sd-sheet-header) { flex:1; overflow-y:auto; min-height:0; }
-.sd-sheet-header { flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
-  padding:0.8rem 1rem; background:#22262b; border-radius:1rem 1rem 0 0; }
-.sd-sheet-title { color:#eee; font-size:1rem; font-weight:600; }
-.sd-sheet-close { flex-shrink:0; width:2rem; height:2rem; border-radius:0.5rem; background:rgba(255,255,255,.08);
-  color:#ccc; font-size:0.95rem; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-.sd-sheet-close:active { background:rgba(255,255,255,.2); }
 body.mobile-mode #scene-panel { display:none !important; }
 body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
 
-/* 显示组两面板（外观/浮层）移动端自适应：右侧贴边+限宽+内滚 */
+/* 显示组两面板（外观/浮层）v6：同样全屏列表风格 */
 body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel {
-  position:fixed !important; right:0.5rem !important; left:auto !important; top:3.5rem !important;
-  width:min(70vw, 280px) !important; max-width:calc(100vw - 1rem) !important;
-  max-height:56vh !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1200;
+  position:fixed !important; inset:0 !important; width:100vw !important; max-width:100vw !important;
+  max-height:100vh !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1200;
+  display:flex; flex-direction:column; background:#181b1f;
 }
+body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > * { flex-shrink:0; }
 
-/* SD 关闭按钮（弹窗右上角） */
-.sd-close-btn { position:absolute; top:0.4rem; right:0.4rem; width:1.9rem; height:1.9rem; border-radius:0.5rem;
-  background:rgba(255,255,255,.08); color:#ccc; font-size:0.9rem; display:flex; align-items:center; justify-content:center;
-  cursor:pointer; z-index:10; }
-.sd-close-btn:active { background:rgba(255,255,255,.2); }
+/* v6 弹窗统一重构：全屏 + 列表布局 + 上下滚动 + 左上角返回 */
+body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
+  position:fixed !important; left:0 !important; right:auto !important; top:0 !important;
+  width:100vw !important; max-width:100vw !important; height:100vh !important; max-height:100vh !important;
+  transform:none !important; border-radius:0 !important;
+  display:flex; flex-direction:column; overflow:hidden !important; background:#1b1e23;
+}
+body.sd-docks-ready #dialog > [id="header"], body.sd-docks-ready [id$="-dialog"] > [id="header"] {
+  flex-shrink:0; width:100% !important; height:3rem !important; padding-left:3rem !important;
+}
+/* 内容层：列表布局 + 滚动 */
+body.sd-docks-ready #dialog > .pcui-container:not([id="header"]),
+body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) {
+  flex:1 !important; width:100% !important;
+  overflow-y:auto !important; overflow-x:hidden !important;
+  max-height:none !important; min-height:0; scrollbar-width:thin;
+}
+body.sd-docks-ready #dialog > .pcui-container:not([id="header"]) > *,
+body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) > * {
+  width:100% !important; max-width:100% !important;
+}
+/* 弹窗内长列表兕底滚动 */
+body.sd-docks-ready #dialog .pcui-scroll-view { max-height:none; overflow-y:auto; }
 
 /* SS 弹窗移动端自适应：默认合适大小，超出屏自动收缩，内层滚动。
    根因：settings-dialog #dialog 固定 400px + overflow:visible，管住外框再让内容滚 */
