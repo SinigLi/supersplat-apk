@@ -51,9 +51,10 @@
 .sd-sub-wrap.sd-up   { flex-direction:row; }
 .sd-sub-wrap.sd-side { flex-direction:column; }
 
-/* 被收养的 SS 按钮：统一触摸尺寸 44px，保持 PCUI 交互 */
-.sd-sub-wrap .sd-adopted { min-width:44px !important; min-height:44px !important; flex-shrink:0; }
-.sd-dock .sd-adopted { min-width:44px !important; min-height:44px !important; flex-shrink:0; }
+/* 被收养的 SS 按钮：触摸尺寸与一级按钮一致 40px */
+.sd-sub-wrap .sd-adopted { min-width:40px !important; min-height:40px !important; max-width:40px !important; flex-shrink:0; }
+.sd-dock .sd-adopted { min-width:40px !important; min-height:40px !important; flex-shrink:0; }
+.sd-sub-wrap .sd-adopted .toolbar-icon, .sd-sub-wrap .sd-adopted svg { transform:scale(.82); transform-origin:center; }
 .sd-extra .sd-name { font-size:10px; }
 
 /* 顶部菜单组按钮沿用 .sd-grp-btn，无需单独样式 */
@@ -69,16 +70,38 @@
 .sd-menu-panel .menu-panel { position:static !important; box-shadow:none !important; background:transparent !important; }
 .sd-menu-panel .menu-row { min-width:150px; }
 
-/* 场景管理器：作为覆盖层弹出（含 PLY 导入） */
-body.sd-scene-open #scene-panel { display:flex !important; position:fixed !important; left:8px; top:60px;
-  width:min(82vw,320px); max-height:calc(100vh - 150px); overflow-y:auto; z-index:1200;
-  background:#181b1f; box-shadow:0 4px 16px rgba(0,0,0,.6); border-radius:12px; padding:8px; }
+/* 场景管理器：浮层弹出，固定合适尺寸+内部滚动（含 PLY 导入） */
+body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important; left:8px; top:56px;
+  width:min(78vw,300px); height:min(60vh,420px); z-index:1200;
+  background:#181b1f; box-shadow:0 4px 16px rgba(0,0,0,.6); border-radius:12px; }
+body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header) { flex:1; overflow-y:auto; min-height:0; }
 body.mobile-mode #scene-panel { display:none !important; }
 body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
 
-/* SS 弹窗移动端自适应：外层限屏，内层滚动（设置/显示/导出/发布/关于等全部对话框） */
-body.sd-docks-ready [id="dialog"], body.sd-docks-ready [id$="-dialog"] { max-width:calc(100vw - 20px) !important; max-height:calc(100vh - 20px) !important;
-                                     overflow-y:auto !important; overflow-x:hidden !important; }
+/* SD 关闭按钮（弹窗/场景面板右上角） */
+.sd-close-btn { position:absolute; top:6px; right:6px; width:30px; height:30px; border-radius:8px;
+  background:rgba(255,255,255,.08); color:#ccc; font-size:14px; display:flex; align-items:center; justify-content:center;
+  cursor:pointer; z-index:10; }
+.sd-close-btn:active { background:rgba(255,255,255,.2); }
+
+/* SS 弹窗移动端自适应：默认合适大小，超出屏自动收缩，内层滚动。
+   根因：settings-dialog #dialog 固定 400px + overflow:visible，管住外框再让内容滚 */
+body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
+  width:min(400px, calc(100vw - 16px)) !important;
+  max-width:calc(100vw - 16px) !important;
+  max-height:calc(100vh - 100px) !important;
+  overflow:visible !important;
+  top:44% !important;
+}
+/* 弹窗内容层滚动：PCUI 弹窗主体是 #dialog 的直接子容器（header 之外的部分） */
+body.sd-docks-ready #dialog > .pcui-container:not([id="header"]),
+body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) {
+  overflow-y:auto !important; overflow-x:hidden !important;
+  max-height:calc(100vh - 170px); min-height:0;
+  scrollbar-width:thin;
+}
+/* 全局兕底：弹窗内长列表也滚 */
+body.sd-docks-ready #dialog .pcui-scroll-view { max-height:calc(100vh - 220px); overflow-y:auto; }
 
 /* #menu 子树（菜单子面板容器）被画布图层压住：搬到 body 后全屏接管但本身不拦点击，
    子元素（dock、子面板）恢复交互；checkEvent 的 contains 语义不变 */

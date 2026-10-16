@@ -354,6 +354,38 @@ waitUI(function () {
     addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, {passive:false});
   }
 
+  // v4：给弹窗加右上角关闭按钮。
+  // PCUI 弹窗的关闭就是自身 hidden；场景面板则切 sd-scene-open。
+  function addCloseBtn(host, onClick) {
+    if (!host || host.querySelector(':scope > .sd-close-btn')) return;
+    const b = makeShell('✕', 'sd-close-btn');
+    b.addEventListener('pointerdown', e => e.stopPropagation());
+    b.onclick = (e) => { e.stopPropagation(); onClick(); };
+    host.style.position = getComputedStyle(host).position === 'static' ? 'relative' : host.style.position;
+    host.appendChild(b);
+  }
+
+  function watchDialogs() {
+    const decorate = () => {
+      document.querySelectorAll('#dialog, [id$="-dialog"]').forEach(d => {
+        if (d.id === 'scene-panel') return;
+        addCloseBtn(d, () => { d.classList.add('pcui-hidden'); d.style.display = 'none'; });
+        // 重开时恢复可见（SS 自己会移除 hidden/display）
+        new MutationObserver(() => {
+          if (!d.classList.contains('pcui-hidden') && d.style.display === 'none') d.style.display = '';
+        }).observe(d, { attributes:true, attributeFilter:['class','style'] });
+      });
+      const sp = document.getElementById('scene-panel');
+      if (sp) addCloseBtn(sp, () => {
+        document.body.classList.remove('sd-scene-open');
+        const sb = document.querySelector('[data-dock=file] .sd-grp-btn');
+        if (sb && sb.textContent.includes('场景')) sb.classList.remove('sd-active');
+      });
+    };
+    decorate();
+    new MutationObserver(decorate).observe(document.body, { childList:true, subtree:true });
+  }
+
   // v3：原菜单条隐藏；#menu 搬到 body 下（修复祖先链叠层导致面板被画布压住不可见），
   // checkEvent 用 DOM contains 判断，搬移不影响语义；顶部 dock 挂进 #menu，点按钮不会触发全局隐藏
   function hideMenuBar(menuDock) {
@@ -382,6 +414,7 @@ waitUI(function () {
   document.head.appendChild(style);
   DOCKS.forEach(d => buildDock(d));
   hideMenuBar(docks.find(s => s.def.menuOptions)?.dock);
+  watchDialogs();
   document.body.classList.add('sd-docks-ready');
 });
 })();
