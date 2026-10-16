@@ -23,8 +23,13 @@ body.drag-any { touch-action: none; overscroll-behavior: contain; }
 .dock.left   { left:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
 .dock.right  { right:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
 .dock.dragging { opacity:.9; }
+/* 超屏滚动：横排横向滚，纵排纵向滚；隐藏滚动条保持外观 */
+.dock { scrollbar-width: none; }
+.dock::-webkit-scrollbar { display: none; }
+.dock.bottom, .dock.top { overflow-x: auto; overflow-y: hidden; max-width: calc(100vw - 16px); }
+.dock.left, .dock.right { overflow-y: auto; overflow-x: hidden; max-height: calc(100vh - 16px); }
 /* 收缩态：整组缩成小圆球 */
-.dock.collapsed { padding:0; background:transparent; box-shadow:none; border-radius:50%; }
+.dock.collapsed { padding:0; background:transparent; box-shadow:none; border-radius:50%; overflow:visible; }
 .dock.collapsed .grp-btn, .dock.collapsed .dock-label, .dock.collapsed .dock-collapse { display:none; }
 
 .dock .drag-handle { min-width:18px; min-height:18px; display:flex; align-items:center; justify-content:center;
@@ -163,20 +168,29 @@ function buildDock(def) {
 
   const st = { def, dock, handle, pos: def.pos, freePos: null, openPanels: new Set(), collapsed: false };
 
-  // 收缩/展开
+  // 收缩/展开：收缩后点圆球（把手）还原；展开态点「▪」收缩
   collapse.onclick = (e) => {
     e.stopPropagation();
-    st.collapsed = !st.collapsed;
-    dock.classList.toggle('collapsed', st.collapsed);
-    handle.innerHTML = st.collapsed ? def.label : '≡';
-    if (st.collapsed) closeAll(st);
-    else { applyDockPos(st); }
+    setCollapsed(st, !st.collapsed);
   };
+  handle.addEventListener('click', (e) => {
+    if (!st.collapsed) return;      // 展开态把手只负责拖动
+    e.stopPropagation();
+    setCollapsed(st, false);
+  });
 
   setupDrag(st);
   docks.push(st);
   applyDockPos(st);
   return st;
+}
+
+function setCollapsed(st, v) {
+  st.collapsed = v;
+  st.dock.classList.toggle('collapsed', v);
+  st.handle.innerHTML = v ? st.def.label : '≡';
+  if (v) closeAll(st);
+  else { applyDockPos(st); }
 }
 
 function makeGroupBtn(gid, dock) {
