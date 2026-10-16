@@ -3,32 +3,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>分级工具栏原型 v3（可拖动吸附）</title>
+<title>分级工具栏原型 v7（三停靠组 + 可收缩）</title>
 <style>
-:root { --btn: 52px; --gap: 10px; --edge: env(safe-area-inset-bottom, 0px); }
+:root { --btn: 52px; --gap: 10px; }
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
 html,body { height:100%; overflow:hidden; }
 body { font-family: system-ui, sans-serif; background:#2b2e33; color:#e8e8e8; touch-action: manipulation;
        overscroll-behavior: none; }
-/* 拖动期间禁止浏览器手势（下拉刷新/页面缩放抢事件） */
 body.drag-any { touch-action: none; overscroll-behavior: contain; }
 
 #canvas-sim { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#555; font-size:14px; user-select:none; }
 
-/* ===== 停靠栏：class 定基准（四边），拖动时用内联样式覆盖 ===== */
-#dock { position:fixed; z-index:100; display:flex; gap:var(--gap); padding:10px;
+/* ===== 停靠组：class 定基准（四边），拖动时内联覆盖 ===== */
+.dock { position:fixed; z-index:100; display:flex; gap:var(--gap); padding:10px;
         background:rgba(21,24,28,.95); border-radius:14px;
         box-shadow:0 4px 16px rgba(0,0,0,.5); align-items:center; }
-#dock.bottom { bottom:calc(var(--edge) + 10px); left:50%; transform:translateX(-50%); flex-direction:row; }
-#dock.top    { top:calc(env(safe-area-inset-top,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row; }
-#dock.left   { left:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
-#dock.right  { right:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
-#dock.dragging { opacity:.9; }
+.dock.bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row; }
+.dock.top    { top:calc(env(safe-area-inset-top,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row; }
+.dock.left   { left:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
+.dock.right  { right:10px; top:50%; transform:translateY(-50%); flex-direction:column; }
+.dock.dragging { opacity:.9; }
+/* 收缩态：整组缩成小圆球 */
+.dock.collapsed { padding:0; background:transparent; box-shadow:none; border-radius:50%; }
+.dock.collapsed .grp-btn, .dock.collapsed .dock-label, .dock.collapsed .dock-collapse { display:none; }
 
-/* 拖动把手 */
-#dock .drag-handle { min-width:18px; min-height:18px; display:flex; align-items:center; justify-content:center;
+.dock .drag-handle { min-width:18px; min-height:18px; display:flex; align-items:center; justify-content:center;
                      color:#777; font-size:14px; cursor:grab; touch-action:none; flex-shrink:0; letter-spacing:2px; }
-#dock.left .drag-handle, #dock.right .drag-handle { writing-mode:vertical-lr; }
+.dock.left .drag-handle, .dock.right .drag-handle { writing-mode:vertical-lr; }
+.dock.collapsed .drag-handle { width:52px; height:52px; background:rgba(21,24,28,.95); border-radius:50%;
+                               color:#4a9eff; font-size:20px; box-shadow:0 4px 16px rgba(0,0,0,.5); writing-mode:horizontal-tb; }
+/* 组标签 + 收起按钮 */
+.dock-label { font-size:11px; color:#888; writing-mode:vertical-lr; letter-spacing:2px; }
+.dock.bottom .dock-label, .dock.top .dock-label { writing-mode:horizontal-tb; }
+.dock-collapse { width:26px; height:26px; border-radius:8px; border:1px solid rgba(255,255,255,.1);
+                 background:#2f3338; color:#888; font-size:12px; cursor:pointer; flex-shrink:0;
+                 display:flex; align-items:center; justify-content:center; }
 
 /* 大类按钮 */
 .grp-btn { width:var(--btn); height:var(--btn); border-radius:12px; border:1px solid rgba(255,255,255,.1);
@@ -56,276 +65,303 @@ body.drag-any { touch-action: none; overscroll-behavior: contain; }
 .tool-btn.cmd-type:active { filter:brightness(1.6); }
 .tool-btn.cmd-type.flash { background:#f59e0b; color:#000; }
 
-#dock-switcher { position:fixed; top:calc(env(safe-area-inset-top,0px) + 8px); right:8px; z-index:200;
-                 display:flex; gap:6px; }
-#dock-switcher button { width:40px; height:32px; border-radius:8px; border:1px solid #555;
-                        background:#222; color:#999; font-size:12px; cursor:pointer; }
-#dock-switcher button.on { background:#2563eb; color:#fff; border-color:#3b82f6; }
-#hint { position:fixed; top:calc(env(safe-area-inset-top,0px) + 46px); right:8px; font-size:11px; color:#777; z-index:200; text-align:right;}
+#hint { position:fixed; top:calc(env(safe-area-inset-top,0px) + 8px); left:8px; font-size:11px; color:#777; z-index:200; }
 </style>
 </head>
 <body>
 <div id="canvas-sim">（画布区域 — 原型模拟）</div>
-
-<div id="dock-switcher">
-  <button data-pos="bottom" class="on">底</button>
-  <button data-pos="top">顶</button>
-  <button data-pos="left">左</button>
-  <button data-pos="right">右</button>
-</div>
-<div id="hint">拖 ≡ 把手移动工具栏<br>松手吸附最近边缘<br>点大类展开/收起（可多开）</div>
-
-<div id="dock"></div>
+<div id="hint">v7：三组停靠（顶=文件 / 底=编辑 / 右=视图）<br>每组可拖动吸附、点「▪」收缩成圆球<br>大类点击展开子工具（可多开）</div>
 
 <script>
-// ================= 数据 =================
-const GROUPS = [
-  { id:'select', ico:'🎯', name:'选择', tools:[
+// ================= 工具数据 =================
+const GROUPS = {
+  select: { ico:'🎯', name:'选择', tools:[
     {id:'picker',  ico:'👆', name:'点选',  type:'tool'},
     {id:'brush',   ico:'🖌️', name:'笔刷',  type:'tool'},
     {id:'polygon', ico:'🪢', name:'套索',  type:'tool'},
     {id:'sphere',  ico:'🔮', name:'球选',  type:'tool'},
     {id:'eyedrop', ico:'💧', name:'吸管',  type:'tool'},
   ]},
-  { id:'xform', ico:'🔢', name:'变换', tools:[
+  xform: { ico:'🔢', name:'变换', tools:[
     {id:'move',    ico:'✥', name:'移动',  type:'tool'},
     {id:'rotate',  ico:'🔄', name:'旋转',  type:'tool'},
     {id:'scale',   ico:'⤢', name:'缩放',  type:'tool'},
     {id:'orient',  ico:'🧭', name:'定向',  type:'tool'},
     {id:'coords',  ico:'🌐', name:'全局',  type:'tool'},
   ]},
-  { id:'shape', ico:'✂️', name:'裁剪', tools:[
+  shape: { ico:'✂️', name:'裁剪', tools:[
     {id:'box',      ico:'📦', name:'盒体', type:'tool'},
     {id:'spheresel',ico:'⚪', name:'球体', type:'tool'},
   ]},
-  { id:'measure', ico:'📐', name:'测量', tools:[
+  measure: { ico:'📐', name:'测量', tools:[
     {id:'ruler',    ico:'📏', name:'测距',   type:'tool'},
     {id:'angle',    ico:'📐', name:'测角',   type:'tool'},
     {id:'cursor3d', ico:'✚', name:'3D游标', type:'tool'},
   ]},
-  { id:'misc', ico:'⋯', name:'更多', tools:[
-    {id:'undo',    ico:'↶', name:'撤销',   type:'cmd'},
-    {id:'redo',    ico:'↷', name:'重做',   type:'cmd'},
-    {id:'origin',  ico:'🏠', name:'回原点', type:'cmd'},
+  file: { ico:'📁', name:'文件', tools:[
+    {id:'open',   ico:'📂', name:'打开',   type:'cmd'},
+    {id:'save',   ico:'💾', name:'保存',   type:'cmd'},
+    {id:'export', ico:'📤', name:'导出',   type:'cmd'},
+    {id:'publish',ico:'🚀', name:'发布',   type:'cmd'},
+    {id:'settings',ico:'⚙️', name:'设置',  type:'cmd'},
+    {id:'keys',   ico:'⌨️', name:'快捷键', type:'cmd'},
   ]},
+  view: { ico:'👁', name:'视图', tools:[
+    {id:'appearance',ico:'🎨', name:'外观',   type:'cmd'},
+    {id:'overlays',  ico:'🗂', name:'浮层',   type:'tool'},
+    {id:'orbit',     ico:'🛰', name:'轨道相机', type:'tool'},
+    {id:'fly',       ico:'🚁', name:'飞行相机', type:'tool'},
+    {id:'frame',     ico:'🔍', name:'框选视野', type:'cmd'},
+    {id:'origin',    ico:'🏠', name:'回原点',  type:'cmd'},
+  ]},
+};
+
+// 三个停靠组定义：顶=文件 / 底=编辑 / 右=视图
+const DOCKS = [
+  { id:'file', label:'文件', pos:'top',    groupIds:['file'] },
+  { id:'edit', label:'编辑', pos:'bottom', groupIds:['select','xform','shape','measure'],
+    extra:[ {id:'undo', ico:'↶', name:'撤销', type:'cmd'}, {id:'redo', ico:'↷', name:'重做', type:'cmd'} ] },
+  { id:'view', label:'视图', pos:'right',  groupIds:['view'] },
 ];
 
-// ================= 状态 =================
-const dock = document.getElementById('dock');
-const handle = document.createElement('div');
-handle.className = 'drag-handle';
-handle.innerHTML = '≡';
+// ================= 停靠组工厂 =================
+const allPanels = new Map();   // grpId -> wrap
+const docks = [];
 
-let dockPos = 'bottom';
-let freePos = null;            // 吸附后沿边偏移 {left} 或 {top}
-const openPanels = new Set();
+function buildDock(def) {
+  const dock = document.createElement('div');
+  dock.className = 'dock ' + def.pos;
+  dock.dataset.dock = def.id;
+  document.body.appendChild(dock);
 
-// ================= 构建 =================
-function build() {
-  GROUPS.forEach(g => {
-    const btn = document.createElement('div');
-    btn.className = 'grp-btn'; btn.dataset.grp = g.id;
-    btn.innerHTML = `<span class="ico">${g.ico}</span><span>${g.name}</span><span class="dot"></span>`;
-    btn.onclick = () => toggleGroup(g);
-    dock.appendChild(btn);
+  const handle = document.createElement('div');
+  handle.className = 'drag-handle';
+  handle.innerHTML = '≡';
 
-    const wrap = document.createElement('div');
-    wrap.className = 'sub-wrap'; wrap.dataset.grp = g.id;
-    g.tools.forEach(t => {
-      const tb = document.createElement('div');
-      tb.className = `tool-btn ${t.type==='cmd'?'cmd-type':'tool-type'}`;
-      tb.innerHTML = `<span class="ico">${t.ico}</span><span>${t.name}</span>`;
-      tb.onclick = (ev) => {
-        ev.stopPropagation();
-        if (t.type === 'cmd') {
-          tb.classList.add('flash'); setTimeout(()=>tb.classList.remove('flash'), 250);
-        } else {
-          wrap.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
-          tb.classList.add('active');
-          updateDots();
-        }
-        showMsg(g.name + ' → ' + t.name);
-      };
-      wrap.appendChild(tb);
-    });
-    document.body.appendChild(wrap);
+  const label = document.createElement('div');
+  label.className = 'dock-label';
+  label.textContent = def.label;
+
+  const collapse = document.createElement('div');
+  collapse.className = 'dock-collapse';
+  collapse.innerHTML = '▪';
+  collapse.title = '收缩/展开';
+
+  def.groupIds.forEach(gid => dock.appendChild(makeGroupBtn(gid, dock)));
+  (def.extra || []).forEach(t => {
+    const tb = document.createElement('div');
+    tb.className = 'grp-btn';
+    tb.style.width = '52px';
+    tb.innerHTML = `<span class="ico">${t.ico}</span><span>${t.name}</span>`;
+    tb.onclick = () => { tb.classList.add('flash'); setTimeout(()=>tb.classList.remove('flash'), 250); showMsg(t.name); };
+    dock.appendChild(tb);
   });
+
+  dock.appendChild(label);
+  dock.appendChild(collapse);
+  dock.insertBefore(handle, dock.firstChild);
+
+  const st = { def, dock, handle, pos: def.pos, freePos: null, openPanels: new Set(), collapsed: false };
+
+  // 收缩/展开
+  collapse.onclick = (e) => {
+    e.stopPropagation();
+    st.collapsed = !st.collapsed;
+    dock.classList.toggle('collapsed', st.collapsed);
+    handle.innerHTML = st.collapsed ? def.label : '≡';
+    if (st.collapsed) closeAll(st);
+    else { applyDockPos(st); }
+  };
+
+  setupDrag(st);
+  docks.push(st);
+  applyDockPos(st);
+  return st;
 }
 
-function toggleGroup(g) {
-  const wrap = document.querySelector(`.sub-wrap[data-grp="${g.id}"]`);
-  const btn = dock.querySelector(`[data-grp="${g.id}"]`);
-  if (openPanels.has(g.id)) { openPanels.delete(g.id); wrap.classList.remove('open'); btn.classList.remove('active'); }
-  else {
-    openPanels.add(g.id); btn.classList.add('active');
-    placeWrap(g.id);
+function makeGroupBtn(gid, dock) {
+  const g = GROUPS[gid];
+  const btn = document.createElement('div');
+  btn.className = 'grp-btn'; btn.dataset.grp = gid;
+  btn.innerHTML = `<span class="ico">${g.ico}</span><span>${g.name}</span><span class="dot"></span>`;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'sub-wrap'; wrap.dataset.grp = gid;
+  g.tools.forEach(t => {
+    const tb = document.createElement('div');
+    tb.className = `tool-btn ${t.type==='cmd'?'cmd-type':'tool-type'}`;
+    tb.innerHTML = `<span class="ico">${t.ico}</span><span>${t.name}</span>`;
+    tb.onclick = (ev) => {
+      ev.stopPropagation();
+      if (t.type === 'cmd') { tb.classList.add('flash'); setTimeout(()=>tb.classList.remove('flash'), 250); }
+      else {
+        wrap.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+        tb.classList.add('active');
+        updateDots(gid);
+      }
+      showMsg(g.name + ' → ' + t.name);
+    };
+    wrap.appendChild(tb);
+  });
+  document.body.appendChild(wrap);
+  allPanels.set(gid, wrap);
+
+  btn.onclick = () => toggleGroup(gid, dock);
+  return btn;
+}
+
+function dockOfGroup(gid) { return docks.find(s => s.def.groupIds.includes(gid)); }
+
+function toggleGroup(gid, dock) {
+  const st = docks.find(s => s.def.groupIds.includes(gid));
+  const wrap = allPanels.get(gid);
+  const btn = dock.querySelector(`[data-grp="${gid}"]`);
+  if (st.openPanels.has(gid)) {
+    st.openPanels.delete(gid); wrap.classList.remove('open'); btn.classList.remove('active');
+  } else {
+    st.openPanels.add(gid); btn.classList.add('active');
+    placeWrap(gid, st);
     wrap.classList.add('open');
-    // 双帧校准：布局稳定后重算一次，消除换边后的时序偏差
-    requestAnimationFrame(() => requestAnimationFrame(() => { if (openPanels.has(g.id)) placeWrap(g.id); }));
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (st.openPanels.has(gid)) placeWrap(gid, st); }));
   }
 }
 
-function updateDots() {
-  GROUPS.forEach(g => {
-    const wrap = document.querySelector(`.sub-wrap[data-grp="${g.id}"]`);
-    const has = wrap && wrap.querySelector('.tool-btn.active');
-    dock.querySelector(`[data-grp="${g.id}"]`).classList.toggle('has-active', !!has);
+function updateDots(gid) {
+  const wrap = allPanels.get(gid);
+  const st = dockOfGroup(gid);
+  const has = wrap.querySelector('.tool-btn.active');
+  const btn = st.dock.querySelector(`[data-grp="${gid}"]`);
+  if (btn) btn.classList.toggle('has-active', !!has);
+}
+
+function closeAll(st) {
+  st.openPanels.forEach(gid => {
+    allPanels.get(gid).classList.remove('open');
+    const b = st.dock.querySelector(`[data-grp="${gid}"]`);
+    if (b) b.classList.remove('active');
   });
+  st.openPanels.clear();
 }
 
 // ================= 定位 =================
-// 基准：class（四边默认居中）；freePos：吸附后沿边偏移，用内联 left/top 覆盖
-function applyDockPos() {
-  dock.className = dockPos;
-  // 清掉拖动残留的全部内联定位（含对边 auto），回 class 基准
+function applyDockPos(st) {
+  const { dock } = st;
+  dock.className = 'dock ' + st.pos + (st.collapsed ? ' collapsed' : '');
   dock.style.left=''; dock.style.top=''; dock.style.right=''; dock.style.bottom=''; dock.style.transform='';
-  if (!freePos) return;
+  if (!st.freePos) return;
   const r = dock.getBoundingClientRect();
-  if (dockPos==='bottom' || dockPos==='top') {
+  if (st.pos==='bottom' || st.pos==='top') {
     dock.style.transform = 'none';
-    dock.style.left = freePos.left + 'px';   // top/bottom 由 class 管
+    dock.style.left = st.freePos.left + 'px';
   } else {
     dock.style.transform = 'none';
-    dock.style.top = freePos.top + 'px';     // left/right 由 class 管
+    dock.style.top = st.freePos.top + 'px';
   }
 }
 
-function placeWrap(grpId) {
-  const btn = dock.querySelector(`[data-grp="${grpId}"]`);
-  const wrap = document.querySelector(`.sub-wrap[data-grp="${grpId}"]`);
-  // 先清掉上次展开残留的内联定位和旧方向 class，再按当前 dock 方向量尺寸
+function placeWrap(gid, st) {
+  const btn = st.dock.querySelector(`[data-grp="${gid}"]`);
+  const wrap = allPanels.get(gid);
   wrap.style.left = ''; wrap.style.top = '';
-  const vertical = (dockPos==='left' || dockPos==='right');
+  const vertical = (st.pos==='left' || st.pos==='right');
   wrap.classList.toggle('side', vertical);
   wrap.classList.toggle('up', !vertical);
-  // 隐藏量尺寸（避免闪烁），拿到真实宽高
   wrap.style.visibility = 'hidden'; wrap.classList.add('open');
   const b = btn.getBoundingClientRect(), w = wrap.getBoundingClientRect();
   wrap.style.visibility = '';
-  const slot = Array.from(openPanels).indexOf(grpId);
+  const slot = Array.from(st.openPanels).indexOf(gid);
   if (!vertical) {
-    // 横排面板：锚在按钮上方/下方，水平以按钮为中心，双重钑屏内
     const stagger = slot * (w.height + 8);
-    let left = b.left + b.width/2 - w.width/2;
-    left = Math.max(8, Math.min(left, innerWidth - w.width - 8));
-    let top = dockPos==='bottom' ? b.top - w.height - 10 - stagger : b.bottom + 10 + stagger;
+    let left = Math.max(8, Math.min(b.left + b.width/2 - w.width/2, innerWidth - w.width - 8));
+    let top = st.pos==='bottom' ? b.top - w.height - 10 - stagger : b.bottom + 10 + stagger;
     top = Math.max(8, Math.min(top, innerHeight - w.height - 8));
     wrap.style.left = left + 'px'; wrap.style.top = top + 'px';
   } else {
-    // 纵排面板：锚在按钮右侧/左侧，垂直以按钮为中心，双重钑屏内
     const stagger = slot * (w.width + 8);
-    let top = b.top + b.height/2 - w.height/2;
-    top = Math.max(8, Math.min(top, innerHeight - w.height - 8));
-    let left = dockPos==='left' ? b.right + 10 + stagger : b.left - w.width - 10 - stagger;
+    let top = Math.max(8, Math.min(b.top + b.height/2 - w.height/2, innerHeight - w.height - 8));
+    let left = st.pos==='left' ? b.right + 10 + stagger : b.left - w.width - 10 - stagger;
     left = Math.max(8, Math.min(left, innerWidth - w.width - 8));
     wrap.style.left = left + 'px'; wrap.style.top = top + 'px';
   }
 }
-function placeAll() { openPanels.forEach(placeWrap); }
-addEventListener('resize', () => { freePos = null; applyDockPos(); placeAll(); });
 
-function closeAllPanels() {
-  openPanels.forEach(id => {
-    document.querySelector(`.sub-wrap[data-grp="${id}"]`).classList.remove('open');
-    dock.querySelector(`[data-grp="${id}"]`).classList.remove('active');
-  });
-  openPanels.clear();
-}
-
-// ================= 拖动 + 实时形态切换 + 磁性吸附 =================
-// 拖 ≡ 把手；手指靠近哪边，分组条实时变那种形态（底/顶横排，左/右纵排）；松手钉到边
-let drag = null;
-
+// ================= 拖动 + 实时换向 + 磁性吸附 =================
 function nearestEdge(x, y) {
   const dist = { top: y*0.8, bottom: (innerHeight - y)*0.8, left: x, right: innerWidth - x };
   return Object.keys(dist).sort((a,b)=>dist[a]-dist[b])[0];
 }
 
-handle.addEventListener('pointerdown', (e) => {
-  e.preventDefault(); e.stopPropagation();
-  try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-  drag = { moved:false, free:null, pid:e.pointerId, lastX:e.clientX, lastY:e.clientY };
-  dock.classList.add('dragging');
-  document.body.classList.add('drag-any');
-});
-addEventListener('pointermove', (e) => {
-  if (!drag || e.pointerId !== drag.pid) return;
-  const mdx = e.clientX - drag.lastX, mdy = e.clientY - drag.lastY;
-  drag.lastX = e.clientX; drag.lastY = e.clientY;
-  if (!drag.moved && Math.abs(mdx) < 4 && Math.abs(mdy) < 4) return;
-  drag.moved = true;
-  e.preventDefault();
-  // 实时形态切换：手指靠哪边就变哪种形态（横/纵）
-  const edge = nearestEdge(e.clientX, e.clientY);
-  if (edge !== dockPos) {
-    dockPos = edge;
-    dock.className = edge;
-    dock.offsetHeight;                      // 强制重排，立即拿到新尺寸
-  }
-  // 自由拖动前清对边定位，否则 fixed 同时有 top+bottom 会拉伸满屏
-  dock.style.right = 'auto'; dock.style.bottom = 'auto';
-  const r = dock.getBoundingClientRect();
-  // dock 中心跟随手指（钳屏内）
-  const nl = Math.max(6, Math.min(e.clientX - r.width/2,  innerWidth  - r.width  - 6));
-  const nt = Math.max(6, Math.min(e.clientY - r.height/2, innerHeight - r.height - 6));
-  dock.style.transform = 'none';
-  dock.style.left = nl + 'px';
-  dock.style.top  = nt + 'px';
-  drag.free = { left: nl, top: nt };
-}, {passive:false});
-function endDrag(e) {
-  if (!drag) return;
-  if (e && e.pointerId !== undefined && e.pointerId !== drag.pid) return;
-  const moved = drag.moved, free = drag.free;
-  dock.classList.remove('dragging');
-  document.body.classList.remove('drag-any');
-  drag = null;
-  if (!moved || !free) return;
-  // 钉到当前边（沿边保留偏移，钳屏内）；拖动中 dockPos 已实时更新
-  const r = dock.getBoundingClientRect();
-  const m = 8;
-  if (dockPos==='bottom' || dockPos==='top') freePos = { left: Math.max(m, Math.min(free.left, innerWidth - r.width - m)) };
-  else freePos = { top: Math.max(m, Math.min(free.top, innerHeight - r.height - m)) };
-  closeAllPanels();
-  applyDockPos();
-  dock.offsetHeight;
-  requestAnimationFrame(placeAll);
-  requestAnimationFrame(() => requestAnimationFrame(placeAll));
-  document.querySelectorAll('#dock-switcher button').forEach(x=>x.classList.toggle('on', x.dataset.pos===dockPos));
-  showMsg('已吸附: ' + ({top:'顶部',bottom:'底部',left:'左侧',right:'右侧'})[dockPos]);
-}
-addEventListener('pointerup', endDrag);
-addEventListener('pointercancel', endDrag);
-// 兜底：拖动期间拦截 touchmove，防浏览器下拉刷新/缩放抢手势
-addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, {passive:false});
+function setupDrag(st) {
+  const { dock, handle } = st;
+  let drag = null;
 
-// ================= 停靠边切换器 =================
-document.querySelectorAll('#dock-switcher button').forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll('#dock-switcher button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-    dockPos = b.dataset.pos;
-    freePos = null;
-    closeAllPanels();
-    applyDockPos();
-  };
-});
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    drag = { moved:false, free:null, pid:e.pointerId, lastX:e.clientX, lastY:e.clientY };
+    dock.classList.add('dragging');
+    document.body.classList.add('drag-any');
+  });
+  addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pid) return;
+    const mdx = e.clientX - drag.lastX, mdy = e.clientY - drag.lastY;
+    drag.lastX = e.clientX; drag.lastY = e.clientY;
+    if (!drag.moved && Math.abs(mdx) < 4 && Math.abs(mdy) < 4) return;
+    drag.moved = true;
+    e.preventDefault();
+    if (st.collapsed) return;   // 收缩球不换向，只跟手
+    const edge = nearestEdge(e.clientX, e.clientY);
+    if (edge !== st.pos) {
+      st.pos = edge;
+      dock.className = 'dock ' + edge;
+      dock.offsetHeight;
+    }
+    dock.style.right = 'auto'; dock.style.bottom = 'auto';
+    const r = dock.getBoundingClientRect();
+    const nl = Math.max(6, Math.min(e.clientX - r.width/2,  innerWidth  - r.width  - 6));
+    const nt = Math.max(6, Math.min(e.clientY - r.height/2, innerHeight - r.height - 6));
+    dock.style.transform = 'none';
+    dock.style.left = nl + 'px';
+    dock.style.top  = nt + 'px';
+    drag.free = { left: nl, top: nt };
+  }, {passive:false});
+  function endDrag(e) {
+    if (!drag) return;
+    if (e && e.pointerId !== undefined && e.pointerId !== drag.pid) return;
+    const moved = drag.moved, free = drag.free;
+    dock.classList.remove('dragging');
+    document.body.classList.remove('drag-any');
+    drag = null;
+    if (!moved || !free) return;
+    const r = dock.getBoundingClientRect();
+    const m = 8;
+    if (st.pos==='bottom' || st.pos==='top') st.freePos = { left: Math.max(m, Math.min(free.left, innerWidth - r.width - m)) };
+    else st.freePos = { top: Math.max(m, Math.min(free.top, innerHeight - r.height - m)) };
+    closeAll(st);
+    applyDockPos(st);
+    dock.offsetHeight;
+    requestAnimationFrame(() => Array.from(st.openPanels).forEach(gid => placeWrap(gid, st)));
+    showMsg(st.def.label + '组已吸附: ' + ({top:'顶部',bottom:'底部',left:'左侧',right:'右侧'})[st.pos]);
+  }
+  addEventListener('pointerup', endDrag);
+  addEventListener('pointercancel', endDrag);
+}
+
+addEventListener('resize', () => docks.forEach(st => { st.freePos = null; applyDockPos(st); closeAll(st); }));
 
 // ================= 提示 =================
 let msgTimer;
 function showMsg(t) {
   let el = document.getElementById('msg');
   if (!el) { el = document.createElement('div'); el.id='msg';
-    el.style.cssText='position:fixed;left:50%;top:40%;transform:translateX(-50%);background:#2563eb;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;z-index:300;transition:opacity .3s;opacity:0';
+    el.style.cssText='position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#2563eb;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;z-index:300;transition:opacity .3s;opacity:0';
     document.body.appendChild(el); }
   el.textContent = t; el.style.opacity = 1;
   clearTimeout(msgTimer); msgTimer = setTimeout(()=>el.style.opacity=0, 900);
 }
 
 // ================= 启动 =================
-dock.insertBefore(handle, dock.firstChild);
-build();
-applyDockPos();
+DOCKS.forEach(buildDock);
 </script>
 </body>
 </html>
