@@ -94,6 +94,18 @@ body { background:#0d0f12; font-family:system-ui,sans-serif; overflow:hidden; he
           background:#2563eb; color:#fff; padding:0.5rem 1.1rem; border-radius:1.2rem; font-size:0.85rem;
           z-index:2000; transition:opacity .3s; opacity:0; pointer-events:none; white-space:nowrap; }
 
+/* ===== 收缩态：组缩成命名球 ===== */
+.sd-dock.sd-collapsed { background:transparent; box-shadow:none; padding:0; }
+.sd-dock.sd-collapsed .sd-grp-btn,
+.sd-dock.sd-collapsed .sd-handle { display:none; }
+.sd-ball { width:2.7rem; height:2.7rem; border-radius:50%; background:#2b4a6f; border:2px solid rgba(255,255,255,.15);
+           color:#fff; font-size:0.75rem; display:none; align-items:center; justify-content:center;
+           cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.5); user-select:none; flex-shrink:0; }
+.sd-dock.sd-collapsed .sd-ball { display:flex; }
+.sd-mini-hide { width:1.3rem; height:1.3rem; border-radius:0.3rem; background:rgba(255,255,255,.1); border:none;
+                color:#889; font-size:0.65rem; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+.sd-mini-hide:active { background:rgba(255,255,255,.25); }
+
 /* ===== 底部 dock 空间占位提示 ===== */
 .sd-dock.sd-bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row;
                      overflow-x:auto; overflow-y:hidden; max-width:calc(100vw - 16px); }
@@ -105,6 +117,7 @@ body { background:#0d0f12; font-family:system-ui,sans-serif; overflow:hidden; he
 <!-- 顶部一级分组栏：文件/编辑/选择/渲染/帮助/场景 + 可拖把手 -->
 <div class="sd-dock sd-top" id="dockTop">
   <span class="sd-handle" id="handleTop"></span>
+  <button class="sd-mini-hide" data-collapse="dockTop">▪</button>
   <button class="sd-grp-btn sd-menu-grp" data-menu="file">   <span class="sd-name">文件</span></button>
   <button class="sd-grp-btn sd-menu-grp" data-menu="edit">   <span class="sd-name">编辑</span></button>
   <button class="sd-grp-btn sd-menu-grp" data-menu="select"> <span class="sd-name">选择</span></button>
@@ -116,6 +129,7 @@ body { background:#0d0f12; font-family:system-ui,sans-serif; overflow:hidden; he
 <!-- 底部编辑栏：选择/变换/裁剪/测量 + 撤销/重做 -->
 <div class="sd-dock sd-bottom" id="dockBottom">
   <span class="sd-handle" id="handleBottom"></span>
+  <button class="sd-mini-hide" data-collapse="dockBottom">▪</button>
   <button class="sd-grp-btn" data-sub="subSelect"><span class="sd-ico">🎯</span><span class="sd-name">选择</span></button>
   <button class="sd-grp-btn" data-sub="subXform"><span class="sd-ico">✥</span><span class="sd-name">变换</span></button>
   <button class="sd-grp-btn" data-sub="subCrop"><span class="sd-ico">✂️</span><span class="sd-name">裁剪</span></button>
@@ -127,6 +141,7 @@ body { background:#0d0f12; font-family:system-ui,sans-serif; overflow:hidden; he
 <!-- 右侧视图组：相机/显示/定位 -->
 <div class="sd-dock" id="dockRight" style="right:10px; top:50%; transform:translateY(-50%); flex-direction:column;">
   <span class="sd-handle" id="handleRight" style="width:1.6rem;height:0.2rem;margin:0 0 0.2rem;cursor:grab;"></span>
+  <button class="sd-mini-hide" data-collapse="dockRight">▪</button>
   <button class="sd-grp-btn" data-sub="subCamera"><span class="sd-ico">🎥</span><span class="sd-name">相机</span></button>
   <button class="sd-grp-btn" data-sub="subDisplay"><span class="sd-ico">🎨</span><span class="sd-name">显示</span></button>
   <button class="sd-grp-btn" data-sub="subLocate"><span class="sd-ico">🎯</span><span class="sd-name">定位</span></button>
@@ -383,7 +398,29 @@ document.querySelectorAll('.sd-list-row, .sd-list-item').forEach(r => {
   r.addEventListener('click', () => showMsg(r.textContent.trim().slice(0,14)));
 });
 
-// ===== 拖动（简版：三 dock 均可拖，松手贴边） =====
+// ===== 收缩/展开 =====
+document.querySelectorAll('[data-collapse]').forEach(b => {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dock = document.getElementById(b.dataset.collapse);
+    closeAllWraps();
+    dock.classList.add('sd-collapsed');
+    showMsg('已收起，点圆球展开');
+  });
+});
+const ballNames = { dockTop:'文', dockBottom:'编', dockRight:'视' };
+Object.keys(ballNames).forEach(id => {
+  const dock = document.getElementById(id);
+  const ball = document.createElement('button');
+  ball.className = 'sd-ball'; ball.textContent = ballNames[id];
+  ball.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dock.classList.remove('sd-collapsed');
+  });
+  dock.appendChild(ball);
+});
+
+// ===== 拖动（实时横/纵换向 + 吸附） =====
 function makeDraggable(dock, handle) {
   let drag = null;
   handle.addEventListener('pointerdown', (e) => {
@@ -395,13 +432,24 @@ function makeDraggable(dock, handle) {
   });
   handle.addEventListener('pointermove', (e) => {
     if (!drag) return;
-    // 清对边定位
     dock.style.right = 'auto'; dock.style.bottom = 'auto';
     dock.style.transform = 'none';
     let x = e.clientX - drag.dx, y = e.clientY - drag.dy;
     x = Math.max(4, Math.min(innerWidth - dock.offsetWidth - 4, x));
     y = Math.max(4, Math.min(innerHeight - dock.offsetHeight - 4, y));
     dock.style.left = x + 'px'; dock.style.top = y + 'px';
+    // 实时换向：靠近上下→横排，左右→纵排（上下加权 0.8）
+    const cx = x + dock.offsetWidth/2, cy = y + dock.offsetHeight/2;
+    const d = [cx, innerWidth-cx, cy*0.8, (innerHeight-cy)*0.8];
+    const vert = d.indexOf(Math.min(...d)) >= 2; // top/bottom → 横排
+    const want = vert ? 'row' : 'column';
+    if (dock.style.flexDirection !== want) {
+      dock.style.flexDirection = want;
+      const h = document.getElementById('handleTop') === handle ? handle : handle;
+      if (vert) { h.style.width='1.6rem'; h.style.height='0.2rem'; h.style.margin='0 0 0.2rem'; }
+      else { h.style.width='0.2rem'; h.style.height='1.6rem'; h.style.margin='0 0.2rem 0'; }
+      dock.offsetHeight; // 强制重排
+    }
   });
   handle.addEventListener('pointerup', (e) => {
     if (!drag) return; drag = null;
