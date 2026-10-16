@@ -135,6 +135,7 @@ waitUI(function () {
       });
       // 场景管理器按钮：点击浮层弹出 #scene-panel（含 PLY 导入）
       const sceneBtn = makeShell('<span class="sd-ico">🗂</span><span class="sd-name">场景</span>', 'sd-grp-btn');
+      sceneBtn.dataset.role = 'scene-toggle';
       sceneBtn.onclick = (e) => {
         e.stopPropagation();
         const open = document.body.classList.toggle('sd-scene-open');
@@ -417,8 +418,8 @@ waitUI(function () {
         hd.querySelector('.sd-back-btn').onclick = (e) => {
           e.stopPropagation();
           document.body.classList.remove('sd-scene-open');
-          const sb = document.querySelector('[data-dock=file] .sd-grp-btn');
-          if (sb && sb.textContent.includes('场景')) sb.classList.remove('sd-active');
+          const sb = document.querySelector('.sd-grp-btn[data-role="scene-toggle"]');
+          if (sb) sb.classList.remove('sd-active');
         };
       }
     };

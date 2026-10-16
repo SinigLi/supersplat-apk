@@ -1,5 +1,10 @@
 /* SuperSplat Dock Overhaul v5 — 样式（rem 相对单位：根字号跟屏宽走，换设备不跑样） */
 html { font-size: clamp(13px, 4.2vw, 18px); }
+/* 手势误触防护：禁页面级缩放/下拉刷新/长按选中，画布手势全交给 SS 自己处理 */
+html, body { overscroll-behavior:none; touch-action:manipulation; }
+body { -webkit-user-select:none; user-select:none; }
+body canvas, #application-canvas { touch-action:none !important; }
+.sd-dock, .sd-sub-wrap, .sd-sheet-header, .sd-back-btn { touch-action:manipulation; }
 :root { --sd-btn: 2.5rem; --sd-gap: 0.45rem; }
 
 /* ===== 停靠组容器 ===== */
