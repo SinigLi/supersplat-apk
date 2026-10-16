@@ -376,11 +376,18 @@ waitUI(function () {
         }).observe(d, { attributes:true, attributeFilter:['class','style'] });
       });
       const sp = document.getElementById('scene-panel');
-      if (sp) addCloseBtn(sp, () => {
-        document.body.classList.remove('sd-scene-open');
-        const sb = document.querySelector('[data-dock=file] .sd-grp-btn');
-        if (sb && sb.textContent.includes('场景')) sb.classList.remove('sd-active');
-      });
+      if (sp && !sp.querySelector(':scope > .sd-sheet-header')) {
+        // v5：手机风格底部抽屉头部（标题+关闭钮），原 panel-header 隐藏，关闭钮不再与内容重叠
+        const hd = makeShell('<span class="sd-sheet-title">场景管理</span><span class="sd-sheet-close">✕</span>', 'sd-sheet-header');
+        sp.insertBefore(hd, sp.firstChild);
+        hd.querySelector('.sd-sheet-close').addEventListener('pointerdown', e => e.stopPropagation());
+        hd.querySelector('.sd-sheet-close').onclick = (e) => {
+          e.stopPropagation();
+          document.body.classList.remove('sd-scene-open');
+          const sb = document.querySelector('[data-dock=file] .sd-grp-btn');
+          if (sb && sb.textContent.includes('场景')) sb.classList.remove('sd-active');
+        };
+      }
     };
     decorate();
     new MutationObserver(decorate).observe(document.body, { childList:true, subtree:true });

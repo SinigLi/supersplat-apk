@@ -1,8 +1,9 @@
-/* SuperSplat Dock Overhaul v1 — 样式（原型 v8 交互定稿移植） */
-:root { --sd-btn: 38px; --sd-gap: 7px; }
+/* SuperSplat Dock Overhaul v5 — 样式（rem 相对单位：根字号跟屏宽走，换设备不跑样） */
+html { font-size: clamp(13px, 4.2vw, 18px); }
+:root { --sd-btn: 2.5rem; --sd-gap: 0.45rem; }
 
 /* ===== 停靠组容器 ===== */
-.sd-dock { position:fixed; z-index:1000; display:flex; gap:var(--sd-gap); padding:7px;
+.sd-dock { position:fixed; z-index:1000; display:flex; gap:var(--sd-gap); padding:0.45rem;
         background:rgba(21,24,28,.95); border-radius:14px;
         box-shadow:0 4px 16px rgba(0,0,0,.5); align-items:center; }
 .sd-dock.sd-bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row;
@@ -51,10 +52,10 @@
 .sd-sub-wrap.sd-up   { flex-direction:row; }
 .sd-sub-wrap.sd-side { flex-direction:column; }
 
-/* 被收养的 SS 按钮：触摸尺寸与一级按钮一致 40px */
-.sd-sub-wrap .sd-adopted { min-width:40px !important; min-height:40px !important; max-width:40px !important; flex-shrink:0; }
-.sd-dock .sd-adopted { min-width:40px !important; min-height:40px !important; flex-shrink:0; }
-.sd-sub-wrap .sd-adopted .toolbar-icon, .sd-sub-wrap .sd-adopted svg { transform:scale(.82); transform-origin:center; }
+/* 被收养的 SS 按钮：二级比一级再小一号 2.25rem，图标同步缩 */
+.sd-sub-wrap .sd-adopted { min-width:2.25rem !important; min-height:2.25rem !important; max-width:2.25rem !important; flex-shrink:0; }
+.sd-dock .sd-adopted { min-width:2.5rem !important; min-height:2.5rem !important; flex-shrink:0; }
+.sd-sub-wrap .sd-adopted .toolbar-icon, .sd-sub-wrap .sd-adopted svg { transform:scale(.75); transform-origin:center; }
 .sd-extra .sd-name { font-size:10px; }
 
 /* 顶部菜单组按钮沿用 .sd-grp-btn，无需单独样式 */
@@ -70,26 +71,41 @@
 .sd-menu-panel .menu-panel { position:static !important; box-shadow:none !important; background:transparent !important; }
 .sd-menu-panel .menu-row { min-width:150px; }
 
-/* 场景管理器：浮层弹出，固定合适尺寸+内部滚动（含 PLY 导入） */
-body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important; left:8px; top:56px;
-  width:min(78vw,300px); height:min(60vh,420px); z-index:1200;
-  background:#181b1f; box-shadow:0 4px 16px rgba(0,0,0,.6); border-radius:12px; }
-body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header) { flex:1; overflow-y:auto; min-height:0; }
+/* 场景管理器 v5：手机风格底部抽屉（独立头部+关闭钮，不重叠） */
+body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important;
+  left:0; right:0; bottom:0; top:auto !important;
+  width:100vw; max-height:62vh; z-index:1200; border-radius:1rem 1rem 0 0;
+  background:#181b1f; box-shadow:0 -4px 20px rgba(0,0,0,.6); padding:0 !important; }
+body.sd-scene-open #scene-panel > .panel-header { display:none !important; }
+body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header):not(.sd-sheet-header) { flex:1; overflow-y:auto; min-height:0; }
+.sd-sheet-header { flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+  padding:0.8rem 1rem; background:#22262b; border-radius:1rem 1rem 0 0; }
+.sd-sheet-title { color:#eee; font-size:1rem; font-weight:600; }
+.sd-sheet-close { flex-shrink:0; width:2rem; height:2rem; border-radius:0.5rem; background:rgba(255,255,255,.08);
+  color:#ccc; font-size:0.95rem; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.sd-sheet-close:active { background:rgba(255,255,255,.2); }
 body.mobile-mode #scene-panel { display:none !important; }
 body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
 
-/* SD 关闭按钮（弹窗/场景面板右上角） */
-.sd-close-btn { position:absolute; top:6px; right:6px; width:30px; height:30px; border-radius:8px;
-  background:rgba(255,255,255,.08); color:#ccc; font-size:14px; display:flex; align-items:center; justify-content:center;
+/* 显示组两面板（外观/浮层）移动端自适应：右侧贴边+限宽+内滚 */
+body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel {
+  position:fixed !important; right:0.5rem !important; left:auto !important; top:3.5rem !important;
+  width:min(70vw, 280px) !important; max-width:calc(100vw - 1rem) !important;
+  max-height:56vh !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1200;
+}
+
+/* SD 关闭按钮（弹窗右上角） */
+.sd-close-btn { position:absolute; top:0.4rem; right:0.4rem; width:1.9rem; height:1.9rem; border-radius:0.5rem;
+  background:rgba(255,255,255,.08); color:#ccc; font-size:0.9rem; display:flex; align-items:center; justify-content:center;
   cursor:pointer; z-index:10; }
 .sd-close-btn:active { background:rgba(255,255,255,.2); }
 
 /* SS 弹窗移动端自适应：默认合适大小，超出屏自动收缩，内层滚动。
    根因：settings-dialog #dialog 固定 400px + overflow:visible，管住外框再让内容滚 */
 body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
-  width:min(400px, calc(100vw - 16px)) !important;
-  max-width:calc(100vw - 16px) !important;
-  max-height:calc(100vh - 100px) !important;
+  width:min(25rem, calc(100vw - 1rem)) !important;
+  max-width:calc(100vw - 1rem) !important;
+  max-height:calc(100vh - 6rem) !important;
   overflow:visible !important;
   top:44% !important;
 }
@@ -97,7 +113,7 @@ body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
 body.sd-docks-ready #dialog > .pcui-container:not([id="header"]),
 body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) {
   overflow-y:auto !important; overflow-x:hidden !important;
-  max-height:calc(100vh - 170px); min-height:0;
+  max-height:calc(100vh - 10.5rem); min-height:0;
   scrollbar-width:thin;
 }
 /* 全局兕底：弹窗内长列表也滚 */
