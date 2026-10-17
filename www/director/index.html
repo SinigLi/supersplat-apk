@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<!-- 导演台 F1 真机测试页（打进 APK 的 www/director/）
+     测试点：
+     1. 骨骼人偶 + 内嵌 43 动作（下拉即点即切，含过渡）
+     2. 真泼溅混渲（gsplat 管线）+ 遮挡
+     3. 真机帧率实测（rAF 采样，每秒刷新）
+     4. 点击落点预演（Blender 规则简化版：命中地面网格落点，未命中投 y=0）
+     引擎/模型/泼溅全部本地化，APK 内零网络依赖
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;touch-action:none;-webkit-user-select:none;user-select:none}
+  #app{width:100%;height:100%}
+  #hud{position:fixed;top:6px;left:6px;color:#0f0;font:11px monospace;background:rgba(0,0,0,.55);padding:5px 7px;max-width:70vw;max-height:34vh;overflow:hidden;white-space:pre-wrap;z-index:10;border-radius:6px}
+  #panel{position:fixed;bottom:0;left:0;right:0;background:rgba(20,24,32,.92);padding:8px 10px calc(8px + env(safe-area-inset-bottom));z-index:20;display:flex;flex-direction:column;gap:8px}
+  #row1{display:flex;gap:8px;align-items:center}
+  #row2{display:flex;gap:8px}
+  select{flex:1;padding:10px;background:#2b4a6f;color:#fff;border:none;border-radius:8px;font-size:14px;max-width:60vw}
+  button{padding:10px 14px;background:#2b4a6f;color:#fff;border:none;border-radius:8px;font-size:14px}
+  button.off{background:#555}
+  #back{position:fixed;top:6px;right:6px;z-index:30;padding:8px 12px;background:rgba(43,74,111,.85)}
+  #clipLabel{color:#9cf;font-size:12px;padding:2px 0}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>document.getElementById('app').innerHTML = '<canvas id="glcv"></canvas>';</script>
+<div id="hud">booting…</div>
+<a id="back" href="../index.html">‹ 编辑器</a>
+<div id="panel">
+  <div id="clipLabel">加载中…</div>
+  <div id="row1">
+    <select id="clipSel"></select>
+    <button id="playBtn">播放/暂停</button>
+  </div>
+  <div id="row2">
+    <button id="splatToggle">泼溅:开</button>
+    <button id="slowBtn">0.5x</button>
+    <button id="resetBtn">回中</button>
+  </div>
+</div>
+<script>
+window.__errs = [];
+window.onerror = function(m, s, l){ window.__errs.push(m + ' @' + (s||'').split('/').pop() + ':' + l); document.getElementById('hud').textContent = 'ERR: ' + window.__errs.join(' | '); };
+window.addEventListener('unhandledrejection', function(e){ window.__errs.push('rej: ' + (e.reason && e.reason.message || e.reason)); document.getElementById('hud').textContent = 'ERR: ' + window.__errs.join(' | '); });
+</script>
+<script type="module">
+import * as pc from './playcanvas.mjs';
+
+const hud = document.getElementById('hud');
+window.pc = pc;
+const log = (m) => { hud.textContent += m + '\n'; console.log(m); };
+const err = (m) => { hud.textContent += '❌ ' + m + '\n'; console.error(m); };
+
+// ===== FPS 采样（每秒刷新到 HUD 首行）=====
+let frames = 0, fps = 0;
+(function count(){ frames++; requestAnimationFrame(count); })();
+setInterval(() => { fps = frames; frames = 0; updateHudHead(); }, 1000);
+let statusLine = '';
+function updateHudHead(){
+  const lines = hud.textContent.split('\n');
+  const rest = lines.filter(l => !/^\[fps/.test(l)).join('\n');
+  hud.textContent = `[fps ${fps}] ${statusLine}\n` + rest;
+}
+
+let app;
+try {
+  const device = await pc.createGraphicsDevice(document.getElementById('glcv'));
+  app = new pc.Application(document.getElementById('glcv'), { graphicsDevice: device });
+  app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
+  app.setCanvasResolution(pc.RESOLUTION_AUTO);
+  app.start();
+  window.app = app;
+} catch (e) { err('app boot: ' + e.message); }
+
+app.scene.ambientLight = new pc.Color(0.4, 0.4, 0.4);
+const dir = new pc.Entity('light');
+dir.addComponent('light', { type: 'directional' });
+dir.setLocalEulerAngles(45, 30, 0);
+app.root.addChild(dir);
+
+// 相机（球坐标，初始正对人偶）
+const cam = new pc.Entity('cam');
+cam.addComponent('camera', { fov: 60, farClip: 500 });
+app.root.addChild(cam);
+const camState = { azim: 0, elev: -18, dist: 5, target: [0, 1.2, 0] };
+function applyCam() {
+  const e = camState.elev * pc.math.DEG_TO_RAD, a = camState.azim * pc.math.DEG_TO_RAD;
+  cam.setLocalPosition(
+    camState.target[0] + camState.dist * Math.cos(e) * Math.sin(a),
+    camState.target[1] + camState.dist * Math.sin(-e),
+    camState.target[2] + camState.dist * Math.cos(e) * Math.cos(a));
+  cam.lookAt(camState.target[0], camState.target[1], camState.target[2]);
+}
+applyCam();
+window.__cam = { state: camState, apply: applyCam };
+
+// 手势：单指旋转 / 双指捏合缩放 / 单击落点（拖动阈值区分）
+let last = null, pinch = null, downT = 0, downPos = null, moved = false;
+const cv = app.graphicsDevice.canvas;
+cv.addEventListener('pointerdown', e => { last = [e.clientX, e.clientY]; downT = Date.now(); downPos = [e.clientX, e.clientY]; moved = false; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', e => {
+  if (!last) return;
+  if (Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) > 12) moved = true;
+  if (!moved) return;
+  camState.azim += (e.clientX - last[0]) * 0.3;
+  camState.elev = pc.math.clamp(camState.elev - (e.clientY - last[1]) * 0.3, -89, 89);
+  last = [e.clientX, e.clientY]; applyCam();
+});
+cv.addEventListener('pointerup', e => {
+  if (!moved && Date.now() - downT < 600 && window.__placeAt) window.__placeAt(e.clientX, e.clientY);
+  last = null;
+});
+cv.addEventListener('wheel', e => { camState.dist = pc.math.clamp(camState.dist + e.deltaY * 0.01, 1, 100); applyCam(); });
+cv.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (pinch) { camState.dist = pc.math.clamp(camState.dist * pinch / d, 1, 100); applyCam(); }
+    pinch = d; e.preventDefault();
+  }
+}, { passive: false });
+cv.addEventListener('touchend', () => pinch = null);
+
+// 地面网格
+const ground = new pc.Entity('ground');
+ground.addComponent('render', { type: 'plane' });
+ground.setLocalScale(20, 1, 20);
+ground.setLocalPosition(0, -0.01, 0);
+const gm = new pc.StandardMaterial(); gm.diffuse = new pc.Color(0.15, 0.15, 0.18); gm.update();
+ground.render.material = gm;
+app.root.addChild(ground);
+
+// ===== 人偶 + 43 动作 =====
+let root = null, clips = [], curClip = -1;
+const glbAsset = new pc.Asset('character', 'container', { url: 'character.glb' });
+app.assets.add(glbAsset);
+app.assets.load(glbAsset);
+glbAsset.on('load', () => {
+  try {
+    const res = glbAsset.resource;
+    const ent = res.instantiateRenderEntity();
+    ent.setLocalScale(1, 1, 1);
+    app.root.addChild(ent);
+    root = ent;
+    window.__char = ent;
+    const anim = ent.addComponent('anim', { rootBone: ent, activate: true });
+    window.__anim = anim;
+    const anims = res.animations || [];
+    clips = anims.map((a, i) => ({
+      state: 'clip_' + i,
+      label: (a.resource && a.resource.name) || ('anim ' + i),
+      track: a.resource
+    }));
+    clips.forEach((c, i) => {
+      try { anim.assignAnimation(c.state, c.track, 'Base'); }
+      catch (e) { if (i === 0) err('assign#0: ' + e.message); }
+    });
+    // 下拉框（按名字排序，Idle 置顶）
+    const sel = document.getElementById('clipSel');
+    const sorted = clips.map((c, i) => ({ ...c, i })).sort((x, y) => x.label.localeCompare(y.label));
+    sorted.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.i; o.textContent = c.label;
+      sel.appendChild(o);
+    });
+    const idleIdx = clips.findIndex(c => /^idle/i.test(c.label))
+      ?? -1;
+    const startIdx = (clips.findIndex(c => /^idle/i.test(c.label)) >= 0 && !/crouch/i.test(clips.find(c => /^idle/i.test(c.label)).label))
+      ? clips.findIndex(c => /^idle/i.test(c.label))
+      : (clips.findIndex(c => /idle/i.test(c.label) && !/crouch/i.test(c.label)) >= 0 ? clips.findIndex(c => /idle/i.test(c.label) && !/crouch/i.test(c.label)) : 0);
+    sel.value = String(startIdx);
+    playClip(startIdx);
+    sel.onchange = () => playClip(+sel.value);
+    document.getElementById('clipLabel').textContent = clips.length + ' 动作已就绪';
+  } catch (e) { err('char setup: ' + e.message); }
+});
+glbAsset.on('error', (e) => err('GLB load failed: ' + (e && e.message || e)));
+
+function playClip(i) {
+  if (!window.__anim || !clips[i]) return;
+  const anim = window.__anim;
+  anim.playing = true;
+  anim.baseLayer.play(clips[i].state);
+  curClip = i;
+  statusLine = '动作: ' + clips[i].label;
+  updateHudHead();
+}
+
+// ===== 真泼溅混渲 =====
+const splatAsset = new pc.Asset('splat', 'gsplat', { url: 'splat.ply' });
+app.assets.add(splatAsset);
+app.assets.load(splatAsset);
+splatAsset.on('load', () => {
+  try {
+    const splatEnt = new pc.Entity('splat-cloud');
+    splatEnt.addComponent('gsplat', { asset: splatAsset });
+    app.root.addChild(splatEnt);
+    window.__splat = splatEnt;
+    log('泼溅场景已加载（85k 高斯点）');
+  } catch (e) { err('splat entity: ' + e.message); }
+});
+splatAsset.on('error', (e) => err('splat load failed: ' + (e && e.message || e)));
+
+// ===== 点击落点（Blender 规则简化版）=====
+const marker = new pc.Entity('marker');
+marker.addComponent('render', { type: 'cylinder' });
+marker.setLocalScale(0.4, 0.02, 0.4);
+const mm = new pc.StandardMaterial(); mm.diffuse = new pc.Color(1, 0.8, 0.1); mm.emissive = new pc.Color(1, 0.7, 0.1); mm.update();
+marker.render.material = mm;
+marker.enabled = false;
+app.root.addChild(marker);
+window.__placeAt = (sx, sy) => {
+  if (!window.__char) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  // 屏幕点 → 射线：近点/远点差向
+  const near = cam.camera.screenToWorld(sx, sy, 0);
+  const far = cam.camera.screenToWorld(sx, sy, 1);
+  const d = new pc.Vec3().sub2(far, near).normalize();
+  const o = cam.getPosition();
+  // 命中 y=0 平面
+  if (Math.abs(d.y) > 1e-4) {
+    const t = -o.y / d.y;
+    if (t > 0) {
+      let px = o.x + d.x * t, pz = o.z + d.z * t;
+      const r = Math.hypot(px, pz);
+      if (r > 9) { px *= 9 / r; pz *= 9 / r; }  // 限制在地面盘内
+      window.__char.setLocalPosition(px, 0, pz);
+      marker.setLocalPosition(px, 0.01, pz);
+      marker.enabled = true;
+      statusLine = `落点(${px.toFixed(1)},0,${pz.toFixed(1)})`;
+      updateHudHead();
+      return;
+    }
+  }
+  statusLine = '落点: 射线平行地面，已忽略';
+  updateHudHead();
+};
+
+// ===== 控制条 =====
+document.getElementById('playBtn').onclick = () => {
+  if (!window.__anim) return;
+  window.__anim.playing = !window.__anim.playing;
+  statusLine = (window.__anim.playing ? '播放' : '暂停') + (curClip >= 0 ? ': ' + clips[curClip].label : '');
+  updateHudHead();
+};
+let splatOn = true;
+document.getElementById('splatToggle').onclick = () => {
+  splatOn = !splatOn;
+  if (window.__splat) window.__splat.enabled = splatOn;
+  document.getElementById('splatToggle').textContent = splatOn ? '泼溅:开' : '泼溅:关';
+};
+let slow = false;
+document.getElementById('slowBtn').onclick = () => {
+  slow = !slow;
+  if (window.__anim) window.__anim.speed = slow ? 0.5 : 1;
+  document.getElementById('slowBtn').textContent = slow ? '0.5x' : '1x';
+  document.getElementById('slowBtn').classList.toggle('off', !slow);
+};
+document.getElementById('resetBtn').onclick = () => {
+  camState.azim = 0; camState.elev = -18; camState.dist = 5; camState.target = [0, 1.2, 0];
+  applyCam();
+  if (window.__char) window.__char.setLocalPosition(0, 0, 0);
+  marker.enabled = false;
+};
+
+log('导演台测试页就绪');
+</script>
+</body>
+</html>
