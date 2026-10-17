@@ -1,4 +1,5 @@
-/* probe_layout.mjs - measure director panel rows at 390x844 and screenshot */
+/* tests/probe-layout.mjs - 390x844 下量测导演台面板各行尺寸并截图
+ * 用法：仓库根执行 `node tests/probe-layout.mjs` */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,4 +1,5 @@
-/* probe_bottom.mjs - measure bottom bar 5 buttons + director panel after open */
+/* tests/probe-bottom.mjs - 量测底栏五连按钮 + 展开后的导演台面板
+ * 用法：仓库根执行 `node tests/probe-bottom.mjs` */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

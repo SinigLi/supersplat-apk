@@ -1,4 +1,6 @@
-/* test_v12b.mjs - headless regression for v12b fixes
+/* tests/director.mjs - 导演台 headless 回归（Edge + CDP，390x844）
+ * 用法：在 supersplat-apk 仓库根执行 `node tests/director.mjs`（自动起静态服务 + Edge）
+ * 覆盖 v12b 关键修复：
  * 1) woman.glb is the real female character (meshes/materials/textures/43 clips)
  * 2) moveSelectedToCursor moves the puppet to the cursor (undoable)
  * 3) director panel dropdowns fill on open without any prior state event
