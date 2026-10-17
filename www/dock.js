@@ -113,6 +113,75 @@ waitUI(function () {
     return el;
   }
 
+  /* ===== 导演台组（v9）：SS 源码侧 src/director.ts 提供 window.__director，
+   * 通过 'director-state' DOM 事件同步状态；本面板只发命令不解析 GLB ===== */
+  const DIR_NAME = '导演台';
+  const DIR_PANEL_HTML =
+    '<button class="sd-dir-btn" data-act="add"><span>➕</span><span>添加人偶</span></button>' +
+    '<button class="sd-dir-btn" data-act="move"><span>🧍</span><span>移动人偶</span></button>' +
+    '<button class="sd-dir-btn" data-act="cursor"><span>🎯</span><span>放置游标</span></button>' +
+    '<button class="sd-dir-btn" data-act="info"><span>ℹ️</span><span>人偶信息</span></button>' +
+    '<div class="sd-dir-row"><select class="sd-dir-clips"></select>' +
+    '<button class="sd-dir-btn" data-act="playpause"><span>⏯</span></button></div>' +
+    '<div class="sd-dir-info">加载人偶后可点击画布放置</div>';
+
+  function bindDirectorPanel(panel) {
+    const infoEl = panel.querySelector('.sd-dir-info');
+    const sel = panel.querySelector('.sd-dir-clips');
+    const btns = {};
+    panel.querySelectorAll('.sd-dir-btn').forEach(b => { btns[b.dataset.act] = b; });
+    const setActive = (act, on) => { if (btns[act]) btns[act].classList.toggle('sd-on', on); };
+
+    panel.addEventListener('click', (e) => {
+      const b = e.target.closest('.sd-dir-btn');
+      if (!b) return;
+      e.stopPropagation();
+      const d = window.__director;
+      if (!d) { showMsg('导演台模块未就绪'); return; }
+      const act = b.dataset.act;
+      if (act === 'add') {
+        const r = d.addPuppet();
+        showMsg(r === 'loading' ? '人偶资源加载中…' : '人偶已放置（再点可重放）');
+      } else if (act === 'move') {
+        const r = d.armPlacePuppet();
+        showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
+      } else if (act === 'cursor') {
+        const r = d.armPlaceCursor();
+        showMsg(r === 'place-cursor' ? '点击画布放置 3D 游标（再点取消）' : '已取消放置');
+      } else if (act === 'info') {
+        const i = d.info();
+        infoEl.textContent = i.hasPuppet
+          ? `位置(${i.pos.x},${i.pos.y},${i.pos.z}) 动作:${i.clipLabel || '无'} ${i.playing ? '▶' : '⏸'}`
+          : '未放置人偶';
+      } else if (act === 'playpause') {
+        const i = d.info();
+        if (i.playing) { d.pause(); } else { d.playClip(i.clip >= 0 ? i.clip : 0); }
+      }
+    });
+
+    sel.addEventListener('change', () => {
+      const d = window.__director;
+      if (d) d.playClip(+sel.value);
+    });
+
+    document.addEventListener('director-state', (ev) => {
+      const info = ev.detail && ev.detail.info;
+      if (!info) return;
+      const d = window.__director;
+      if (info.loaded && d && sel.options.length === 0) {
+        d.listClips().forEach((c) => {
+          const o = document.createElement('option');
+          o.value = c.index;
+          o.textContent = c.label;
+          sel.appendChild(o);
+        });
+      }
+      if (typeof info.clip === 'number' && info.clip >= 0) sel.value = String(info.clip);
+      setActive('move', info.mode === 'place-puppet');
+      setActive('cursor', info.mode === 'place-cursor');
+    });
+  }
+
   function buildDock(def) {
     const dock = makeShell('', 'sd-dock sd-' + def.pos);
     dock.dataset.dock = def.id;
@@ -183,6 +252,14 @@ waitUI(function () {
         g.onclick = () => toggleNamed(name, g, dock);
         dock.appendChild(g);
       });
+      // 导演台组（v9）：自定义子工具面板，命令走 window.__director
+      const dwrap = makeShell(DIR_PANEL_HTML, 'sd-sub-wrap sd-dir-panel');
+      document.body.appendChild(dwrap);
+      allPanels.set(DIR_NAME, dwrap);
+      bindDirectorPanel(dwrap);
+      const dbtn = makeShell(`<span class="sd-ico">🎬</span><span class="sd-name">${DIR_NAME}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
+      dbtn.onclick = () => toggleNamed(DIR_NAME, dbtn, dock);
+      dock.appendChild(dbtn);
     } else {
       def.groupIds.forEach(gid => dock.appendChild(makeGroupBtn(gid, dock)));
     }

@@ -159,3 +159,12 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 #sd-msg { position:fixed; left:50%; bottom:110px; transform:translateX(-50%);
           background:#2563eb; color:#fff; padding:10px 18px; border-radius:20px; font-size:14px;
           z-index:2000; transition:opacity .3s; opacity:0; pointer-events:none; }
+
+/* ===== 导演台面板 (v9) ===== */
+.sd-dir-panel { flex-direction:column !important; gap:6px !important; align-items:stretch; min-width:190px; }
+.sd-dir-btn { display:flex; align-items:center; gap:8px; padding:10px 12px; background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:10px; font-size:13px; min-height:44px; }
+.sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
+.sd-dir-btn:active { filter:brightness(1.4); }
+.sd-dir-row { display:flex; gap:6px; align-items:center; }
+.sd-dir-clips { flex:1; min-height:44px; background:#1e293b; color:#e2e8f0; border:none; border-radius:10px; padding:0 8px; font-size:12px; }
+.sd-dir-info { font-size:11px; color:#94a3b8; padding:4px 2px; min-height:18px; }
