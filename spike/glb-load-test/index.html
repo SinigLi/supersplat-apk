@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!-- 导演台 F0 Spike：泼溅 + 骨骼 GLB 同场景验证
+     验证点（对应 MOBILE_DIRECTOR_CONSOLE_PLAN.md v0.5 F0）：
+     1. pc 引擎加载 pose-library 骨骼 GLB，骨架可见
+     2. GLB mesh 与泼溅实体同场景，渲染排序/深度无冲突
+     3. pc.AnimComponent 播放 GLB 内嵌动画 clip，即点即切
+     用法：把测试 GLB 放本目录命名为 test.glb，启动静态服务后打开本页 ?glb=test.glb
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;touch-action:none;-webkit-user-select:none;user-select:none}
+  #app{width:100%;height:100%}
+  #hud{position:fixed;top:8px;left:8px;color:#0f0;font:12px monospace;background:rgba(0,0,0,.6);padding:6px 8px;max-width:80vw;white-space:pre-wrap;z-index:10}
+  #bar{position:fixed;bottom:8px;left:8px;right:8px;display:flex;gap:8px;flex-wrap:wrap;z-index:10}
+  #bar button{padding:8px 12px;background:#2b4a6f;color:#fff;border:none;border-radius:6px;font-size:14px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>document.getElementById('app').innerHTML = '<canvas id="glcv"></canvas>';</script>
+<div id="hud">booting…</div>
+<script>
+// 错误捕获必须先于模块加载，否则异步 import 的报错看不到
+window.__errs = [];
+window.onerror = function(m, s, l){ window.__errs.push(m + ' @' + (s||'').split('/').pop() + ':' + l); document.getElementById('hud').textContent = 'ERR: ' + window.__errs.join(' | '); };
+window.addEventListener('unhandledrejection', function(e){ window.__errs.push('rej: ' + (e.reason && e.reason.message || e.reason)); document.getElementById('hud').textContent = 'ERR: ' + window.__errs.join(' | '); });
+</script>
+<div id="bar">
+  <button data-clip="0">clip 0</button>
+  <button data-clip="1">clip 1</button>
+  <button data-clip="2">clip 2</button>
+  <button id="splatToggle">泼溅显隐</button>
+  <button id="skelToggle">骨架显隐</button>
+</div>
+<script type="module">
+import * as pc from 'https://unpkg.com/playcanvas@2.9.0/build/playcanvas.mjs';
+
+const hud = document.getElementById('hud');
+window.pc = pc; // CDP 探测用
+const log = (m) => { hud.textContent += m + '\n'; console.log(m); };
+const err = (m) => { hud.textContent += '❌ ' + m + '\n'; console.error(m); };
+
+let app;
+// pc 2.x 标准启动：Application 封装自动组装组件系统+资源 handlers（AppBase.init 手动拼会漏 resourceHandles，GLB 加载直接瘫）
+try {
+  const device = await pc.createGraphicsDevice(document.getElementById('glcv'));
+  app = new pc.Application(document.getElementById('glcv'), { graphicsDevice: device });
+  app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
+  app.setCanvasResolution(pc.RESOLUTION_AUTO);
+  app.start();
+  window.app = app; // CDP 探测用
+} catch (e) { err('app boot: ' + e.message); }
+
+app.scene.ambientLight = new pc.Color(0.4, 0.4, 0.4);
+const dir = new pc.Entity('light');
+dir.addComponent('light', { type: 'directional' });
+dir.setLocalEulerAngles(45, 30, 0);
+app.root.addChild(dir);
+
+// 相机：SS 同款球坐标
+const cam = new pc.Entity('cam');
+cam.addComponent('camera', { fov: 60, farClip: 500 });
+app.root.addChild(cam);
+const camState = { azim: 0, elev: -20, dist: 6, fovY: 1.5 };
+function applyCam() {
+  const e = camState.elev * pc.math.DEG_TO_RAD, a = camState.azim * pc.math.DEG_TO_RAD;
+  cam.setLocalPosition(
+    camState.dist * Math.cos(e) * Math.sin(a),
+    camState.dist * Math.sin(-e),
+    camState.dist * Math.cos(e) * Math.cos(a));
+  cam.lookAt(0, camState.fovY, 0);
+}
+applyCam();
+window.__cam = { state: camState, apply: applyCam }; // CDP 遮挡验证用：改 state 后调 apply()
+
+// 触屏/鼠标手势：单指旋转，滚轮/双指捏合缩放（SS 同款交互的最小验证集）
+let last = null, pinch = null;
+const cv = app.graphicsDevice.canvas;
+cv.addEventListener('pointerdown', e => { last = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', e => {
+  if (!last) return;
+  camState.azim += (e.clientX - last[0]) * 0.3;
+  camState.elev = pc.math.clamp(camState.elev - (e.clientY - last[1]) * 0.3, -89, 89);
+  last = [e.clientX, e.clientY]; applyCam();
+});
+cv.addEventListener('pointerup', () => last = null);
+cv.addEventListener('wheel', e => { camState.dist = pc.math.clamp(camState.dist + e.deltaY * 0.01, 1, 100); applyCam(); });
+cv.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (pinch) { camState.dist = pc.math.clamp(camState.dist * pinch / d, 1, 100); applyCam(); }
+    pinch = d; e.preventDefault();
+  }
+}, { passive: false });
+cv.addEventListener('touchend', () => pinch = null);
+
+// 地面网格参考（人偶落点视觉参照）
+const ground = new pc.Entity('ground');
+ground.addComponent('render', { type: 'plane' });
+ground.setLocalScale(20, 1, 20);
+ground.setLocalPosition(0, -0.01, 0);
+const gm = new pc.StandardMaterial(); gm.diffuse = new pc.Color(0.15, 0.15, 0.18); gm.update();
+ground.render.material = gm;
+app.root.addChild(ground);
+
+// ===== 加载骨骼 GLB =====
+let root = null, clips = [];
+const glbFile = new URLSearchParams(location.search).get('glb') || '../../assets_src/UAL1_Standard.glb';
+const glbAsset = new pc.Asset('glb:' + glbFile, 'container', { url: glbFile });
+app.assets.add(glbAsset);
+app.assets.load(glbAsset);
+glbAsset.on('load', () => {
+  const res = glbAsset.resource;
+  window.__res = res; // CDP 探测
+  log('resource type: ' + (res && res.constructor && res.constructor.name));
+  // pc 2.9：instantiate() 已废，骨骼模型用 instantiateRenderEntity（源码 L79776）
+  const ent = res.instantiateRenderEntity();
+  if (!ent) { err('instantiateRenderEntity returned null'); return; }
+  ent.setLocalScale(1, 1, 1);
+  app.root.addChild(ent);
+  root = ent;
+  try {
+    // pc 2.9：instantiateRenderEntity 不带 anim 组件，手动挂（源码 L55764）
+    const anim = ent.addComponent('anim', {
+      rootBone: ent,
+      activate: true
+    });
+    window.__anim = anim;
+    const anims = res.animations || [];
+    clips = anims.map((a, i) => ({
+      state: 'clip_' + i,
+      // GlbContainerResource.createAsset 把 AnimTrack 放在 .resource（.data 未设）；layer.assignAnimation 对非 AnimTrack 静默返回
+      label: (a.resource && a.resource.name) || ('anim ' + i),
+      track: a.resource
+    }));
+    // 逐个建状态：assignAnimation(state, track, 'Base') 自动建图+建状态
+    clips.forEach((c, i) => {
+      try { anim.assignAnimation(c.state, c.track, 'Base'); }
+      catch (e) { if (i === 0) err('assign#0: ' + e.message); }
+    });
+    // 默认播 Idle（UAL 包内名匹配，退化用 clip 0）
+    // 默认播 Idle：优先精确 Idle_Loop（避免误配 Crouch_Idle_Loop），退化用 clip 0
+    // 默认播 Idle：精确 Idle_Loop 优先，其次排除 crouch 的 idle，退化 clip 0
+    const idle = clips.find(c => /^idle/i.test(c.label))
+             || clips.find(c => /idle/i.test(c.label) && !/crouch/i.test(c.label))
+             || clips[0];
+    if (idle) {
+      anim.playing = true;
+      anim.baseLayer.play(idle.state);
+      log('default: ' + idle.state + ' (' + idle.label + ')');
+    }
+    log('playable: ' + anim.playable + ' | track0: ' + (clips[0] && clips[0].track ? clips[0].track.name : 'NONE'));
+    log('clips: ' + clips.length + ' 个，前6: ' + clips.slice(0, 6).map(c => c.label).join(', '));
+    log('GLB loaded: ' + glbFile);
+  } catch (e) { err('anim setup: ' + e.message); }
+});
+glbAsset.on('error', (e) => err('GLB load failed: ' + (e && e.message || e)));
+
+// ===== 真泼溅：引擎 2.9 内置 gsplat 管线（PlyParser L81324 + GSplatComponentSystem L76780）=====
+// splat.ply 为合成 3DGS 场景（gen_splat_ply.mjs 生成）：地面盘+彩色球壳(-2.2,1.6,-1.5)+背景墙 z=-3
+// 球壳/墙在角色侧后方，遮挡关系一眼可辨；引擎 Y 朝向约定靠画面验证（场景上下不对称）
+const splatAsset = new pc.Asset('splat', 'gsplat', { url: 'splat.ply' });
+app.assets.add(splatAsset);
+app.assets.load(splatAsset);
+splatAsset.on('load', () => {
+  try {
+    const splatEnt = new pc.Entity('splat-cloud');
+    splatEnt.addComponent('gsplat', { asset: splatAsset });
+    app.root.addChild(splatEnt);
+    window.__splat = splatEnt; // CDP 探测
+    log('splat.ply loaded: ' + (splatAsset.resource && splatAsset.resource.constructor.name));
+  } catch (e) { err('splat entity: ' + e.message); }
+});
+splatAsset.on('error', (e) => err('splat load failed: ' + (e && e.message || e)));
+
+// ===== UI =====
+document.querySelectorAll('#bar [data-clip]').forEach(b => b.onclick = () => {
+  if (!root) return err('GLB not loaded yet');
+  const anim = root.findComponent('anim');
+  if (!anim) return err('no anim component');
+  const c = clips[+b.dataset.clip];
+  if (!c) return err('clip ' + b.dataset.clip + ' not available');
+  try {
+    anim.playing = true;
+    anim.baseLayer.play(c.state);
+    log('play ' + c.state + ': ' + c.label);
+  } catch (e) { err('play: ' + e.message); }
+});
+let splatOn = true;
+document.getElementById('splatToggle').onclick = () => { splatOn = !splatOn; if (window.__splat) window.__splat.enabled = splatOn; log('splat: ' + (splatOn ? 'on' : 'off')); };
+let skelOn = false;
+document.getElementById('skelToggle').onclick = () => {
+  skelOn = !skelOn;
+  if (!root) return;
+  root.forEach(c => { if (c.render && c.render.type === 'asset') c.render.meshInstances.forEach(mi => { /* skeleton helper 属 F1，spike 先跳过 */ }); });
+  log('skeleton toggle (stub)');
+};
+
+log('ready. engine ' + (pc.version || pc.REVISION || '?') + ' | put a GLB beside this file and open ?glb=test.glb');
+</script>
+</body>
+</html>

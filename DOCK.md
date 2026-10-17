@@ -1,6 +1,7 @@
 # SuperSplit APK — 移动端分组工具栏（Dock）架构文档
 
 > 版本：v6.5（2026-10-17 定版） · 维护者：全栈工程师 · 上游 fork：SuperSplat 编辑器
+> 导演台（人偶/动作/游标/染色）见 `docs/DIRECTOR.md`；仓库总览见 `README.md`
 
 ## 1. 它是什么
 
@@ -48,17 +49,20 @@ SuperSplat APK（Capacitor 壳）的移动端 UI 改造层。**不修改 SS 源�
 ## 4. 开发与发版流程
 
 ```bash
-# 本地验证（headless + CDP）
-cd www && node %TEMP%\staticsrv.cjs        # 静态服务 :4192，根=cwd
-# Edge headless 390x844 → cdp_eval2.mjs 量测 / cdp_shot.mjs 截图（工具在 %TEMP%）
+# 本地验证（headless + CDP，仓库根目录执行）
+node tools/dev/staticsrv.cjs www 4192      # 静态服务 :4192（浏览器手动开页面时用）
+node tests/probe-layout.mjs                # 390x844 面板布局量测 + 截图
+node tests/probe-bottom.mjs                # 底栏按钮量测 + 截图
+node tests/director.mjs                    # 导演台 16 项回归 + 截图
 # 启动页检查项：可见弹窗数=0 + 顶栏/底栏/右栏在位；每个面板查 rect 是否全屏
 
 # 提交 → CI 自动出包（GitHub Actions）
 git push origin main
-node ci-poll.cjs <sha>                     # 等 CI（workflow 输出 supersplat-debug-apk artifact）
+node tools/ci/ci-poll.cjs <sha>            # 等 CI（workflow 输出 supersplat-debug-apk artifact）
 
 # 下载 artifact（⚠ 网络不稳时分片下载，见 §5）
-# artifact 大小字段是 size_in_bytes（不是 size）
+node tools/ci/dl_artifact.mjs <runId> dist/app-debug.apk   # artifact 大小字段是 size_in_bytes（不是 size）
+node tools/ci/verify_apk.cjs dist/app-debug.apk            # 解包校验 + 标记串检查
 # 打 zip 发飞书
 ```
 
@@ -71,7 +75,7 @@ node ci-poll.cjs <sha>                     # 等 CI（workflow 输出 supersplat
 - **token 掩码坑**：脚本里写 `"***" + token` 是无效头（401），必须读文件拼真实值
 - **CDP 合成事件**：`movementX/Y` 恒 0（拖动判定用坐标增量）；`Runtime.evaluate` 不等 Promise（异步要 `awaitPromise:true` 或拆同步步）
 - **pages/api curl**：缺 `User-Agent` 头会 401；`-w redirect_url` 部分端点不生效
-- **本地静态服务**：`python -m http.server` 本机绑不上端口，用 `staticsrv.cjs`；服务根 = 启动时 cwd，URL 别带子目录前缀
+- **本地静态服务**：`python -m http.server` 本机绑不上端口，用 `tools/dev/staticsrv.cjs`；服务根 = 启动时 cwd，URL 别带子目录前缀
 
 ## 6. 版本史（真机验证节点）
 
