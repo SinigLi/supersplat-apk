@@ -119,8 +119,9 @@ waitUI(function () {
   const DIR_PANEL_HTML =
     '<button class="sd-dir-btn" data-act="add"><span>➕</span><span>添加人偶</span></button>' +
     '<button class="sd-dir-btn" data-act="move"><span>🧍</span><span>移动人偶</span></button>' +
+    '<button class="sd-dir-btn" data-act="select"><span>🖐</span><span>选中人偶</span></button>' +
     '<button class="sd-dir-btn" data-act="cursor"><span>🎯</span><span>放置游标</span></button>' +
-    '<button class="sd-dir-btn" data-act="info"><span>ℹ️</span><span>人偶信息</span></button>' +
+    '<button class="sd-dir-btn" data-act="delete"><span>🗑</span><span>删除</span></button>' +
     '<div class="sd-dir-row"><select class="sd-dir-clips"></select>' +
     '<button class="sd-dir-btn" data-act="playpause"><span>⏯</span></button></div>' +
     '<div class="sd-dir-info">加载人偶后可点击画布放置</div>';
@@ -148,10 +149,16 @@ waitUI(function () {
       } else if (act === 'cursor') {
         const r = d.armPlaceCursor();
         showMsg(r === 'place-cursor' ? '点击画布放置 3D 游标（再点取消）' : '已取消放置');
+      } else if (act === 'select') {
+        const r = d.armSelect();
+        showMsg(r === 'select-puppet' ? '点击画布选中最近的人偶（再点取消）' : '已取消选中');
+      } else if (act === 'delete') {
+        const r = d.deleteSelected();
+        showMsg(r === 'ok' ? '已删除人偶' : '没有人偶可删');
       } else if (act === 'info') {
         const i = d.info();
         infoEl.textContent = i.hasPuppet
-          ? `位置(${i.pos.x},${i.pos.y},${i.pos.z}) 动作:${i.clipLabel || '无'} ${i.playing ? '▶' : '⏸'}`
+          ? `${i.selectedName || ('人偶x' + i.count)} (${i.pos.x},${i.pos.y},${i.pos.z}) ${i.clipLabel || '无动作'} ${i.playing ? '▶' : '⏸'}`
           : '未放置人偶';
       } else if (act === 'playpause') {
         const i = d.info();
@@ -179,6 +186,10 @@ waitUI(function () {
       if (typeof info.clip === 'number' && info.clip >= 0) sel.value = String(info.clip);
       setActive('move', info.mode === 'place-puppet');
       setActive('cursor', info.mode === 'place-cursor');
+      setActive('select', info.mode === 'select-puppet');
+      if (info.hasPuppet && info.selectedName) {
+        infoEl.textContent = `${info.selectedName} · ${info.clipLabel || '无动作'} ${info.playing ? '▶' : '⏸'}`;
+      }
     });
   }
 
