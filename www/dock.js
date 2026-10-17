@@ -35,7 +35,7 @@ function waitUI(cb) {
 waitUI(function () {
   const GROUPS = {
     select: { ico:'🎯', name:'选择', ids:['bottom-toolbar-selection-mode','bottom-toolbar-selection-footprint','bottom-toolbar-picker','bottom-toolbar-brush','bottom-toolbar-polygon','bottom-toolbar-eyedropper','bottom-toolbar-sphere-brush'] },
-    xform:  { ico:'🔢', name:'变换', ids:['bottom-toolbar-move','bottom-toolbar-rotate','bottom-toolbar-scale','bottom-toolbar-orient','bottom-toolbar-coord-space','bottom-toolbar-origin'] },
+    xform:  { ico:'🔢', name:'变换', ids:['bottom-toolbar-move','bottom-toolbar-rotate','bottom-toolbar-scale'] },
     shape:  { ico:'✂️', name:'裁剪', ids:['bottom-toolbar-sphere','bottom-toolbar-box'] },
     measure:{ ico:'📐', name:'测量', ids:['bottom-toolbar-measure'] },
     file:   { ico:'📁', name:'文件', ids:[] },   // v1: 菜单按钮代理
@@ -43,22 +43,20 @@ waitUI(function () {
   };
 
   const DOCKS = [
-    { id:'file', label:'文件', pos:'top',    groupIds:[], menuOptions:true,
+    { id:'file', label:'菜单', pos:'top',    groupIds:[], menuOptions:true,
       extra:[] },
-    { id:'edit', label:'编辑', pos:'bottom', groupIds:['select','xform','shape','measure'],
+    { id:'edit', label:'工具', pos:'bottom', groupIds:['xform','measure'],
       extra:[ {id:'bottom-toolbar-undo', ico:'↶', name:'撤销'}, {id:'bottom-toolbar-redo', ico:'↷', name:'重做'} ] },
     { id:'view', label:'视图', pos:'right',  groupIds:[], viewOptions:true,
       extra:[] },
   ];
 
-  // SS 菜单面板在 #menu 下的追加顺序（menu.ts append 顺序）
+  // v10 分镜工具定位：泼溅专属菜单（文件/选择/帮助）先隐藏，保留编辑/渲染；
+  // 被隐藏的 .menu-panel 仍留在 #menu 内但无入口可开（pcui-hidden）
   const MENU_ORDER = ['file','open-recent','import-recent','export','edit','selection','render','video-tutorials','help'];
   const TOP_MENUS = [
-    { key:'file',      name:'文件', ico:'📁' },
     { key:'edit',      name:'编辑', ico:'✏️' },
-    { key:'selection', name:'选择', ico:'🎯' },
     { key:'render',    name:'渲染', ico:'🎬' },
-    { key:'help',      name:'帮助', ico:'❓' },
   ];
 
   const btnEl = id => document.getElementById(id);
@@ -121,7 +119,7 @@ waitUI(function () {
     '<div class="sd-dir-grid">' +
     '<button class="sd-dir-btn" data-act="add" title="添加人偶">➕</button>' +
     '<button class="sd-dir-btn" data-act="move" title="移动人偶（点击画布放置）">🧍</button>' +
-    '<button class="sd-dir-btn" data-act="select" title="选中人偶（点击画布选取）">🖐</button>' +
+    '<button class="sd-dir-btn" data-act="select" title="选择（人偶/泼溅通用）">🖐</button>' +
     '<button class="sd-dir-btn" data-act="cursor" title="放置游标（点击画布）">🎯</button>' +
     '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button>' +
     '</div>' +
@@ -154,7 +152,7 @@ waitUI(function () {
         showMsg(r === 'place-cursor' ? '点击画布放置 3D 游标（再点取消）' : '已取消放置');
       } else if (act === 'select') {
         const r = d.armSelect();
-        showMsg(r === 'select-puppet' ? '点击画布选中最近的人偶（再点取消）' : '已取消选中');
+        showMsg(r === 'select-puppet' ? '点击画布选中（人偶/泼溅通用，再点取消）' : '已取消选中');
       } else if (act === 'delete') {
         const r = d.deleteSelected();
         showMsg(r === 'ok' ? '已删除人偶' : '没有人偶可删');
@@ -250,6 +248,7 @@ waitUI(function () {
             spPanel.style.cssText = spPanel.style.cssText.replace(/;?position:fixed!important;left:0!important[\s\S]*?z-index:1300!important;/g, ';');
           }
         }
+        if (open && window.__renderPuppetList) window.__renderPuppetList();
       };
       dock.appendChild(sceneBtn);
     } else if (def.viewOptions) {
@@ -543,6 +542,13 @@ waitUI(function () {
           const sb = document.querySelector('.sd-grp-btn[data-role="scene-toggle"]');
           if (sb) sb.classList.remove('sd-active');
         };
+        // v10：人偶列表（分镜工具统一对象页）：人偶与泼溅同页管理
+        const slc = sp.querySelector('.splat-list-container');
+        if (slc && !sp.querySelector('#sd-puppet-list')) {
+          const pup = makeShell('', 'sd-puppet-list');
+          pup.id = 'sd-puppet-list';
+          slc.parentNode.insertBefore(pup, slc);
+        }
       }
     };
     decorate();
@@ -568,6 +574,46 @@ waitUI(function () {
     msgEl.textContent = t; msgEl.style.opacity = 1;
     clearTimeout(msgTimer); msgTimer = setTimeout(()=>msgEl.style.opacity=0, 900);
   }
+
+  /* ===================== v10 场景页人偶列表 =====================
+   * 人偶行：点行选中（进 SS 变换/撤销管线）、眼睛切显隐、垃圾桶删（走 undo）。
+   * 数据源 window.__director.listPuppets()；director-state 事件驱动重绘。
+   */
+  function renderPuppetList() {
+    const host = document.getElementById('sd-puppet-list');
+    if (!host) return;
+    const d = window.__director;
+    const list = (d && d.listPuppets) ? d.listPuppets() : [];
+    host.innerHTML = '';
+    if (!list.length) return;
+    const title = makeShell('<span class="sd-pup-title">人偶</span>', 'sd-pup-head');
+    host.appendChild(title);
+    list.forEach((p) => {
+      const row = makeShell(
+        '<span class="sd-pup-name">🧍 ' + p.name + (p.clipLabel ? ' · ' + p.clipLabel : '') + (p.playing ? ' ▶' : '') + '</span>' +
+        '<span class="sd-pup-eye">' + (p.visible ? '👁' : '🚫') + '</span>' +
+        '<span class="sd-pup-del">🗑</span>', 'sd-pup-row' + (p.selected ? ' sd-pup-sel' : ''));
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dd = window.__director;
+        if (!dd) return;
+        if (e.target.classList.contains('sd-pup-eye')) {
+          dd.setPuppetVisible(p.id, !p.visible);
+        } else if (e.target.classList.contains('sd-pup-del')) {
+          dd.deletePuppetById(p.id);
+        } else {
+          dd.selectPuppetById(p.id);
+        }
+        renderPuppetList();
+      });
+      host.appendChild(row);
+    });
+  }
+  document.addEventListener('director-state', () => {
+    if (document.body.classList.contains('sd-scene-open')) renderPuppetList();
+  });
+  // 场景按钮打开时也刷一次（render 由 sceneBtn onclick 触发）
+  window.__renderPuppetList = renderPuppetList;
 
   /* ===================== 启动 ===================== */
 
