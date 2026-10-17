@@ -170,13 +170,14 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 
 
 /* ===== 导演台面板 v9c：图标规格（与 SS 子工具对齐 2.25rem）===== */
-.sd-dir-panel { flex-direction:column !important; gap:6px !important; min-width:200px; }
+.sd-dir-panel { flex-direction:column !important; gap:6px !important; min-width:230px; }
 .sd-dir-grid { display:flex; gap:6px; flex-wrap:wrap; }
 .sd-dir-btn { width:2.25rem !important; height:2.25rem !important; min-width:0 !important; min-height:0 !important; padding:0; display:flex; align-items:center; justify-content:center; background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:8px; font-size:1.05rem; line-height:1; }
 .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
 .sd-dir-btn:active { filter:brightness(1.4); }
 .sd-dir-row { display:flex; gap:6px; align-items:center; }
-.sd-dir-clips { flex:1; min-height:2.25rem; background:#1e293b; color:#e2e8f0; border:none; border-radius:8px; padding:0 8px; font-size:12px; }
+.sd-dir-clips, .sd-dir-chars, .sd-dir-tints { flex:1; min-height:2.25rem; background:#1e293b; color:#e2e8f0; border:none; border-radius:8px; padding:0 8px; font-size:12px; }
+.sd-dir-chars { font-weight:600; }
 .sd-dir-info { font-size:11px; color:#94a3b8; padding:2px; min-height:16px; }
 
 

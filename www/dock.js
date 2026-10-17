@@ -113,23 +113,63 @@ waitUI(function () {
   /* ===== 导演台组（v9）：SS 源码侧 src/director.ts 提供 window.__director，
    * 通过 'director-state' DOM 事件同步状态；本面板只发命令不解析 GLB ===== */
   const DIR_NAME = '导演台';
-  // 图标规格按钮（与 SS 子工具同尺寸），文字收进 title 提示
+  // v12：角色下拉（人物库）+ 动作下拉 + 颜色下拉；删除/添加场景移入面板
   const DIR_PANEL_HTML =
-    '<div class="sd-dir-grid">' +
-    '<button class="sd-dir-btn" data-act="add" title="添加人偶">➕</button>' +
-    '<button class="sd-dir-btn" data-act="move" title="放置人偶（点击画布放置）">🧍</button>' +
-    '</div>' +
-    '<div class="sd-dir-row"><select class="sd-dir-clips"></select>' +
+    '<div class="sd-dir-row"><select class="sd-dir-chars" title="角色库"></select>' +
+    '<button class="sd-dir-btn" data-act="addscene" title="添加场景（导入文件）">📥</button></div>' +
+    '<div class="sd-dir-row"><select class="sd-dir-clips" title="动作"></select>' +
     '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
+    '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select>' +
+    '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button></div>' +
     '<div class="sd-dir-row"><button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/泼溅列表）">🗂 场景</button></div>' +
-    '<div class="sd-dir-info">加载人偶后可点击画布放置</div>';
+    '<div class="sd-dir-info">选角色 → 摆放人偶</div>';
 
   function bindDirectorPanel(panel) {
     const infoEl = panel.querySelector('.sd-dir-info');
     const sel = panel.querySelector('.sd-dir-clips');
+    const charSel = panel.querySelector('.sd-dir-chars');
+    const tintSel = panel.querySelector('.sd-dir-tints');
     const btns = {};
     panel.querySelectorAll('.sd-dir-btn').forEach(b => { btns[b.dataset.act] = b; });
     const setActive = (act, on) => { if (btns[act]) btns[act].classList.toggle('sd-on', on); };
+
+    // 角色下拉：来自 window.__director.listCharacters()
+    function fillChars() {
+      const d = window.__director;
+      if (!d || charSel.options.length) return;
+      d.listCharacters().forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.name;
+        charSel.appendChild(o);
+      });
+      charSel.value = d.currentCharId || 'woman';
+    }
+
+    // 颜色下拉：与 Blender 导演台同一套七色
+    const TINT_LABELS = [['NONE','原色'],['RED','红'],['ORANGE','橙'],['YELLOW','黄'],
+                         ['GREEN','绿'],['BLUE','蓝'],['GRAY','灰'],['PURPLE','紫']];
+    TINT_LABELS.forEach(([v, n]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = n;
+      tintSel.appendChild(o);
+    });
+
+    function fillClips() {
+      const d = window.__director;
+      if (!d) return;
+      const clips = d.listClips();
+      const key = clips.map(c => c.index + ':' + c.label).join('|');
+      if (sel.dataset.key === key) return;
+      sel.dataset.key = key;
+      sel.innerHTML = '';
+      clips.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c.index;
+        o.textContent = c.label;
+        sel.appendChild(o);
+      });
+    }
 
     panel.addEventListener('click', (e) => {
       const b = e.target.closest('.sd-dir-btn');
@@ -140,41 +180,54 @@ waitUI(function () {
       const act = b.dataset.act;
       if (act === 'add') {
         const r = d.addPuppet();
-        showMsg(r === 'loading' ? '人偶资源加载中…' : '人偶已放置（再点可重放）');
+        showMsg(r === 'loading' ? '人偶资源加载中…' : '人偶已在游标处生成');
       } else if (act === 'move') {
         const r = d.armPlacePuppet();
         showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
+      } else if (act === 'addscene') {
+        // 场景面板头部的导入按钮（solo/import/new 依次排列）
+        const hb = document.querySelectorAll('#scene-panel .panel-header-button');
+        if (hb[1]) { hb[1].click(); } else { showMsg('未找到添加场景按钮'); }
+      } else if (act === 'delete') {
+        const r = d.deleteSelected();
+        showMsg(r === 'ok' ? '已删除人偶（可撤销）' : '没有人偶可删');
       } else if (act === 'scene') {
         toggleSceneSheet();
-      } else if (act === 'info') {
-        const i = d.info();
-        infoEl.textContent = i.hasPuppet
-          ? `${i.selectedName || ('人偶x' + i.count)} (${i.pos.x},${i.pos.y},${i.pos.z}) ${i.clipLabel || '无动作'} ${i.playing ? '▶' : '⏸'}`
-          : '未放置人偶';
       } else if (act === 'playpause') {
         const i = d.info();
-        if (i.playing) { d.pause(); } else { d.playClip(i.clip >= 0 ? i.clip : 0); }
+        if (i.playing) { d.pause(); showMsg('已暂停'); }
+        else { d.play(); showMsg('播放中'); }
       }
     });
 
     sel.addEventListener('change', () => {
       const d = window.__director;
-      if (d) d.playClip(+sel.value);
+      // v12：换动作不自动播放，停在新动作第一帧
+      if (d) { d.setClip(+sel.value); showMsg('已切换到「' + sel.options[sel.selectedIndex].textContent + '」首帧'); }
+    });
+
+    charSel.addEventListener('change', () => {
+      const d = window.__director;
+      if (!d) return;
+      const r = d.switchCharacter(charSel.value);
+      showMsg(r === 'loading' ? '角色加载中…' : '已切换角色');
+    });
+
+    tintSel.addEventListener('change', () => {
+      const d = window.__director;
+      if (!d) return;
+      const r = d.setTint(tintSel.value);
+      showMsg(r === 'ok' ? '已换色' : '先选中一个人偶');
     });
 
     document.addEventListener('director-state', (ev) => {
       const info = ev.detail && ev.detail.info;
       if (!info) return;
-      const d = window.__director;
-      if (info.loaded && d && sel.options.length === 0) {
-        d.listClips().forEach((c) => {
-          const o = document.createElement('option');
-          o.value = c.index;
-          o.textContent = c.label;
-          sel.appendChild(o);
-        });
-      }
+      fillChars();
+      if (info.loaded) fillClips();
       if (typeof info.clip === 'number' && info.clip >= 0) sel.value = String(info.clip);
+      if (info.selectedCharId) charSel.value = info.selectedCharId;
+      if (info.selectedTint) tintSel.value = info.selectedTint;
       setActive('move', info.mode === 'place-puppet');
       // v11 底栏导演台动作按钮的 armed 高亮同步（选择/游标）
       document.querySelectorAll('.sd-dir-act[data-act="select"], .sd-dir-act[data-act="cursor"]').forEach(x => {
@@ -183,6 +236,8 @@ waitUI(function () {
       });
       if (info.hasPuppet && info.selectedName) {
         infoEl.textContent = `${info.selectedName} · ${info.clipLabel || '无动作'} ${info.playing ? '▶' : '⏸'}`;
+      } else {
+        infoEl.textContent = '选角色 → 摆放人偶';
       }
     });
   }
@@ -243,7 +298,7 @@ waitUI(function () {
         dock.appendChild(g);
       });
       } else if (def.dirBar) {
-      // v11 底栏五连：选择/游标/删除/变换/导演台（命令走 window.__director）
+      // v12 底栏五连：选择/游标/摆放人偶/变换/导演台（删除已移入导演台面板）
       const gx = GROUPS['xform'];
       const xwrap = makeShell('', 'sd-sub-wrap');
       xwrap.dataset.grp = 'xform';
@@ -257,7 +312,7 @@ waitUI(function () {
       [
         { act:'select',   ico:'🖐', name:'选择' },
         { act:'cursor',   ico:'🎯', name:'游标' },
-        { act:'delete',   ico:'🗑', name:'删除' },
+        { act:'add',      ico:'🧍', name:'摆放人偶' },
         { act:'xform',    ico:'🔢', name:'变换' },
         { act:'director', ico:'🎬', name:DIR_NAME }
       ].forEach(b => {
@@ -266,7 +321,11 @@ waitUI(function () {
         if (b.act === 'xform') btn.dataset.grp = 'xform';
         if (b.act === 'select') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armSelect(); showMsg(r==='select-puppet'?'点击画布选择（人偶/泼溅通用，再点取消）':'已取消选择'); };
         else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
-        else if (b.act === 'delete') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.deleteSelected(); showMsg(r==='ok'?'已删除人偶（可撤销）':'没有人偶可删'); };
+        else if (b.act === 'add') btn.onclick = () => {
+          const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;}
+          const r=d.addPuppet();
+          showMsg(r==='loading'?'角色加载中…':'人偶已在游标处生成');
+        };
         else if (b.act === 'xform') btn.onclick = () => toggleGroup('xform', dock);
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
         dock.appendChild(btn);
