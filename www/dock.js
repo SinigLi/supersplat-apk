@@ -1,5 +1,5 @@
 /* SuperSplat Dock Overhaul — 移动端分组工具栏
- * 当前版本：v6.5（2026-10-17 定版）
+ * 当前版本：v11（2026-10-17 交互重构：撤销/重做上顶栏，测量入右栏，底栏五连=选择/游标/删除/变换/导演台，场景入口移入导演台面板）
  *
  * 架构总览（详见仓库 DOCK.md）：
  *   三个停靠组：顶=菜单组（文件/编辑/选择/渲染/帮助/场景） 底=编辑组（选择/变换/裁剪/测量+撤销/重做） 右=视图组（相机/显示/定位）
@@ -44,18 +44,17 @@ waitUI(function () {
 
   const DOCKS = [
     { id:'file', label:'菜单', pos:'top',    groupIds:[], menuOptions:true,
-      extra:[] },
-    { id:'edit', label:'工具', pos:'bottom', groupIds:['xform','measure'],
       extra:[ {id:'bottom-toolbar-undo', ico:'↶', name:'撤销'}, {id:'bottom-toolbar-redo', ico:'↷', name:'重做'} ] },
-    { id:'view', label:'视图', pos:'right',  groupIds:[], viewOptions:true,
+    { id:'edit', label:'工具', pos:'bottom', groupIds:['xform'], dirBar:true,
       extra:[] },
+    { id:'view', label:'视图', pos:'right',  groupIds:[], viewOptions:true,
+      extra:[ {id:'bottom-toolbar-measure', ico:'📐', name:'测量'} ] },
   ];
 
   // v10 分镜工具定位：泼溅专属菜单（文件/选择/帮助）先隐藏，保留编辑/渲染；
   // 被隐藏的 .menu-panel 仍留在 #menu 内但无入口可开（pcui-hidden）
   const MENU_ORDER = ['file','open-recent','import-recent','export','edit','selection','render','video-tutorials','help'];
   const TOP_MENUS = [
-    { key:'edit',      name:'编辑', ico:'✏️' },
     { key:'render',    name:'渲染', ico:'🎬' },
   ];
 
@@ -118,13 +117,11 @@ waitUI(function () {
   const DIR_PANEL_HTML =
     '<div class="sd-dir-grid">' +
     '<button class="sd-dir-btn" data-act="add" title="添加人偶">➕</button>' +
-    '<button class="sd-dir-btn" data-act="move" title="移动人偶（点击画布放置）">🧍</button>' +
-    '<button class="sd-dir-btn" data-act="select" title="选择（人偶/泼溅通用）">🖐</button>' +
-    '<button class="sd-dir-btn" data-act="cursor" title="放置游标（点击画布）">🎯</button>' +
-    '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button>' +
+    '<button class="sd-dir-btn" data-act="move" title="放置人偶（点击画布放置）">🧍</button>' +
     '</div>' +
     '<div class="sd-dir-row"><select class="sd-dir-clips"></select>' +
     '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
+    '<div class="sd-dir-row"><button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/泼溅列表）">🗂 场景</button></div>' +
     '<div class="sd-dir-info">加载人偶后可点击画布放置</div>';
 
   function bindDirectorPanel(panel) {
@@ -147,15 +144,8 @@ waitUI(function () {
       } else if (act === 'move') {
         const r = d.armPlacePuppet();
         showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
-      } else if (act === 'cursor') {
-        const r = d.armPlaceCursor();
-        showMsg(r === 'place-cursor' ? '点击画布放置 3D 游标（再点取消）' : '已取消放置');
-      } else if (act === 'select') {
-        const r = d.armSelect();
-        showMsg(r === 'select-puppet' ? '点击画布选中（人偶/泼溅通用，再点取消）' : '已取消选中');
-      } else if (act === 'delete') {
-        const r = d.deleteSelected();
-        showMsg(r === 'ok' ? '已删除人偶' : '没有人偶可删');
+      } else if (act === 'scene') {
+        toggleSceneSheet();
       } else if (act === 'info') {
         const i = d.info();
         infoEl.textContent = i.hasPuppet
@@ -186,8 +176,11 @@ waitUI(function () {
       }
       if (typeof info.clip === 'number' && info.clip >= 0) sel.value = String(info.clip);
       setActive('move', info.mode === 'place-puppet');
-      setActive('cursor', info.mode === 'place-cursor');
-      setActive('select', info.mode === 'select-puppet');
+      // v11 底栏导演台动作按钮的 armed 高亮同步（选择/游标）
+      document.querySelectorAll('.sd-dir-act[data-act="select"], .sd-dir-act[data-act="cursor"]').forEach(x => {
+        const a = x.dataset.act;
+        x.classList.toggle('sd-active', (a === 'select' && info.mode === 'select-puppet') || (a === 'cursor' && info.mode === 'place-cursor'));
+      });
       if (info.hasPuppet && info.selectedName) {
         infoEl.textContent = `${info.selectedName} · ${info.clipLabel || '无动作'} ${info.playing ? '▶' : '⏸'}`;
       }
@@ -204,6 +197,8 @@ waitUI(function () {
     const collapse = makeShell('▪', 'sd-collapse');
 
     if (def.menuOptions) {
+      // v11：撤销/重做先挂（左起撤销、重做、渲染）
+      (def.extra || []).forEach(t => { const el = makeExtraBtn(t, dock); if (el) dock.appendChild(el); });
       // v3：把 SS 五个一级菜单的 .menu-panel 整体搬进各自子面板容器
       // 菜单行点击绑定在行上（stopPropagation），整体搬后功能保留；
       // 行点击后 SS 会隐藏面板，用 MutationObserver 同步关闭我们的 wrap
@@ -232,25 +227,7 @@ waitUI(function () {
         btn.onclick = () => toggleNamed('menu-' + m.key, btn, dock);
         dock.appendChild(btn);
       });
-      // 场景管理器按钮：点击浮层弹出 #scene-panel（含 PLY 导入）
-      const sceneBtn = makeShell('<span class="sd-ico">🗂</span><span class="sd-name">场景</span>', 'sd-grp-btn');
-      sceneBtn.dataset.role = 'scene-toggle';
-      sceneBtn.onclick = (e) => {
-        e.stopPropagation();
-        const open = document.body.classList.toggle('sd-scene-open');
-        sceneBtn.classList.toggle('sd-active', open);
-        // 设备端样式竞态兑底：打开时内联强制全屏，关闭时清除内联
-        const spPanel = document.getElementById('scene-panel');
-        if (spPanel) {
-          if (open) {
-            spPanel.style.cssText += ';position:fixed!important;left:0!important;top:0!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;inset:0!important;z-index:1300!important;';;
-          } else {
-            spPanel.style.cssText = spPanel.style.cssText.replace(/;?position:fixed!important;left:0!important[\s\S]*?z-index:1300!important;/g, ';');
-          }
-        }
-        if (open && window.__renderPuppetList) window.__renderPuppetList();
-      };
-      dock.appendChild(sceneBtn);
+      // v11：场景按钮移入导演台子面板（data-role="scene-toggle"），顶栏不再放
     } else if (def.viewOptions) {
       // 右侧：视图组也按一级分组——相机模式（轨道/飞行）、外观、浮层、定位（框选/回原点/设置）
       [['相机', ['right-toolbar-orbit-mode','right-toolbar-fly-mode']],
@@ -265,18 +242,39 @@ waitUI(function () {
         g.onclick = () => toggleNamed(name, g, dock);
         dock.appendChild(g);
       });
-      // 导演台组（v9）：自定义子工具面板，命令走 window.__director
-      const dwrap = makeShell(DIR_PANEL_HTML, 'sd-sub-wrap sd-dir-panel');
-      document.body.appendChild(dwrap);
-      allPanels.set(DIR_NAME, dwrap);
-      bindDirectorPanel(dwrap);
-      const dbtn = makeShell(`<span class="sd-ico">🎬</span><span class="sd-name">${DIR_NAME}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
-      dbtn.onclick = () => toggleNamed(DIR_NAME, dbtn, dock);
-      dock.appendChild(dbtn);
+      } else if (def.dirBar) {
+      // v11 底栏五连：选择/游标/删除/变换/导演台（命令走 window.__director）
+      const gx = GROUPS['xform'];
+      const xwrap = makeShell('', 'sd-sub-wrap');
+      xwrap.dataset.grp = 'xform';
+      gx.ids.forEach(id => adopt(id, xwrap));
+      document.body.appendChild(xwrap);
+      allPanels.set('xform', xwrap);
+      const dwrap2 = makeShell(DIR_PANEL_HTML, 'sd-sub-wrap sd-dir-panel');
+      document.body.appendChild(dwrap2);
+      allPanels.set(DIR_NAME, dwrap2);
+      bindDirectorPanel(dwrap2);
+      [
+        { act:'select',   ico:'🖐', name:'选择' },
+        { act:'cursor',   ico:'🎯', name:'游标' },
+        { act:'delete',   ico:'🗑', name:'删除' },
+        { act:'xform',    ico:'🔢', name:'变换' },
+        { act:'director', ico:'🎬', name:DIR_NAME }
+      ].forEach(b => {
+        const btn = makeShell(`<span class="sd-ico">${b.ico}</span><span class="sd-name">${b.name}</span><span class="sd-dot"></span>`, 'sd-grp-btn sd-dir-act');
+        btn.dataset.act = b.act;
+        if (b.act === 'xform') btn.dataset.grp = 'xform';
+        if (b.act === 'select') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armSelect(); showMsg(r==='select-puppet'?'点击画布选择（人偶/泼溅通用，再点取消）':'已取消选择'); };
+        else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
+        else if (b.act === 'delete') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.deleteSelected(); showMsg(r==='ok'?'已删除人偶（可撤销）':'没有人偶可删'); };
+        else if (b.act === 'xform') btn.onclick = () => toggleGroup('xform', dock);
+        else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
+        dock.appendChild(btn);
+      });
     } else {
       def.groupIds.forEach(gid => dock.appendChild(makeGroupBtn(gid, dock)));
     }
-    (def.extra || []).forEach(t => { const el = makeExtraBtn(t, dock); if (el) dock.appendChild(el); });
+    (def.extra || []).forEach(t => { const el = makeExtraBtn(t, dock); if (el && el.parentElement !== dock) dock.appendChild(el); });
     dock.appendChild(label);
     dock.appendChild(collapse);
     dock.insertBefore(handle, dock.firstChild);
@@ -539,7 +537,7 @@ waitUI(function () {
         hd.querySelector('.sd-back-btn').onclick = (e) => {
           e.stopPropagation();
           document.body.classList.remove('sd-scene-open');
-          const sb = document.querySelector('.sd-grp-btn[data-role="scene-toggle"]');
+          const sb = document.querySelector('[data-role="scene-toggle"]');
           if (sb) sb.classList.remove('sd-active');
         };
         // v10：人偶列表（分镜工具统一对象页）：人偶与泼溅同页管理
@@ -573,6 +571,22 @@ waitUI(function () {
     if (!msgEl) { msgEl = document.createElement('div'); msgEl.id='sd-msg'; document.body.appendChild(msgEl); }
     msgEl.textContent = t; msgEl.style.opacity = 1;
     clearTimeout(msgTimer); msgTimer = setTimeout(()=>msgEl.style.opacity=0, 900);
+  }
+
+  // v11：场景浮层开关（原顶栏场景按钮逻辑，现由导演台面板的场景按钮调用）
+  function toggleSceneSheet() {
+    const open = document.body.classList.toggle('sd-scene-open');
+    const sb = document.querySelector('[data-role="scene-toggle"]');
+    if (sb) sb.classList.toggle('sd-active', open);
+    const spPanel = document.getElementById('scene-panel');
+    if (spPanel) {
+      if (open) {
+        spPanel.style.cssText += ';position:fixed!important;left:0!important;top:0!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;inset:0!important;z-index:1300!important;';;
+      } else {
+        spPanel.style.cssText = spPanel.style.cssText.replace(/;?position:fixed!important;left:0!important[\s\S]*?z-index:1300!important;/g, ';');
+      }
+    }
+    if (open && window.__renderPuppetList) window.__renderPuppetList();
   }
 
   /* ===================== v10 场景页人偶列表 =====================
