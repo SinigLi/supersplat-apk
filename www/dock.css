@@ -1,13 +1,13 @@
-/* SuperSplat Dock Overhaul v5 — 样式（rem 相对单位：根字号跟屏宽走，换设备不跑样） */
+﻿/* SuperSplat Dock Overhaul v5 鈥?鏍峰紡锛坮em 鐩稿鍗曚綅锛氭牴瀛楀彿璺熷睆瀹借蛋锛屾崲璁惧涓嶈窇鏍凤級 */
 html { font-size: clamp(13px, 4.2vw, 18px); }
-/* 手势误触防护：禁页面级缩放/下拉刷新/长按选中，画布手势全交给 SS 自己处理 */
+/* 鎵嬪娍璇Е闃叉姢锛氱椤甸潰绾х缉鏀?涓嬫媺鍒锋柊/闀挎寜閫変腑锛岀敾甯冩墜鍔垮叏浜ょ粰 SS 鑷繁澶勭悊 */
 html, body { overscroll-behavior:none; touch-action:manipulation; }
 body { -webkit-user-select:none; user-select:none; }
 body canvas, #application-canvas { touch-action:none !important; }
 .sd-dock, .sd-sub-wrap, .sd-sheet-header, .sd-back-btn { touch-action:manipulation; }
 :root { --sd-btn: 2.5rem; --sd-gap: 0.45rem; }
 
-/* ===== 停靠组容器 ===== */
+/* ===== 鍋滈潬缁勫鍣?===== */
 .sd-dock { position:fixed; z-index:1000; display:flex; gap:var(--sd-gap); padding:0.45rem;
         background:rgba(21,24,28,.95); border-radius:14px;
         box-shadow:0 4px 16px rgba(0,0,0,.5); align-items:center; }
@@ -23,7 +23,7 @@ body canvas, #application-canvas { touch-action:none !important; }
 .sd-dock { scrollbar-width:none; }
 .sd-dock::-webkit-scrollbar { display:none; }
 
-/* 收缩态 */
+/* 鏀剁缉鎬?*/
 .sd-dock.sd-collapsed { padding:0; background:transparent; box-shadow:none; border-radius:50%; overflow:visible; }
 .sd-dock.sd-collapsed .sd-grp-btn, .sd-dock.sd-collapsed .sd-label, .sd-dock.sd-collapsed .sd-collapse, .sd-dock.sd-collapsed .sd-adopted { display:none; }
 
@@ -39,7 +39,7 @@ body canvas, #application-canvas { touch-action:none !important; }
                background:#2f3338; color:#888; font-size:12px; cursor:pointer; flex-shrink:0;
                display:flex; align-items:center; justify-content:center; }
 
-/* ===== 大类按钮（包裹被收养的 SS 按钮） ===== */
+/* ===== 澶х被鎸夐挳锛堝寘瑁硅鏀跺吇鐨?SS 鎸夐挳锛?===== */
 .sd-grp-btn { width:var(--sd-btn); height:var(--sd-btn); border-radius:12px; border:1px solid rgba(255,255,255,.1);
            background:#3a3f46; color:#ccc; display:flex; flex-direction:column; align-items:center; justify-content:center;
            font-size:10px; gap:2px; cursor:pointer; position:relative; flex-shrink:0; }
@@ -49,7 +49,7 @@ body canvas, #application-canvas { touch-action:none !important; }
                 background:#f59e0b; display:none; }
 .sd-grp-btn.has-active .sd-dot { display:block; }
 
-/* ===== 子工具浮层（内含被收养的 SS 原按钮） ===== */
+/* ===== 瀛愬伐鍏锋诞灞傦紙鍐呭惈琚敹鍏荤殑 SS 鍘熸寜閽級 ===== */
 .sd-sub-wrap { position:fixed; z-index:999; display:flex; gap:8px; padding:8px;
             background:rgba(30,33,38,.97); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.5);
             opacity:0; pointer-events:none; transition:opacity .18s ease; }
@@ -57,26 +57,26 @@ body canvas, #application-canvas { touch-action:none !important; }
 .sd-sub-wrap.sd-up   { flex-direction:row; }
 .sd-sub-wrap.sd-side { flex-direction:column; }
 
-/* 被收养的 SS 按钮：外框连图标一起缩（v6 强制宽高，不只缩图标） */
+/* 琚敹鍏荤殑 SS 鎸夐挳锛氬妗嗚繛鍥炬爣涓€璧风缉锛坴6 寮哄埗瀹介珮锛屼笉鍙缉鍥炬爣锛?*/
 .sd-sub-wrap .sd-adopted { width:2.25rem !important; height:2.25rem !important; min-width:0 !important; max-width:2.25rem !important; padding:0 !important; box-sizing:border-box !important; flex-shrink:0; }
 .sd-dock .sd-adopted { width:2.5rem !important; height:2.5rem !important; min-width:0 !important; padding:0 !important; box-sizing:border-box !important; flex-shrink:0; }
 .sd-sub-wrap .sd-adopted .toolbar-icon, .sd-sub-wrap .sd-adopted svg { transform:scale(.72); transform-origin:center; }
 .sd-extra .sd-name { font-size:10px; }
 
-/* 顶部菜单组按钮沿用 .sd-grp-btn，无需单独样式 */
+/* 椤堕儴鑿滃崟缁勬寜閽部鐢?.sd-grp-btn锛屾棤闇€鍗曠嫭鏍峰紡 */
 
-/* 子面板滚动：内容太多不出屏（横排横向滚、竖排纵向滚） */
+/* 瀛愰潰鏉挎粴鍔細鍐呭澶涓嶅嚭灞忥紙妯帓妯悜婊氥€佺珫鎺掔旱鍚戞粴锛?*/
 .sd-sub-wrap { max-width:calc(100vw - 16px); max-height:calc(100vh - 130px); }
 .sd-sub-wrap.sd-up { overflow-x:auto; overflow-y:hidden; }
 .sd-sub-wrap.sd-side { overflow-y:auto; overflow-x:hidden; }
 .sd-sub-wrap::-webkit-scrollbar { display:none; }
 
-/* 收养进来的 SS 菜单面板：静态布局，实底背景（默认色太深与画布几乎同色会看不见） */
+/* 鏀跺吇杩涙潵鐨?SS 鑿滃崟闈㈡澘锛氶潤鎬佸竷灞€锛屽疄搴曡儗鏅紙榛樿鑹插お娣变笌鐢诲竷鍑犱箮鍚岃壊浼氱湅涓嶈锛?*/
 .sd-menu-panel { background:#262b32 !important; border:1px solid rgba(255,255,255,.08); }
 .sd-menu-panel .menu-panel { position:static !important; box-shadow:none !important; background:transparent !important; }
 .sd-menu-panel .menu-row { min-width:150px; }
 
-/* 场景管理器 v6：全屏列表风格，原三按钮保留（标题栏下方），内容滚动 */
+/* 鍦烘櫙绠＄悊鍣?v6锛氬叏灞忓垪琛ㄩ鏍硷紝鍘熶笁鎸夐挳淇濈暀锛堟爣棰樻爮涓嬫柟锛夛紝鍐呭婊氬姩 */
 body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important;
   inset:0 !important; width:100% !important; max-width:100% !important; height:100% !important; max-height:100% !important;
   z-index:1300 !important;
@@ -93,10 +93,10 @@ body.sd-scene-open #scene-panel > .panel-header { display:flex !important; flex-
 body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header):not(.sd-sheet-header) { flex:1; overflow-y:auto; min-height:0; }
 body.mobile-mode #scene-panel { display:none !important; }
 body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
-/* 场景管理器打开时隐藏所有 dock，防圆球叠在面板上 */
+/* 鍦烘櫙绠＄悊鍣ㄦ墦寮€鏃堕殣钘忔墍鏈?dock锛岄槻鍦嗙悆鍙犲湪闈㈡澘涓?*/
 body.sd-scene-open .sd-dock { display:none !important; }
 
-/* 显示组两面板（外观/浮层）v6：同样全屏列表风格 */
+/* 鏄剧ず缁勪袱闈㈡澘锛堝瑙?娴眰锛塿6锛氬悓鏍峰叏灞忓垪琛ㄩ鏍?*/
 body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel, body.sd-docks-ready #settings-panel {
   position:fixed !important; inset:0 !important; width:100% !important; max-width:100% !important;
   height:100% !important; max-height:100% !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1300 !important;
@@ -104,7 +104,7 @@ body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel, body
 }
 body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > *, body.sd-docks-ready #settings-panel > * { flex-shrink:0; }
 
-/* 修复：PCUI 隐藏态必须赢过 v6 全屏规则的 display:flex（真机启动时弹窗隐身却占屏的根因） */
+/* 淇锛歅CUI 闅愯棌鎬佸繀椤昏耽杩?v6 鍏ㄥ睆瑙勫垯鐨?display:flex锛堢湡鏈哄惎鍔ㄦ椂寮圭獥闅愯韩鍗村崰灞忕殑鏍瑰洜锛?*/
 body.sd-docks-ready #dialog.pcui-hidden, body.sd-docks-ready [id$="-dialog"].pcui-hidden {
   display:none !important; visibility:hidden !important;
 }
@@ -114,10 +114,10 @@ body.sd-docks-ready #settings-panel.pcui-hidden {
 }
 body.sd-docks-ready #scene-panel.pcui-hidden { display:none !important; }
 
-/* 全屏层统一抬高：弹窗/外观/浮层与场景页同层 1300，压过所有 dock（真机右栏浮球曾叠在面板上） */
+/* 鍏ㄥ睆灞傜粺涓€鎶珮锛氬脊绐?澶栬/娴眰涓庡満鏅〉鍚屽眰 1300锛屽帇杩囨墍鏈?dock锛堢湡鏈哄彸鏍忔诞鐞冩浘鍙犲湪闈㈡澘涓婏級 */
 body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"],
 body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel { z-index:1300 !important; }
-/* v6 弹窗统一重构：全屏 + 列表布局 + 上下滚动 + 左上角返回 */
+/* v6 寮圭獥缁熶竴閲嶆瀯锛氬叏灞?+ 鍒楄〃甯冨眬 + 涓婁笅婊氬姩 + 宸︿笂瑙掕繑鍥?*/
 body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
   position:fixed !important; left:0 !important; right:auto !important; top:0 !important;
   width:100vw !important; max-width:100vw !important; height:100vh !important; max-height:100vh !important;
@@ -127,7 +127,7 @@ body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
 body.sd-docks-ready #dialog > [id="header"], body.sd-docks-ready [id$="-dialog"] > [id="header"] {
   flex-shrink:0; width:100% !important; height:3rem !important; padding-left:3rem !important;
 }
-/* 内容层：列表布局 + 滚动 */
+/* 鍐呭灞傦細鍒楄〃甯冨眬 + 婊氬姩 */
 body.sd-docks-ready #dialog > .pcui-container:not([id="header"]),
 body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) {
   flex:1 !important; width:100% !important;
@@ -138,29 +138,28 @@ body.sd-docks-ready #dialog > .pcui-container:not([id="header"]) > *,
 body.sd-docks-ready [id$="-dialog"] > .pcui-container:not([id="header"]) > * {
   width:100% !important; max-width:100% !important;
 }
-/* 弹窗内长列表兕底滚动 */
+/* 寮圭獥鍐呴暱鍒楄〃鍏曞簳婊氬姩 */
 body.sd-docks-ready #dialog .pcui-scroll-view { max-height:none; overflow-y:auto; }
 
-/* 全局兑底：弹窗内长列表也滚（尺寸已由 v6 全屏规则接管） */
+/* 鍏ㄥ眬鍏戝簳锛氬脊绐楀唴闀垮垪琛ㄤ篃婊氾紙灏哄宸茬敱 v6 鍏ㄥ睆瑙勫垯鎺ョ锛?*/
 body.sd-docks-ready #dialog .pcui-scroll-view { max-height:none; overflow-y:auto; }
 
-/* #menu 子树（菜单子面板容器）被画布图层压住：搬到 body 后全屏接管但本身不拦点击，
-   子元素（dock、子面板）恢复交互；checkEvent 的 contains 语义不变 */
+/* #menu 瀛愭爲锛堣彍鍗曞瓙闈㈡澘瀹瑰櫒锛夎鐢诲竷鍥惧眰鍘嬩綇锛氭惉鍒?body 鍚庡叏灞忔帴绠′絾鏈韩涓嶆嫤鐐瑰嚮锛?   瀛愬厓绱狅紙dock銆佸瓙闈㈡澘锛夋仮澶嶄氦浜掞紱checkEvent 鐨?contains 璇箟涓嶅彉 */
 body.sd-docks-ready #menu { position:fixed !important; inset:0; pointer-events:none; z-index:1000 !important; background:transparent !important; }
 body.sd-docks-ready #menu > * { pointer-events:auto; }
 
-/* press 反馈 */
+/* press 鍙嶉 */
 .sd-dock .sd-adopted:active, .sd-grp-btn:active { filter:brightness(1.5); }
 
-/* 拖动期间禁浏览器手势 */
+/* 鎷栧姩鏈熼棿绂佹祻瑙堝櫒鎵嬪娍 */
 body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 
-/* 吸附提示 */
+/* 鍚搁檮鎻愮ず */
 #sd-msg { position:fixed; left:50%; bottom:110px; transform:translateX(-50%);
           background:#2563eb; color:#fff; padding:10px 18px; border-radius:20px; font-size:14px;
           z-index:2000; transition:opacity .3s; opacity:0; pointer-events:none; }
 
-/* ===== 导演台面板 (v9) ===== */
+/* ===== 瀵兼紨鍙伴潰鏉?(v9) ===== */
 .sd-dir-panel { flex-direction:column !important; gap:6px !important; align-items:stretch; min-width:190px; }
 .sd-dir-btn { display:flex; align-items:center; gap:8px; padding:10px 12px; background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:10px; font-size:13px; min-height:44px; }
 .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
@@ -168,3 +167,14 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 .sd-dir-row { display:flex; gap:6px; align-items:center; }
 .sd-dir-clips { flex:1; min-height:44px; background:#1e293b; color:#e2e8f0; border:none; border-radius:10px; padding:0 8px; font-size:12px; }
 .sd-dir-info { font-size:11px; color:#94a3b8; padding:4px 2px; min-height:18px; }
+
+
+/* ===== 导演台面板 v9c：图标规格（与 SS 子工具对齐 2.25rem）===== */
+.sd-dir-panel { flex-direction:column !important; gap:6px !important; min-width:200px; }
+.sd-dir-grid { display:flex; gap:6px; flex-wrap:wrap; }
+.sd-dir-btn { width:2.25rem !important; height:2.25rem !important; min-width:0 !important; min-height:0 !important; padding:0; display:flex; align-items:center; justify-content:center; background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:8px; font-size:1.05rem; line-height:1; }
+.sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
+.sd-dir-btn:active { filter:brightness(1.4); }
+.sd-dir-row { display:flex; gap:6px; align-items:center; }
+.sd-dir-clips { flex:1; min-height:2.25rem; background:#1e293b; color:#e2e8f0; border:none; border-radius:8px; padding:0 8px; font-size:12px; }
+.sd-dir-info { font-size:11px; color:#94a3b8; padding:2px; min-height:16px; }

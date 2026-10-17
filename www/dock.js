@@ -116,14 +116,17 @@ waitUI(function () {
   /* ===== 导演台组（v9）：SS 源码侧 src/director.ts 提供 window.__director，
    * 通过 'director-state' DOM 事件同步状态；本面板只发命令不解析 GLB ===== */
   const DIR_NAME = '导演台';
+  // 图标规格按钮（与 SS 子工具同尺寸），文字收进 title 提示
   const DIR_PANEL_HTML =
-    '<button class="sd-dir-btn" data-act="add"><span>➕</span><span>添加人偶</span></button>' +
-    '<button class="sd-dir-btn" data-act="move"><span>🧍</span><span>移动人偶</span></button>' +
-    '<button class="sd-dir-btn" data-act="select"><span>🖐</span><span>选中人偶</span></button>' +
-    '<button class="sd-dir-btn" data-act="cursor"><span>🎯</span><span>放置游标</span></button>' +
-    '<button class="sd-dir-btn" data-act="delete"><span>🗑</span><span>删除</span></button>' +
+    '<div class="sd-dir-grid">' +
+    '<button class="sd-dir-btn" data-act="add" title="添加人偶">➕</button>' +
+    '<button class="sd-dir-btn" data-act="move" title="移动人偶（点击画布放置）">🧍</button>' +
+    '<button class="sd-dir-btn" data-act="select" title="选中人偶（点击画布选取）">🖐</button>' +
+    '<button class="sd-dir-btn" data-act="cursor" title="放置游标（点击画布）">🎯</button>' +
+    '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button>' +
+    '</div>' +
     '<div class="sd-dir-row"><select class="sd-dir-clips"></select>' +
-    '<button class="sd-dir-btn" data-act="playpause"><span>⏯</span></button></div>' +
+    '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
     '<div class="sd-dir-info">加载人偶后可点击画布放置</div>';
 
   function bindDirectorPanel(panel) {
