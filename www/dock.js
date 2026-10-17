@@ -116,12 +116,13 @@ waitUI(function () {
   // v12：角色下拉（人物库）+ 动作下拉 + 颜色下拉；删除/添加场景移入面板
   const DIR_PANEL_HTML =
     '<div class="sd-dir-row"><select class="sd-dir-chars" title="角色库"></select>' +
-    '<button class="sd-dir-btn" data-act="addscene" title="添加场景（导入文件）">📥</button></div>' +
+    '<button class="sd-dir-btn" data-act="add" title="在 3D 游标处摆放人偶">🧍</button></div>' +
     '<div class="sd-dir-row"><select class="sd-dir-clips" title="动作"></select>' +
     '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
-    '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select>' +
-    '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button></div>' +
-    '<div class="sd-dir-row"><button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/泼溅列表）">🗂 场景</button></div>' +
+    '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select></div>' +
+    '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="addscene" title="加载场景（导入文件）">📥</button>' +
+    '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button>' +
+    '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/泼溅列表）">🗂 场景</button></div>' +
     '<div class="sd-dir-info">选角色 → 摆放人偶</div>';
 
   function bindDirectorPanel(panel) {
@@ -170,6 +171,28 @@ waitUI(function () {
         sel.appendChild(o);
       });
     }
+
+    // v12b：面板打开时立即填充（此前只在 director-state 事件里填，
+    // 首次进入导演台、还没任何状态事件 → 角色列表空）
+    function refreshAll(preload) {
+      fillChars();
+      const d = window.__director;
+      if (!d) return;
+      if (d.info().loaded) {
+        fillClips();
+      } else if (preload && typeof d.switchCharacter === 'function') {
+        // 打开导演台就预加载当前角色，动作下拉不必等第一次摆放
+        d.switchCharacter(d.currentCharId || 'woman');
+      }
+    }
+    panel.__sdRefresh = refreshAll;
+    refreshAll();
+    // 模块可能比面板晚就绪：轮询到 __director 出现后立刻灌一次列表
+    let bootTries = 0;
+    const bootTimer = setInterval(() => {
+      if (window.__director) { refreshAll(true); clearInterval(bootTimer); }
+      else if (++bootTries > 120) clearInterval(bootTimer);
+    }, 100);
 
     panel.addEventListener('click', (e) => {
       const b = e.target.closest('.sd-dir-btn');
@@ -312,7 +335,7 @@ waitUI(function () {
       [
         { act:'select',   ico:'🖐', name:'选择' },
         { act:'cursor',   ico:'🎯', name:'游标' },
-        { act:'add',      ico:'🧍', name:'摆放人偶' },
+        { act:'movetocursor', ico:'🧲', name:'移动到游标' },
         { act:'xform',    ico:'🔢', name:'变换' },
         { act:'director', ico:'🎬', name:DIR_NAME }
       ].forEach(b => {
@@ -321,10 +344,12 @@ waitUI(function () {
         if (b.act === 'xform') btn.dataset.grp = 'xform';
         if (b.act === 'select') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armSelect(); showMsg(r==='select-puppet'?'点击画布选择（人偶/泼溅通用，再点取消）':'已取消选择'); };
         else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
-        else if (b.act === 'add') btn.onclick = () => {
+        else if (b.act === 'movetocursor') btn.onclick = () => {
           const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;}
-          const r=d.addPuppet();
-          showMsg(r==='loading'?'角色加载中…':'人偶已在游标处生成');
+          const r=d.moveSelectedToCursor();
+          showMsg(r==='ok'?'人偶已移到 3D 游标（可撤销）':
+                  r==='no-selection'?'先选中一个人偶':
+                  r==='no-cursor'?'先点「游标」在场景里定个位置':'已取消');
         };
         else if (b.act === 'xform') btn.onclick = () => toggleGroup('xform', dock);
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
@@ -382,6 +407,8 @@ waitUI(function () {
       st.openPanels.add(name); g.classList.add('sd-active');
       const mp = wrap.querySelector('.menu-panel');
       if (mp) mp.classList.remove('pcui-hidden');
+      // v12b：导演台面板每次展开都重新灌一次下拉（角色/动作）
+      if (wrap.__sdRefresh) wrap.__sdRefresh(true);
       placeNamed(name, g, st);
       wrap.classList.add('sd-open');
       requestAnimationFrame(() => requestAnimationFrame(() => { if (st.openPanels.has(name)) placeNamed(name, g, st); }));

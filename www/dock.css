@@ -192,5 +192,5 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 
 
 /* ===== v11 底栏五连/导演台面板 ===== */
-.sd-dir-scene { width:100% !important; justify-content:flex-start; padding:0 10px; font-size:13px; gap:8px; }
+.sd-dir-scene { flex:1 !important; width:auto !important; justify-content:center; padding:0 10px; font-size:13px; gap:8px; }
 .sd-dir-btn.sd-active { background:#2563eb; color:#fff; }
