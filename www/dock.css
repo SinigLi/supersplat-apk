@@ -200,6 +200,12 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 .sd-dir-btn.sd-active { background:#2563eb; color:#fff; }
 
 
+/* v25 定位组：重设基准点按钮（与 SS 子工具 2.25rem 对齐） */
+.sd-anchor-btn { width:2.25rem; height:2.25rem; display:flex; align-items:center; justify-content:center;
+  background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:8px; font-size:1.05rem;
+  line-height:1; cursor:pointer; flex-shrink:0; }
+.sd-anchor-btn:active { filter:brightness(1.4); }
+
 /* v13 工具激活让位：测量等工具自带底部工具条，底栏整体隐藏（只隐藏底栏） */
 body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 /* v13 道具行文案 */

@@ -523,6 +523,33 @@ waitUI(function () {
     assetInput.click();
   }
 
+  /* v25：定位组——重设变换基准点
+   *   中心：基准点移到模型包围盒中心
+   *   游标：基准点移到 3D 游标所在位置
+   * 基准点变化后，旋转/缩放都绕新点进行；只动基准点，不动模型。
+   */
+  function buildAnchorButtons(container) {
+    const mk = (ico, title, act, okMsg) => {
+      const b = makeShell('<span class="sd-ico">' + ico + '</span>', 'sd-anchor-btn');
+      b.title = title;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const d = window.__director;
+        if (!d || !d[act]) { showMsg('导演台模块未就绪'); return; }
+        const r = d[act]();
+        showMsg(
+          r === 'ok' ? okMsg :
+          r === 'same' ? '基准点已经在那里了' :
+          r === 'no-selection' ? '先选中一个人偶或模型' :
+          r === 'no-cursor' ? '先点「游标」在场景里定个位置' : '已取消');
+      });
+      container.appendChild(b);
+      return b;
+    };
+    mk('⊙', '基准点定位到外边中心', 'anchorPivotToCenter', '基准点已移到模型中心（可撤销）');
+    mk('⌖', '基准点定位到游标点', 'anchorPivotToCursor', '基准点已移到 3D 游标（可撤销）');
+  }
+
   function buildDock(def) {
     const dock = makeShell('', 'sd-dock sd-' + def.pos);
     dock.dataset.dock = def.id;
@@ -579,6 +606,8 @@ waitUI(function () {
         if (name === "相机") modes = buildShotPanel(wrap);   // v20 机位面板
         // 相机组把两个模式按钮塞进面板底部那行；其余组照旧平铺
         ids.forEach(function(id){ adopt(id, modes || wrap); });
+        // v25：定位组追加两个「重设基准点」按钮
+        if (name === "定位") buildAnchorButtons(wrap);
         document.body.appendChild(wrap);
         allPanels.set(name, wrap);
         g.onclick = function(){ toggleNamed(name, g, dock); };
