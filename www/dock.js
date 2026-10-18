@@ -790,10 +790,21 @@ waitUI(function () {
     const scene = window.scene;
     if (!scene || !scene.events) return;
     toolWatchBound = true;
-    const apply = (active) => document.body.classList.toggle('sd-tool-yield', !!active);
-    scene.events.on('tool.activated', (name) => apply(!!name));
-    scene.events.on('tool.deactivated', () => apply(false));
-    scene.events.on('tool.deactivate', () => apply(false));
+    // v16: 只给「真的自带底部工具条」的工具让位（测量/框选/涂抹等）。
+    // 移动/旋转/缩放 是纯 gizmo 工具，本来没有底部工具条；以前对它们也让位，
+    // 底栏一隐藏，而「变换」按钮就在底栏里 —— 于是再也点不回来。
+    const hasBottomToolbar = () => [...document.querySelectorAll('.select-toolbar')].some((el) => {
+      if (el.closest('.sd-sub-wrap')) return false;          // 我们自己的浮层不算数
+      const cs = getComputedStyle(el);
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && el.offsetParent !== null;
+    });
+    const apply = () => document.body.classList.toggle('sd-tool-yield', hasBottomToolbar());
+    // 工具条是工具内部异步显示/隐藏的，补两帧再算一次
+    const reapply = () => requestAnimationFrame(() => requestAnimationFrame(apply));
+    const sync = () => { apply(); reapply(); };
+    scene.events.on('tool.activated', sync);
+    scene.events.on('tool.deactivated', sync);
+    scene.events.on('tool.deactivate', sync);
   }
 
   /* ===================== 启动 ===================== */
