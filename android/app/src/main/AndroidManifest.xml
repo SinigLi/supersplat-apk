@@ -38,4 +38,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- v21: saving a rendered still. API 29+ goes through MediaStore and needs
+         no permission; below Q the plugin writes to the public Pictures folder. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 </manifest>
