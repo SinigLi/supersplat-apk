@@ -633,23 +633,34 @@ waitUI(function () {
       });
       // v6.3：外观/浮层面板——SS 原生打开时会内联写 top 锚定定位，把全屏面板顶出屏幕（真机 top:-376）；
       // 可见时强制钳位回原点，并注入与场景页同款头部（返回钮+标题）
-      [['appearance-panel','外观','right-toolbar-appearance'], ['overlays-panel','浮层','right-toolbar-overlays'], ['settings-panel','设置','right-toolbar-settings']].forEach(function(def){
+      [['appearance-panel','外观','right-toolbar-appearance','appearancePanel'], ['overlays-panel','浮层','right-toolbar-overlays','overlaysPanel'], ['settings-panel','设置','right-toolbar-settings','settingsPanel']].forEach(function(def){
         var p = document.getElementById(def[0]);
         if (!p || p.querySelector(':scope > .sd-sheet-header')) return;
         var hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">' + def[1] + '</span>', 'sd-sheet-header');
         p.insertBefore(hd, p.firstChild);
         hd.querySelector('.sd-back-btn').addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+        // v19：必须走 SS 事件，不能直接改 DOM。直接改 DOM 会让 SS 内部的
+        // this.hidden 停在 false，下次点工具栏按钮时 toggleVisible 只是把
+        // 内部状态改成隐藏，界面毫无反应，看起来就是「只能打开一次」。
         hd.querySelector('.sd-back-btn').onclick = function(e){
           e.stopPropagation();
-          p.classList.add('pcui-hidden');
-          p.style.display = 'none';
+          var sc = window.scene;
+          var handled = false;
+          if (sc && sc.events && def[3]) {
+            try { sc.events.fire(def[3] + '.setVisible', false); handled = true; } catch (err) {}
+          }
+          if (!handled) {
+            p.classList.add('pcui-hidden');
+            p.style.display = 'none';
+          }
           var tb = document.getElementById(def[2]);
           if (tb && tb.classList) tb.classList.remove('active');
         };
         new MutationObserver(function(){
           if (p.classList.contains('pcui-hidden')) return;
-          var cs = getComputedStyle(p);
-          if (cs.display === 'none') return;
+          // 清掉我们自己关面板时留下的内联 display:none。不清的话 computed
+          // 永远是 none，下面的钳位永不执行，面板也就再也打不开了。
+          if (p.style.display === 'none') p.style.display = '';
           // SS 内联锚定定位钳位：可见时强制全屏原点
           p.style.position = 'fixed'; p.style.left = '0'; p.style.top = '0';
           p.style.right = 'auto'; p.style.bottom = 'auto'; p.style.transform = 'none';
