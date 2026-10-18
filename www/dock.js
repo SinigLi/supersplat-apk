@@ -953,7 +953,7 @@ waitUI(function () {
   }
 
   /* ===================== v10 场景页人偶列表 =====================
-   * 人偶行：点行选中（进 SS 变换/撤销管线）、眼睛切显隐、垃圾桶删（走 undo）。
+   * 人偶行：点行选中（进 SS 变换/撤销管线）、眼睛切显隐、锁切禁止选中、垃圾桶删（走 undo）。
    * 数据源 window.__director.listPuppets()；director-state 事件驱动重绘。
    */
   function renderPuppetList() {
@@ -971,16 +971,22 @@ waitUI(function () {
     list.forEach((p) => {
       const row = makeShell(
         '<span class="sd-pup-name">🧍 ' + p.name + (p.clipLabel ? ' · ' + p.clipLabel : '') + (p.playing ? ' ▶' : '') + '</span>' +
-        '<span class="sd-pup-eye">' + (p.visible ? '👁' : '🚫') + '</span>' +
-        '<span class="sd-pup-del">🗑</span>', 'sd-pup-row' + (p.selected ? ' sd-pup-sel' : ''));
+        '<span class="sd-pup-eye" title="显示/隐藏">' + (p.visible ? '👁' : '🚫') + '</span>' +
+        '<span class="sd-pup-lock" title="禁止选中">' + (p.locked ? '🔒' : '🔓') + '</span>' +
+        '<span class="sd-pup-del" title="删除">🗑</span>',
+        'sd-pup-row' + (p.selected ? ' sd-pup-sel' : '') + (p.locked ? ' sd-pup-locked' : ''));
       row.addEventListener('click', (e) => {
         e.stopPropagation();
         const dd = window.__director;
         if (!dd) return;
         if (e.target.classList.contains('sd-pup-eye')) {
           dd.setPuppetVisible(p.id, !p.visible);
+        } else if (e.target.classList.contains('sd-pup-lock')) {
+          dd.setPuppetLocked(p.id, !p.locked);
         } else if (e.target.classList.contains('sd-pup-del')) {
           dd.deletePuppetById(p.id);
+        } else if (p.locked) {
+          showMsg('该对象已禁止选中，先解锁');
         } else {
           dd.selectPuppetById(p.id);
         }
@@ -996,12 +1002,16 @@ waitUI(function () {
       props.forEach((pr) => {
         const row = makeShell(
           '<span class="sd-pup-name">📦 ' + pr.name + '</span>' +
-          '<span class="sd-pup-del">🗑</span>', 'sd-pup-row' + (pr.selected ? ' sd-pup-sel' : ''));
+          '<span class="sd-pup-lock" title="禁止选中">' + (pr.locked ? '🔒' : '🔓') + '</span>' +
+          '<span class="sd-pup-del" title="删除">🗑</span>',
+          'sd-pup-row' + (pr.selected ? ' sd-pup-sel' : '') + (pr.locked ? ' sd-pup-locked' : ''));
         row.addEventListener('click', (e) => {
           e.stopPropagation();
           const dd = window.__director;
           if (!dd) return;
-          if (e.target.classList.contains('sd-pup-del')) dd.deletePropById(pr.id);
+          if (e.target.classList.contains('sd-pup-lock')) dd.setPropLocked(pr.id, !pr.locked);
+          else if (e.target.classList.contains('sd-pup-del')) dd.deletePropById(pr.id);
+          else if (pr.locked) showMsg('该对象已禁止选中，先解锁');
           else dd.selectPropById(pr.id);
           renderPuppetList();
         });

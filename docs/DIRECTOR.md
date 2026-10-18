@@ -43,10 +43,11 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `spawnPuppet(pos, charId?, name?)` | `Puppet \| null` | 指定位置摆放（内部/测试用） |
 | `deleteSelected()` | `'ok' \| 'none'` | 删除选中对象（走 undo） |
 | `deletePuppetById(id)` | `'ok' \| 'none'` | 按 id 删除（走 undo） |
-| `selectPuppet(p)` / `selectPuppetById(id)` | — | 选中 |
+| `selectPuppet(p)` / `selectPuppetById(id)` | `'ok' \| 'locked'` | 选中；`id` 传 null 表示取消选中（v24） |
 | `selectAtScreen(sx, sy)` | — | 屏幕坐标选中（人偶优先，其次泼溅） |
 | `setPuppetVisible(id, v)` | — | 显隐 |
-| `listPuppets()` | 数组 | 场景面板人偶列表 |
+| `setPuppetLocked(id, v)` | `'ok' \| 'none'` | **v24**：禁止选中（点不中、直接选也拒绝）；锁当前选中对象会先取消选中 |
+| `listPuppets()` | 数组 | 场景面板人偶列表（含 `locked`） |
 
 ### 2.2 手势武装（点击放置）
 
@@ -76,7 +77,8 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 |---|---|
 | `importModel(file)` | `File` → PlayCanvas container，落在 3D 游标，走 undo |
 | `listProps()` | 道具列表 |
-| `selectProp(p)` / `selectPropById(id)` | 选中 |
+| `selectProp(p)` / `selectPropById(id)` | 选中；`id` 传 null 表示取消选中（v24） |
+| `setPropLocked(id, v)` | **v24**：禁止选中（同人偶） |
 | `deletePropById(id)` | 删除（走 undo） |
 
 ### 2.5 机位（v20+）
@@ -222,7 +224,9 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v19 | 06c08c8 | ed5f0a6 | 设置面板重开、人偶按真实光标高度生成、游标减半 |
 | v20 | e693a4e | cd777e9 | 机位列表（新增/移除/查看/渲染）、猫狗缩放减半 |
 | v21 | 721cdbb | 5873c4c + 013bcdd | 每个机位生成相机模型、渲染时隐藏相机、原生存相册 |
-| v22 | c6ad615 | 65952f7 | 相机模型改固定世界尺寸、就近隐藏、另存为 + 分享。**当前** |
+| v22 | c6ad615 | 65952f7 | 相机模型改固定世界尺寸、就近隐藏、另存为 + 分享 |
+| v23 | — | 87578f6 | 顶栏去掉「渲染」分组按钮；恢复右上角视角立方体 |
+| v24 | 本地 | 分支 | 导入 GLB 自动选中（gizmo 立刻可见）；变换工具下点击切换选中；场景管理器「禁止选中」锁；人偶实体命名修复；`selectXById(null)` 取消选中。**当前** |
 
 ## 9. 已知边界 / 待办
 

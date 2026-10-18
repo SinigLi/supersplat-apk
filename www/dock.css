@@ -187,7 +187,11 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 .sd-pup-row { display:flex; align-items:center; gap:8px; padding:0 10px; margin:4px 0; background:rgba(30,41,59,.92); border-radius:10px; min-height:44px; cursor:pointer; }
 .sd-pup-row.sd-pup-sel { background:#2563eb; }
 .sd-pup-name { flex:1; font-size:13px; color:#e2e8f0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sd-pup-eye, .sd-pup-del { flex-shrink:0; font-size:16px; padding:8px; }
+.sd-pup-eye, .sd-pup-lock, .sd-pup-del { flex-shrink:0; font-size:16px; padding:8px; }
+/* v24：锁定行整体压暗，一眼看出不可选 */
+.sd-pup-row.sd-pup-locked .sd-pup-name { color:#94a3b8; opacity:.75; }
+.sd-pup-row.sd-pup-locked { background:rgba(30,41,59,.55); }
+.sd-pup-row.sd-pup-locked.sd-pup-sel { background:#334155; }
 .sd-pup-row:active { filter:brightness(1.3); }
 
 
