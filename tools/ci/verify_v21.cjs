@@ -84,8 +84,12 @@ if (!dockEntry) {
     const dock = readEntry(buf, dockEntry).toString('utf8');
     const webMarks = [
         ['save button', 'sd-shot-save'],
-        ['native call', 'Plugins.SaveImage.save'],
-        ['capability check', 'function canSaveNative'],
+        ['save-as button', 'sd-shot-saveas'],
+        ['share button', 'sd-shot-share'],
+        // v22: calls are dispatched by method name through the plugin object
+        ['native api lookup', 'Plugins.SaveImage'],
+        ['method dispatch', 'api[method]({'],
+        ['saveAs method', '"saveAs"'],
         ['filename passed', 'filename: r.name']
     ];
     console.log('--- web markers ---');
