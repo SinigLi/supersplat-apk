@@ -228,3 +228,17 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
   background:#16a34a; color:#fff; font-size:14px; }
 #sd-shot-preview .sd-shot-save:disabled { opacity:.6; }
 #sd-shot-preview .sd-shot-bar { gap:8px; flex-wrap:wrap; }
+
+/* ===== v22 预览层：保存 / 另存为 / 分享 ===== */
+#sd-shot-preview .sd-shot-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+#sd-shot-preview .sd-shot-save,
+#sd-shot-preview .sd-shot-saveas,
+#sd-shot-preview .sd-shot-share { padding:8px 16px; border:none; border-radius:8px;
+  color:#fff; font-size:14px; white-space:nowrap; }
+#sd-shot-preview .sd-shot-save { background:#16a34a; }
+#sd-shot-preview .sd-shot-saveas { background:#2563eb; }
+#sd-shot-preview .sd-shot-share { background:#7c3aed; }
+#sd-shot-preview .sd-shot-save:disabled,
+#sd-shot-preview .sd-shot-saveas:disabled,
+#sd-shot-preview .sd-shot-share:disabled { opacity:.55; }
+#sd-shot-preview .sd-shot-bar { align-items:flex-end; flex-direction:column; gap:8px; }

@@ -265,25 +265,34 @@ waitUI(function () {
   /* v20 机位面板：列出机位 / 新增 / 移除 / 查看 / 渲染照片
    * 机位数据在导演台里（window.__director.shots），这里只做展示与调用。
    * 相机分组原本的两个按钮是「轨道相机 / 飞行相机」操控模式，保留在底部一行。
-  /* 渲染结果预览层。
-   * 保存必须走原生：WebView 会静默忽略 <a download>，长按我们自己的浮层
-   * 也不会弹系统保存菜单。所以调 APK 外壳的 SaveImage 插件写相册。
    */
-  function canSaveNative() {
+
+  /* 渲染结果预览层。
+   * 三个动作都走原生：WebView 会静默忽略 <a download>，长按我们自己的浮层
+   * 也不会弹系统保存菜单。
+   *   保存到相册 → SaveImage.save   （直接进 Pictures/SuperSplat）
+   *   另存为     → SaveImage.saveAs （系统文件选择器，用户挑目录）
+   *   分享       → SaveImage.share  （系统分享面板）
+   */
+  function nativeImageApi() {
     var cap = window.Capacitor;
-    return !!(cap && cap.Plugins && cap.Plugins.SaveImage);
+    return (cap && cap.Plugins && cap.Plugins.SaveImage) || null;
   }
 
-  async function saveShotImage(r) {
-    if (!canSaveNative()) return { ok: false, reason: "no-native" };
+  async function callNativeImage(method, r) {
+    var api = nativeImageApi();
+    if (!api) return { ok: false, reason: "no-native" };
     try {
-      const res = await window.Capacitor.Plugins.SaveImage.save({
+      const res = await api[method]({
         data: r.dataUrl,
         filename: r.name || "shot.png"
       });
-      return { ok: true, name: (res && res.name) || r.name, uri: res && res.uri };
+      return { ok: true, res: res || {}, name: (res && res.name) || r.name };
     } catch (e) {
-      return { ok: false, reason: "failed", detail: (e && (e.message || e.errorMessage)) || String(e) };
+      const detail = (e && (e.message || e.errorMessage)) || String(e);
+      // 用户在系统选择器里按了取消：不是错误，别用红字吓人
+      if (/cancelled|canceled/i.test(detail)) return { ok: false, cancelled: true };
+      return { ok: false, reason: "failed", detail: detail };
     }
   }
 
@@ -295,36 +304,80 @@ waitUI(function () {
     var img = document.createElement("img");
     img.src = r.dataUrl;
     img.alt = r.name || "机位照片";
+
     var bar = document.createElement("div");
     bar.className = "sd-shot-bar";
     var tip = document.createElement("span");
     tip.className = "sd-shot-tip";
     tip.textContent = r.name || "照片";
-    var save = document.createElement("button");
-    save.className = "sd-shot-save";
-    save.textContent = "保存到相册";
-    var close = document.createElement("button");
-    close.className = "sd-shot-close";
-    close.textContent = "关闭";
-    close.onclick = function(ev){ ev.stopPropagation(); layer.remove(); };
 
-    save.onclick = async function(ev){
-      ev.stopPropagation();
-      if (!canSaveNative()) { showMsg("当前环境不支持保存（仅 APK 内可用）"); return; }
-      save.disabled = true;
-      save.textContent = "保存中…";
-      const res = await saveShotImage(r);
-      save.disabled = false;
-      if (res.ok) {
-        save.textContent = "✓ 已保存";
-        showMsg("已保存到相册：Pictures/SuperSplat/" + res.name);
+    var btnSave = document.createElement("button");
+    btnSave.className = "sd-shot-save";
+    btnSave.textContent = "保存到相册";
+
+    var btnSaveAs = document.createElement("button");
+    btnSaveAs.className = "sd-shot-saveas";
+    btnSaveAs.textContent = "另存为";
+
+    var btnShare = document.createElement("button");
+    btnShare.className = "sd-shot-share";
+    btnShare.textContent = "分享";
+
+    var btnClose = document.createElement("button");
+    btnClose.className = "sd-shot-close";
+    btnClose.textContent = "关闭";
+    btnClose.onclick = function(ev){ ev.stopPropagation(); layer.remove(); };
+
+    var guard = async function(btn, busyText, okText, failText, method, after) {
+      var api = nativeImageApi();
+      if (!api) { showMsg("当前环境不支持（仅在 APK 内可用）"); return; }
+      btn.disabled = true;
+      var label = btn.textContent;
+      btn.textContent = busyText;
+      const out = await callNativeImage(method, r);
+      btn.disabled = false;
+      if (out.ok) {
+        btn.textContent = okText;
+        if (after) after(out);
+      } else if (out.cancelled) {
+        btn.textContent = label;
+        showMsg("已取消");
       } else {
-        save.textContent = "保存到相册";
-        showMsg("保存失败：" + (res.detail || res.reason || "未知"));
+        btn.textContent = label;
+        showMsg(failText + "：" + (out.detail || out.reason || "未知"));
       }
     };
 
-    bar.appendChild(tip); bar.appendChild(save); bar.appendChild(close);
+    btnSave.onclick = function(ev){
+      ev.stopPropagation();
+      guard(btnSave, "保存中…", "✓ 已存相册", "保存失败", "save", function(out){
+        showMsg("已保存到相册：Pictures/SuperSplat/" + out.name);
+      });
+    };
+
+    btnSaveAs.onclick = function(ev){
+      ev.stopPropagation();
+      guard(btnSaveAs, "选择位置…", "✓ 已另存", "另存失败", "saveAs", function(out){
+        showMsg("已另存为：" + out.name);
+      });
+    };
+
+    btnShare.onclick = function(ev){
+      ev.stopPropagation();
+      guard(btnShare, "打开分享…", "✓ 已分享", "分享失败", "share", function(){
+        showMsg("已交给系统分享面板");
+      });
+    };
+
+    var actions = document.createElement("div");
+    actions.className = "sd-shot-actions";
+    actions.appendChild(btnSave);
+    actions.appendChild(btnSaveAs);
+    actions.appendChild(btnShare);
+    actions.appendChild(btnClose);
+
+    bar.appendChild(tip);
+    bar.appendChild(actions);
     layer.appendChild(img);
     layer.appendChild(bar);
     layer.addEventListener("pointerdown", function(ev){ ev.stopPropagation(); });
