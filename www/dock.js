@@ -274,7 +274,8 @@ waitUI(function () {
       assetInput = document.createElement('input');
       assetInput.type = 'file';
       assetInput.multiple = true;
-      assetInput.accept = '.glb,.gltf,' + SPLAT_EXT.join(',');
+    // 不设置 accept：Android 会把它翻译成 MIME 白名单，.glb/.ply 没有对应 MIME，
+    // 混进 .json/.webp/.txt 后会让 glb/ply 在系统选择器里不可选。类型判断放 JS 里做。
       assetInput.style.display = 'none';
       assetInput.addEventListener('change', () => {
         const files = Array.from(assetInput.files || []);
@@ -378,7 +379,11 @@ waitUI(function () {
       ].forEach(b => {
         const btn = makeShell(`<span class="sd-ico">${b.ico}</span><span class="sd-name">${b.name}</span><span class="sd-dot"></span>`, 'sd-grp-btn sd-dir-act');
         btn.dataset.act = b.act;
-        if (b.act === 'xform') btn.dataset.grp = 'xform';
+        // 注意：dataset 赋值不能作为 if/else 链的首项，否则会吃掉后续所有分支
+        if (b.act === 'xform') {
+          btn.dataset.grp = 'xform';
+          btn.onclick = () => toggleGroup('xform', dock);
+        }
 
         else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
         else if (b.act === 'movetocursor') btn.onclick = () => {
@@ -388,7 +393,6 @@ waitUI(function () {
                   r==='no-selection'?'先选中一个人偶':
                   r==='no-cursor'?'先点「游标」在场景里定个位置':'已取消');
         };
-        else if (b.act === 'xform') btn.onclick = () => toggleGroup('xform', dock);
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
         dock.appendChild(btn);
       });
