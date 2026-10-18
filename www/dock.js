@@ -265,10 +265,28 @@ waitUI(function () {
   /* v20 机位面板：列出机位 / 新增 / 移除 / 查看 / 渲染照片
    * 机位数据在导演台里（window.__director.shots），这里只做展示与调用。
    * 相机分组原本的两个按钮是「轨道相机 / 飞行相机」操控模式，保留在底部一行。
+  /* 渲染结果预览层。
+   * 保存必须走原生：WebView 会静默忽略 <a download>，长按我们自己的浮层
+   * 也不会弹系统保存菜单。所以调 APK 外壳的 SaveImage 插件写相册。
    */
-  /* 渲染结果预览层：真机 WebView 会静默忽略 <a download>，
-   * 所以把 PNG 显示出来让用户长按保存（这是 Android 上唯一可靠的方式）。
-   */
+  function canSaveNative() {
+    var cap = window.Capacitor;
+    return !!(cap && cap.Plugins && cap.Plugins.SaveImage);
+  }
+
+  async function saveShotImage(r) {
+    if (!canSaveNative()) return { ok: false, reason: "no-native" };
+    try {
+      const res = await window.Capacitor.Plugins.SaveImage.save({
+        data: r.dataUrl,
+        filename: r.name || "shot.png"
+      });
+      return { ok: true, name: (res && res.name) || r.name, uri: res && res.uri };
+    } catch (e) {
+      return { ok: false, reason: "failed", detail: (e && (e.message || e.errorMessage)) || String(e) };
+    }
+  }
+
   function showShotPreview(r) {
     var old = document.getElementById("sd-shot-preview");
     if (old) old.remove();
@@ -281,12 +299,32 @@ waitUI(function () {
     bar.className = "sd-shot-bar";
     var tip = document.createElement("span");
     tip.className = "sd-shot-tip";
-    tip.textContent = (r.name || "照片") + " · 长按图片保存";
+    tip.textContent = r.name || "照片";
+    var save = document.createElement("button");
+    save.className = "sd-shot-save";
+    save.textContent = "保存到相册";
     var close = document.createElement("button");
     close.className = "sd-shot-close";
     close.textContent = "关闭";
     close.onclick = function(ev){ ev.stopPropagation(); layer.remove(); };
-    bar.appendChild(tip); bar.appendChild(close);
+
+    save.onclick = async function(ev){
+      ev.stopPropagation();
+      if (!canSaveNative()) { showMsg("当前环境不支持保存（仅 APK 内可用）"); return; }
+      save.disabled = true;
+      save.textContent = "保存中…";
+      const res = await saveShotImage(r);
+      save.disabled = false;
+      if (res.ok) {
+        save.textContent = "✓ 已保存";
+        showMsg("已保存到相册：Pictures/SuperSplat/" + res.name);
+      } else {
+        save.textContent = "保存到相册";
+        showMsg("保存失败：" + (res.detail || res.reason || "未知"));
+      }
+    };
+
+    bar.appendChild(tip); bar.appendChild(save); bar.appendChild(close);
     layer.appendChild(img);
     layer.appendChild(bar);
     layer.addEventListener("pointerdown", function(ev){ ev.stopPropagation(); });

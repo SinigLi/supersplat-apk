@@ -222,3 +222,9 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 #sd-shot-preview .sd-shot-tip { color:#cbd5e1; font-size:13px; }
 #sd-shot-preview .sd-shot-close { padding:8px 18px; border:none; border-radius:8px;
   background:#2563eb; color:#fff; font-size:14px; }
+
+/* ===== v21 预览层保存按钮 ===== */
+#sd-shot-preview .sd-shot-save { padding:8px 18px; border:none; border-radius:8px;
+  background:#16a34a; color:#fff; font-size:14px; }
+#sd-shot-preview .sd-shot-save:disabled { opacity:.6; }
+#sd-shot-preview .sd-shot-bar { gap:8px; flex-wrap:wrap; }
