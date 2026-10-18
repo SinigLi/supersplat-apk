@@ -5,11 +5,11 @@ android/.gradle/
 # 本地测试产物（tests/*.mjs 运行时生成）
 shot_*.png
 v12b_result.json
+v13_result.json
 
 # artifact 下载目录
 dist_v*/
 dist/
 
-# ���ز���ģ�ͣ�13MB+�������ֿ⣩
+# 本地测试模型（13MB+，不进仓库）
 tests/assets/
-

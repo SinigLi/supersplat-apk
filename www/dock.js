@@ -467,7 +467,7 @@ waitUI(function () {
       const r = await d.renderShot(id, 1280, 720);
       if (r && r.ok) {
         showShotPreview(r);
-        showMsg("已渲染 " + r.name + "，长按图片可保存");
+        showMsg("已渲染 " + r.name + "，可保存到相册 / 另存为 / 分享");
       } else {
         showMsg("渲染失败：" + ((r && (r.detail || r.reason)) || "未知"));
       }
