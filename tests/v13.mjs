@@ -156,14 +156,13 @@ try {
     await new Promise(r => setTimeout(r, 900));
     fire('pointerdown', b); fire('pointerup', b);
     await new Promise(r => setTimeout(r, 900));
-    const adapter = p.adapter;
+    // v14: points live in the tool (each carries its own target) instead of
+    // on the adapter, so ask the tool for its state
+    const dbg = scene.events.invoke('measure.debug') || {};
     return {
-      targetIsPuppet: !!adapter.measurePoints && adapter.measurePoints.length === 2,
-      count: adapter.measurePoints ? adapter.measurePoints.length : -1,
-      len: adapter.measurePoints && adapter.measurePoints.length === 2
-        ? +adapter.worldTransform.transformPoint(adapter.measurePoints[0], new V())
-            .distance(adapter.worldTransform.transformPoint(adapter.measurePoints[1], new V())).toFixed(2)
-        : -1,
+      targetIsPuppet: dbg.count === 2 && dbg.names && dbg.names.every(n => n === p.name),
+      count: dbg.count ?? -1,
+      len: dbg.length ?? -1,
       yieldClass: document.body.classList.contains('sd-tool-yield')
     };
   })()`);

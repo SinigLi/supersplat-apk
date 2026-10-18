@@ -28,17 +28,17 @@
     {
       "name": "measure places 2 points on puppet",
       "ok": true,
-      "detail": "{\"targetIsPuppet\":true,\"count\":2,\"len\":0.86,\"yieldClass\":true}"
+      "detail": "{\"targetIsPuppet\":true,\"count\":2,\"len\":0.858,\"yieldClass\":true}"
     },
     {
       "name": "measure length is plausible (m)",
       "ok": true,
-      "detail": "len=0.86"
+      "detail": "len=0.858"
     },
     {
       "name": "bottom bar yields while tool active",
       "ok": true,
-      "detail": "{\"targetIsPuppet\":true,\"count\":2,\"len\":0.86,\"yieldClass\":true}"
+      "detail": "{\"targetIsPuppet\":true,\"count\":2,\"len\":0.858,\"yieldClass\":true}"
     },
     {
       "name": "bottom bar restored after tool exit",

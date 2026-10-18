@@ -120,11 +120,9 @@ waitUI(function () {
     '<div class="sd-dir-row"><select class="sd-dir-clips" title="动作"></select>' +
     '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
     '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select></div>' +
-    '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="addscene" title="加载场景（导入文件）">📥</button>' +
-    '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button>' +
-    '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/道具/泼溅列表）">🗂 场景</button></div>' +
-    '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="prop" title="导入 3D 道具（GLB / glTF）">📦</button>' +
-    '<span class="sd-dir-hint">道具</span></div>' +
+    '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="import" title="导入资产（泼溅 / 3D 模型，按后缀自动识别）">📥</button>' +
+    '<button class="sd-dir-btn" data-act="delete" title="删除选中对象">🗑</button>' +
+    '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="资产列表（人偶/道具/泼溅）">🗂 资产列表</button></div>' +
     '<div class="sd-dir-info">选角色 → 摆放人偶</div>';
 
   function bindDirectorPanel(panel) {
@@ -209,15 +207,11 @@ waitUI(function () {
       } else if (act === 'move') {
         const r = d.armPlacePuppet();
         showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
-      } else if (act === 'addscene') {
-        // 场景面板头部的导入按钮（solo/import/new 依次排列）
-        const hb = document.querySelectorAll('#scene-panel .panel-header-button');
-        if (hb[1]) { hb[1].click(); } else { showMsg('未找到添加场景按钮'); }
+      } else if (act === 'import') {
+        pickAssets();
       } else if (act === 'delete') {
         const r = d.deleteSelected();
-        showMsg(r === 'ok' ? '已删除人偶（可撤销）' : '没有人偶可删');
-      } else if (act === 'prop') {
-        pickPropFile(d);
+        showMsg(r === 'ok' ? '已删除选中对象（可撤销）' : '没有可删除的对象');
       } else if (act === 'scene') {
         toggleSceneSheet();
       } else if (act === 'playpause') {
@@ -268,26 +262,45 @@ waitUI(function () {
     });
   }
 
-  /* v13 道具导入：GLB / glTF 走 PlayCanvas container 资产（引擎无 OBJ 解析器，故不支持 .obj） */
-  let propInput = null;
-  function pickPropFile(d) {
-    if (!propInput) {
-      propInput = document.createElement('input');
-      propInput.type = 'file';
-      propInput.accept = '.glb,.gltf';
-      propInput.style.display = 'none';
-      propInput.addEventListener('change', () => {
-        const f = propInput.files && propInput.files[0];
-        propInput.value = '';
-        if (!f) return;
-        const dd = window.__director;
-        if (!dd || !dd.importModel) { showMsg('导演台模块未就绪'); return; }
-        showMsg('正在导入 ' + f.name + '…');
-        dd.importModel(f);
+  /* v14 统一导入入口：一个按钮，按后缀自动分流
+   *   .glb/.gltf            → PlayCanvas container 资产（导演台道具，落在 3D 游标）
+   *   .ply/.splat/.sog/.ksplat/.spz/.ssproj/.json/.webp/.txt → SS 原生泼溅导入管线
+   * 引擎没有 OBJ 解析器，所以 .obj 不在列表里。
+   */
+  const SPLAT_EXT = ['.ply', '.splat', '.sog', '.ksplat', '.spz', '.ssproj', '.json', '.webp', '.txt'];
+  let assetInput = null;
+  function pickAssets() {
+    if (!assetInput) {
+      assetInput = document.createElement('input');
+      assetInput.type = 'file';
+      assetInput.multiple = true;
+      assetInput.accept = '.glb,.gltf,' + SPLAT_EXT.join(',');
+      assetInput.style.display = 'none';
+      assetInput.addEventListener('change', () => {
+        const files = Array.from(assetInput.files || []);
+        assetInput.value = '';
+        if (!files.length) return;
+        files.forEach((f) => {
+          const name = (f.name || '').toLowerCase();
+          const isModel = name.endsWith('.glb') || name.endsWith('.gltf');
+          if (isModel) {
+            const d = window.__director;
+            if (!d || !d.importModel) { showMsg('导演台模块未就绪'); return; }
+            showMsg('正在导入模型 ' + f.name + '…');
+            d.importModel(f);
+          } else if (SPLAT_EXT.some(ext => name.endsWith(ext))) {
+            const sc = window.scene;
+            if (!sc || !sc.events) { showMsg('编辑器未就绪'); return; }
+            showMsg('正在导入泼溅 ' + f.name + '…');
+            sc.events.invoke('import', [{ filename: f.name, contents: f }]);
+          } else {
+            showMsg('不支持的文件：' + f.name);
+          }
+        });
       });
-      document.body.appendChild(propInput);
+      document.body.appendChild(assetInput);
     }
-    propInput.click();
+    assetInput.click();
   }
 
   function buildDock(def) {
@@ -641,7 +654,7 @@ waitUI(function () {
       });
       const sp = document.getElementById('scene-panel');      if (sp && !sp.querySelector(':scope > .sd-sheet-header')) {
         // v6：全屏风头部——左上角返回 + 标题；原三按钮保留在下方 panel-header 行
-        const hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">场景管理</span>', 'sd-sheet-header');
+        const hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">资产列表</span>', 'sd-sheet-header');
         sp.insertBefore(hd, sp.firstChild);
         hd.querySelector('.sd-back-btn').addEventListener('pointerdown', e => e.stopPropagation());
         hd.querySelector('.sd-back-btn').onclick = (e) => {
