@@ -1,0 +1,82 @@
+{
+  "results": [
+    {
+      "name": "bottom bar has no select button",
+      "ok": true,
+      "detail": "[\"cursor\",\"movetocursor\",\"xform\",\"director\"]"
+    },
+    {
+      "name": "bottom bar keeps cursor/move/xform/director",
+      "ok": true,
+      "detail": "[\"cursor\",\"movetocursor\",\"xform\",\"director\"]"
+    },
+    {
+      "name": "puppet projects to canvas",
+      "ok": true,
+      "detail": "{\"sx\":246,\"sy\":217}"
+    },
+    {
+      "name": "default tap selects puppet (no arm mode)",
+      "ok": true,
+      "detail": "{\"id\":1,\"name\":\"女人1\"}"
+    },
+    {
+      "name": "measure pick coordinates resolved",
+      "ok": true,
+      "detail": "{\"sx\":246,\"sy\":217}"
+    },
+    {
+      "name": "measure places 2 points on puppet",
+      "ok": true,
+      "detail": "{\"targetIsPuppet\":true,\"count\":2,\"len\":0.86,\"yieldClass\":true}"
+    },
+    {
+      "name": "measure length is plausible (m)",
+      "ok": true,
+      "detail": "len=0.86"
+    },
+    {
+      "name": "bottom bar yields while tool active",
+      "ok": true,
+      "detail": "{\"targetIsPuppet\":true,\"count\":2,\"len\":0.86,\"yieldClass\":true}"
+    },
+    {
+      "name": "bottom bar restored after tool exit",
+      "ok": true,
+      "detail": "{\"yield\":false,\"display\":\"flex\"}"
+    },
+    {
+      "name": "prop imported",
+      "ok": true,
+      "detail": "{\"start\":0}"
+    },
+    {
+      "name": "prop instantiated with render meshes",
+      "ok": true,
+      "detail": "{\"name\":\"shiba_prop\",\"meshes\":1,\"x\":0,\"z\":0,\"listed\":1,\"infoProps\":1}"
+    },
+    {
+      "name": "prop listed in scene sheet",
+      "ok": true,
+      "detail": "{\"name\":\"shiba_prop\",\"meshes\":1,\"x\":0,\"z\":0,\"listed\":1,\"infoProps\":1}"
+    },
+    {
+      "name": "prop select/delete/undo",
+      "ok": true,
+      "detail": "{\"selName\":\"shiba_prop\",\"del\":\"ok\",\"after\":0,\"restored\":1}"
+    },
+    {
+      "name": "scene sheet lists puppet + prop rows",
+      "ok": true,
+      "detail": "{\"rows\":[\"🧍 女人1 · Idle_Loop👁🗑\",\"📦 shiba_prop🗑\"],\"heads\":[\"人偶\",\"道具\"]}"
+    },
+    {
+      "name": "no render-loop exceptions",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "logs": [
+    "error: function not found 'sceneObjectPick'"
+  ]
+}

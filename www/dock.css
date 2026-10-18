@@ -194,3 +194,9 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 /* ===== v11 底栏五连/导演台面板 ===== */
 .sd-dir-scene { flex:1 !important; width:auto !important; justify-content:center; padding:0 10px; font-size:13px; gap:8px; }
 .sd-dir-btn.sd-active { background:#2563eb; color:#fff; }
+
+
+/* v13 工具激活让位：测量等工具自带底部工具条，底栏整体隐藏（只隐藏底栏） */
+body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
+/* v13 道具行文案 */
+.sd-dir-hint { flex:1; font-size:12px; color:#94a3b8; padding-left:4px; }

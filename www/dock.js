@@ -122,7 +122,9 @@ waitUI(function () {
     '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select></div>' +
     '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="addscene" title="加载场景（导入文件）">📥</button>' +
     '<button class="sd-dir-btn" data-act="delete" title="删除选中人偶">🗑</button>' +
-    '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/泼溅列表）">🗂 场景</button></div>' +
+    '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="场景管理（人偶/道具/泼溅列表）">🗂 场景</button></div>' +
+    '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="prop" title="导入 3D 道具（GLB / glTF）">📦</button>' +
+    '<span class="sd-dir-hint">道具</span></div>' +
     '<div class="sd-dir-info">选角色 → 摆放人偶</div>';
 
   function bindDirectorPanel(panel) {
@@ -214,6 +216,8 @@ waitUI(function () {
       } else if (act === 'delete') {
         const r = d.deleteSelected();
         showMsg(r === 'ok' ? '已删除人偶（可撤销）' : '没有人偶可删');
+      } else if (act === 'prop') {
+        pickPropFile(d);
       } else if (act === 'scene') {
         toggleSceneSheet();
       } else if (act === 'playpause') {
@@ -253,9 +257,8 @@ waitUI(function () {
       if (info.selectedTint) tintSel.value = info.selectedTint;
       setActive('move', info.mode === 'place-puppet');
       // v11 底栏导演台动作按钮的 armed 高亮同步（选择/游标）
-      document.querySelectorAll('.sd-dir-act[data-act="select"], .sd-dir-act[data-act="cursor"]').forEach(x => {
-        const a = x.dataset.act;
-        x.classList.toggle('sd-active', (a === 'select' && info.mode === 'select-puppet') || (a === 'cursor' && info.mode === 'place-cursor'));
+      document.querySelectorAll('.sd-dir-act[data-act="cursor"]').forEach(x => {
+        x.classList.toggle('sd-active', info.mode === 'place-cursor');
       });
       if (info.hasPuppet && info.selectedName) {
         infoEl.textContent = `${info.selectedName} · ${info.clipLabel || '无动作'} ${info.playing ? '▶' : '⏸'}`;
@@ -263,6 +266,28 @@ waitUI(function () {
         infoEl.textContent = '选角色 → 摆放人偶';
       }
     });
+  }
+
+  /* v13 道具导入：GLB / glTF 走 PlayCanvas container 资产（引擎无 OBJ 解析器，故不支持 .obj） */
+  let propInput = null;
+  function pickPropFile(d) {
+    if (!propInput) {
+      propInput = document.createElement('input');
+      propInput.type = 'file';
+      propInput.accept = '.glb,.gltf';
+      propInput.style.display = 'none';
+      propInput.addEventListener('change', () => {
+        const f = propInput.files && propInput.files[0];
+        propInput.value = '';
+        if (!f) return;
+        const dd = window.__director;
+        if (!dd || !dd.importModel) { showMsg('导演台模块未就绪'); return; }
+        showMsg('正在导入 ' + f.name + '…');
+        dd.importModel(f);
+      });
+      document.body.appendChild(propInput);
+    }
+    propInput.click();
   }
 
   function buildDock(def) {
@@ -307,12 +332,12 @@ waitUI(function () {
       });
       // v11：场景按钮移入导演台子面板（data-role="scene-toggle"），顶栏不再放
     } else if (def.viewOptions) {
-      // 右侧：视图组也按一级分组——相机模式（轨道/飞行）、外观、浮层、定位（框选/回原点/设置）
+      // 右侧：视图组按一级分组——相机模式（轨道/飞行）、设置（外观/浮层/设置面板）、定位（框选/回原点）
       [['相机', ['right-toolbar-orbit-mode','right-toolbar-fly-mode']],
-       ['显示', ['right-toolbar-appearance','right-toolbar-overlays']],
-       ['定位', ['right-toolbar-frame-selection','right-toolbar-camera-origin','right-toolbar-settings']]
+       ['设置', ['right-toolbar-appearance','right-toolbar-overlays','right-toolbar-settings']],
+       ['定位', ['right-toolbar-frame-selection','right-toolbar-camera-origin']]
       ].forEach(([name, ids]) => {
-        const g = makeShell(`<span class="sd-ico">${name==='相机'?'🎥':name==='显示'?'🎨':'🎯'}</span><span class="sd-name">${name}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
+        const g = makeShell(`<span class="sd-ico">${name==='相机'?'🎥':name==='设置'?'⚙️':'🎯'}</span><span class="sd-name">${name}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
         const wrap = makeShell('', 'sd-sub-wrap');
         ids.forEach(id => adopt(id, wrap));
         document.body.appendChild(wrap);
@@ -333,7 +358,6 @@ waitUI(function () {
       allPanels.set(DIR_NAME, dwrap2);
       bindDirectorPanel(dwrap2);
       [
-        { act:'select',   ico:'🖐', name:'选择' },
         { act:'cursor',   ico:'🎯', name:'游标' },
         { act:'movetocursor', ico:'🧲', name:'移动到游标' },
         { act:'xform',    ico:'🔢', name:'变换' },
@@ -342,7 +366,7 @@ waitUI(function () {
         const btn = makeShell(`<span class="sd-ico">${b.ico}</span><span class="sd-name">${b.name}</span><span class="sd-dot"></span>`, 'sd-grp-btn sd-dir-act');
         btn.dataset.act = b.act;
         if (b.act === 'xform') btn.dataset.grp = 'xform';
-        if (b.act === 'select') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armSelect(); showMsg(r==='select-puppet'?'点击画布选择（人偶/泼溅通用，再点取消）':'已取消选择'); };
+
         else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
         else if (b.act === 'movetocursor') btn.onclick = () => {
           const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;}
@@ -684,10 +708,13 @@ waitUI(function () {
     if (!host) return;
     const d = window.__director;
     const list = (d && d.listPuppets) ? d.listPuppets() : [];
+    const props = (d && d.listProps) ? d.listProps() : [];
     host.innerHTML = '';
-    if (!list.length) return;
-    const title = makeShell('<span class="sd-pup-title">人偶</span>', 'sd-pup-head');
-    host.appendChild(title);
+    if (!list.length && !props.length) return;
+    if (list.length) {
+      const title = makeShell('<span class="sd-pup-title">人偶</span>', 'sd-pup-head');
+      host.appendChild(title);
+    }
     list.forEach((p) => {
       const row = makeShell(
         '<span class="sd-pup-name">🧍 ' + p.name + (p.clipLabel ? ' · ' + p.clipLabel : '') + (p.playing ? ' ▶' : '') + '</span>' +
@@ -708,12 +735,49 @@ waitUI(function () {
       });
       host.appendChild(row);
     });
+
+    // v13 道具行：与泼溅/人偶同一套点选 + 撤销删除
+    if (props.length) {
+      const h2 = makeShell('<span class="sd-pup-title">道具</span>', 'sd-pup-head');
+      host.appendChild(h2);
+      props.forEach((pr) => {
+        const row = makeShell(
+          '<span class="sd-pup-name">📦 ' + pr.name + '</span>' +
+          '<span class="sd-pup-del">🗑</span>', 'sd-pup-row' + (pr.selected ? ' sd-pup-sel' : ''));
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const dd = window.__director;
+          if (!dd) return;
+          if (e.target.classList.contains('sd-pup-del')) dd.deletePropById(pr.id);
+          else dd.selectPropById(pr.id);
+          renderPuppetList();
+        });
+        host.appendChild(row);
+      });
+    }
   }
   document.addEventListener('director-state', () => {
     if (document.body.classList.contains('sd-scene-open')) renderPuppetList();
   });
   // 场景按钮打开时也刷一次（render 由 sceneBtn onclick 触发）
   window.__renderPuppetList = renderPuppetList;
+
+  /* ===================== 工具激活让位（v13） =====================
+   * 测量等 SS 工具激活时自带底部工具条（select-toolbar），与我们的底栏抢空间。
+   * 监听 tool.activated / tool.deactivated，把底栏整体让位（隐藏），退出工具后恢复；
+   * 只影响底栏，顶栏/右栏不动。
+   */
+  let toolWatchBound = false;
+  function bindToolWatch() {
+    if (toolWatchBound) return;
+    const scene = window.scene;
+    if (!scene || !scene.events) return;
+    toolWatchBound = true;
+    const apply = (active) => document.body.classList.toggle('sd-tool-yield', !!active);
+    scene.events.on('tool.activated', (name) => apply(!!name));
+    scene.events.on('tool.deactivated', () => apply(false));
+    scene.events.on('tool.deactivate', () => apply(false));
+  }
 
   /* ===================== 启动 ===================== */
 
@@ -727,5 +791,11 @@ waitUI(function () {
   hideMenuBar(docks.find(s => s.def.menuOptions)?.dock);
   watchDialogs();
   document.body.classList.add('sd-docks-ready');
+  bindToolWatch();
+  // 场景对象可能在 dock 构建后才就绪，轮询兜底一次
+  if (!toolWatchBound) {
+    let n = 0;
+    const t = setInterval(() => { bindToolWatch(); if (toolWatchBound || ++n > 60) clearInterval(t); }, 500);
+  }
 });
 })();
