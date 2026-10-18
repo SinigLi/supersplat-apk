@@ -51,11 +51,12 @@ waitUI(function () {
       extra:[ {id:'bottom-toolbar-measure', ico:'📐', name:'测量'} ] },
   ];
 
-  // v10 分镜工具定位：泼溅专属菜单（文件/选择/帮助）先隐藏，保留编辑/渲染；
+  // v10 分镜工具定位：泼溅专属菜单（文件/选择/帮助）先隐藏，保留编辑；
   // 被隐藏的 .menu-panel 仍留在 #menu 内但无入口可开（pcui-hidden）
+  // v23：老板要求顶栏不再放「渲染」分组按钮，TOP_MENUS 置空。
+  // 渲染菜单面板本身仍在 #menu 内，只是没有入口（要恢复就把条目加回来）。
   const MENU_ORDER = ['file','open-recent','import-recent','export','edit','selection','render','video-tutorials','help'];
   const TOP_MENUS = [
-    { key:'render',    name:'渲染', ico:'🎬' },
   ];
 
   const btnEl = id => document.getElementById(id);

@@ -79,13 +79,35 @@ body.mobile-mode .menu-panel {
 }
 
 /* ---------- 5. overlay 收敛 ---------- */
-body.mobile-mode #view-cube-container,
+/* v23：视角立方体（右上角上下左右前后切换）恢复常驻。
+ * 之前这里把它和性能/叠层/相机信息一起 display:none 掉了，只有打开「浮层」
+ * 才 display:block —— 等于默认完全看不到。现在立方体单独常显，其余三个仍收。
+ * 原样式 pointer-events:none 只挡容器，内部圆点自带 pointer-events:all，
+ * 所以点击仍然有效；这里再显式保证一次，免得被别的规则盖掉。
+ */
 body.mobile-mode #perf-overlay,
 body.mobile-mode #overdraw-legend,
 body.mobile-mode #camera-info-overlay {
     display: none;
 }
-body.mobile-mode.show-overlays #view-cube-container,
+body.mobile-mode #view-cube-container {
+    display: block !important;
+    position: absolute !important;
+    width: 120px !important;
+    height: 120px !important;
+    right: 2px !important;
+    top: calc(env(safe-area-inset-top, 0px) + 4px) !important;
+    pointer-events: none !important;
+    z-index: 900;
+}
+body.mobile-mode #view-cube-svg {
+    pointer-events: none;
+}
+/* 触摸命中区放大：圆点视觉半径 10，命中半径 18（手指比鼠标粗） */
+body.mobile-mode #view-cube-svg circle {
+    pointer-events: all !important;
+    stroke-width: 3;
+}
 body.mobile-mode.show-overlays #perf-overlay {
     display: block;
 }
