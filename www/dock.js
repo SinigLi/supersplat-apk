@@ -262,6 +262,133 @@ waitUI(function () {
     });
   }
 
+  /* v20 机位面板：列出机位 / 新增 / 移除 / 查看 / 渲染照片
+   * 机位数据在导演台里（window.__director.shots），这里只做展示与调用。
+   * 相机分组原本的两个按钮是「轨道相机 / 飞行相机」操控模式，保留在底部一行。
+   */
+  /* 渲染结果预览层：真机 WebView 会静默忽略 <a download>，
+   * 所以把 PNG 显示出来让用户长按保存（这是 Android 上唯一可靠的方式）。
+   */
+  function showShotPreview(r) {
+    var old = document.getElementById("sd-shot-preview");
+    if (old) old.remove();
+    var layer = document.createElement("div");
+    layer.id = "sd-shot-preview";
+    var img = document.createElement("img");
+    img.src = r.dataUrl;
+    img.alt = r.name || "机位照片";
+    var bar = document.createElement("div");
+    bar.className = "sd-shot-bar";
+    var tip = document.createElement("span");
+    tip.className = "sd-shot-tip";
+    tip.textContent = (r.name || "照片") + " · 长按图片保存";
+    var close = document.createElement("button");
+    close.className = "sd-shot-close";
+    close.textContent = "关闭";
+    close.onclick = function(ev){ ev.stopPropagation(); layer.remove(); };
+    bar.appendChild(tip); bar.appendChild(close);
+    layer.appendChild(img);
+    layer.appendChild(bar);
+    layer.addEventListener("pointerdown", function(ev){ ev.stopPropagation(); });
+    document.body.appendChild(layer);
+    return layer;
+  }
+
+  function buildShotPanel(wrap) {
+    wrap.classList.add("sd-dir-panel", "sd-shot-panel");
+    wrap.innerHTML =
+      '<div class="sd-dir-row"><select class="sd-shot-list" title="机位列表"></select></div>' +
+      '<div class="sd-dir-row">' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="add" title="新增机位：记录当前视角">＋ 新增</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="remove" title="移除选中的机位">－ 移除</button>' +
+      '</div>' +
+      '<div class="sd-dir-row">' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="goto" title="查看机位：跳到选中机位">👁 查看</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
+      '</div>' +
+      '<div class="sd-dir-row sd-cam-modes"></div>' +
+      '<div class="sd-dir-hint">下排：轨道=绕目标转，飞行=第一人称</div>';
+
+    const list = wrap.querySelector(".sd-shot-list");
+    const modes = wrap.querySelector(".sd-cam-modes");
+    const btn = act => wrap.querySelector('.sd-shot-btn[data-shot="' + act + '"]');
+
+    function fill() {
+      const d = window.__director;
+      if (!d || !list) return;
+      const keep = list.value;
+      list.textContent = "";
+      (d.listShots() || []).forEach(shot => {
+        const o = document.createElement("option");
+        o.value = String(shot.id);
+        o.textContent = shot.name;
+        list.appendChild(o);
+      });
+      if (!list.options.length) {
+        const o = document.createElement("option");
+        o.value = ""; o.textContent = "（还没有机位）";
+        list.appendChild(o);
+      } else if (keep && Array.from(list.options).some(o => o.value === keep)) {
+        list.value = keep;
+      }
+      const has = !!list.value;
+      ["remove", "goto", "render"].forEach(a => { const b = btn(a); if (b) b.disabled = !has; });
+    }
+
+    const curId = () => { const v = list && list.value; return v ? Number(v) : 0; };
+
+    const bAdd = btn("add");
+    if (bAdd) bAdd.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director;
+      if (!d) { showMsg("导演台模块未就绪"); return; }
+      const shot = d.addShot();
+      fill();
+      if (shot && list) list.value = String(shot.id);
+      showMsg("已记录机位：" + (shot ? shot.name : ""));
+    };
+
+    const bDel = btn("remove");
+    if (bDel) bDel.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      const r = d.removeShot(id);
+      fill();
+      showMsg(r === "ok" ? "机位已移除" : "没有这个机位");
+    };
+
+    const bGo = btn("goto");
+    if (bGo) bGo.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      const r = d.gotoShot(id);
+      showMsg(r === "ok" ? "已切换到该机位" : "没有这个机位");
+    };
+
+    const bRender = btn("render");
+    if (bRender) bRender.onclick = async (e) => {
+      e.stopPropagation();
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      showMsg("正在渲染照片…");
+      const r = await d.renderShot(id, 1280, 720);
+      if (r && r.ok) {
+        showShotPreview(r);
+        showMsg("已渲染 " + r.name + "，长按图片可保存");
+      } else {
+        showMsg("渲染失败：" + ((r && (r.detail || r.reason)) || "未知"));
+      }
+    };
+
+    // 每次展开都刷新（新增/删除后外部也可能变化）
+    wrap.__sdRefresh = fill;
+    fill();
+    return modes;
+  }
+
+
   /* v14 统一导入入口：一个按钮，按后缀自动分流
    *   .glb/.gltf            → PlayCanvas container 资产（导演台道具，落在 3D 游标）
    *   .ply/.splat/.sog/.ksplat/.spz/.ssproj/.json/.webp/.txt → SS 原生泼溅导入管线
@@ -346,17 +473,23 @@ waitUI(function () {
       });
       // v11：场景按钮移入导演台子面板（data-role="scene-toggle"），顶栏不再放
     } else if (def.viewOptions) {
-      // 右侧：视图组按一级分组——相机模式（轨道/飞行）、设置（外观/浮层/设置面板）、定位（框选/回原点）
-      [['相机', ['right-toolbar-orbit-mode','right-toolbar-fly-mode']],
-       ['设置', ['right-toolbar-appearance','right-toolbar-overlays','right-toolbar-settings']],
-       ['定位', ['right-toolbar-frame-selection','right-toolbar-camera-origin']]
-      ].forEach(([name, ids]) => {
-        const g = makeShell(`<span class="sd-ico">${name==='相机'?'🎥':name==='设置'?'⚙️':'🎯'}</span><span class="sd-name">${name}</span><span class="sd-dot"></span>`, 'sd-grp-btn');
-        const wrap = makeShell('', 'sd-sub-wrap');
-        ids.forEach(id => adopt(id, wrap));
+      // 右侧：三个一级分组——相机（机位管理）、设置（外观/浮层/设置）、定位（框选/回原点）
+      [
+        ["相机", ["right-toolbar-orbit-mode", "right-toolbar-fly-mode"]],
+        ["设置", ["right-toolbar-appearance", "right-toolbar-overlays", "right-toolbar-settings"]],
+        ["定位", ["right-toolbar-frame-selection", "right-toolbar-camera-origin"]]
+      ].forEach(function(pair){
+        var name = pair[0], ids = pair[1];
+        var ico = name === "相机" ? "🎥" : (name === "设置" ? "⚙️" : "🎯");
+        var g = makeShell('<span class="sd-ico">' + ico + '</span><span class="sd-name">' + name + '</span><span class="sd-dot"></span>', "sd-grp-btn");
+        var wrap = makeShell("", "sd-sub-wrap");
+        var modes = null;
+        if (name === "相机") modes = buildShotPanel(wrap);   // v20 机位面板
+        // 相机组把两个模式按钮塞进面板底部那行；其余组照旧平铺
+        ids.forEach(function(id){ adopt(id, modes || wrap); });
         document.body.appendChild(wrap);
         allPanels.set(name, wrap);
-        g.onclick = () => toggleNamed(name, g, dock);
+        g.onclick = function(){ toggleNamed(name, g, dock); };
         dock.appendChild(g);
       });
       } else if (def.dirBar) {
