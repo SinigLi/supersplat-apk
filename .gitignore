@@ -9,3 +9,7 @@ v12b_result.json
 # artifact 涓嬭浇鐩綍
 dist_v*/
 dist/
+
+# 本地测试模型（13MB+，不进仓库）
+tests/assets/
+
