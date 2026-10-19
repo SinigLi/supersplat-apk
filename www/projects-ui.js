@@ -283,16 +283,50 @@
     /* ===================== 新建 / 打开 ===================== */
 
     async function createProject(name) {
-        currentProject = name;
-        lastSavedSnapshot = null;
-        clearScene();
-        L.saveRegistry(L.upsertProject(L.loadRegistry(), {
-            name: name,
-            updatedAt: new Date().toISOString(),
-            hasModel: false
-        }));
-        showEditorPage();
-        toast('已创建「' + name + '」，请导入模型');
+        if (busy) return;
+        busy = true;
+        try {
+            currentProject = name;
+            lastSavedSnapshot = null;
+            clearScene();
+
+            // 关键：新建就得把空工程写盘。以前这里只写注册表，
+            // project.svproj 根本不存在，返回后再点开必然读不到文件、
+            // 报“打开失败”。
+            var p = L.pathsFor(name);
+            var zip = L.buildProjectZip(L.emptyProjectState(), {});
+            await store().write(p.proj, zip);
+
+            var meta = {
+                name: name,
+                updatedAt: new Date().toISOString(),
+                hasModel: false
+            };
+            await store().write(p.meta, new TextEncoder().encode(JSON.stringify(meta)));
+            L.saveRegistry(L.upsertProject(L.loadRegistry(), meta));
+
+            showEditorPage();
+            // 空工程落盘后就是“已保存”状态，返回时不该弹未保存确认
+            lastSavedSnapshot = snapshotNow();
+            toast('已创建「' + name + '」，请导入模型');
+        } catch (err) {
+            console.error('[projects] create failed', err);
+            toast('创建失败：' + (err && err.message ? err.message : '未知错误'));
+        } finally {
+            busy = false;
+        }
+    }
+
+    /* 区分“文件不存在”和“文件坏了”。
+     * 只有前者可以当空工程恢复；后者是真数据损坏，覆盖掉就把用户的活弄没了。 */
+    function isMissingFileError(err) {
+        var msg = String((err && (err.message || err.error)) || err || '').toLowerCase();
+        var code = String((err && err.code) || '').toUpperCase();
+        if (code === 'NOT_FOUND' || code === 'ENOENT') return true;
+        return msg.indexOf('不存在') >= 0 ||
+            msg.indexOf('does not exist') >= 0 ||
+            msg.indexOf('no such file') >= 0 ||
+            msg.indexOf('not found') >= 0;
     }
 
     async function openProject(name) {
@@ -300,10 +334,22 @@
         busy = true;
         try {
             var p = L.pathsFor(name);
-            var projBytes = await store().read(p.proj);
-            var parsed = L.parseProjectFile(projBytes);
-            var state = parsed.state;
-            var files = parsed.files || {};
+            var state, files = {}, recovered = false;
+
+            try {
+                var projBytes = await store().read(p.proj);
+                var parsed = L.parseProjectFile(projBytes);
+                state = parsed.state;
+                files = parsed.files || {};
+            } catch (readErr) {
+                // v28 及以前新建工程只往注册表写了一条记录，没有落盘
+                // project.svproj，所以“新建→返回→点开”必然读不到文件。
+                // 这类空壳工程按空工程恢复，并把空文件补写回去，
+                // 否则这个工程就永远打不开了。
+                if (!isMissingFileError(readErr)) throw readErr;
+                state = L.emptyProjectState();
+                recovered = true;
+            }
 
             clearScene();
 
@@ -322,10 +368,16 @@
                 toast('导演台模块未就绪，仅还原模型');
             }
 
+            if (recovered) {
+                await store().write(p.proj, L.buildProjectZip(state, {}));
+            }
+
             currentProject = name;
             lastSavedSnapshot = snapshotNow();
             showEditorPage();
-            toast('已打开「' + name + '」');
+            toast(recovered ?
+                '已按空工程打开「' + name + '」（工程文件原先缺失，已补写）' :
+                '已打开「' + name + '」');
         } catch (err) {
             console.error('[projects] open failed', err);
             toast('打开失败：' + (err && err.message ? err.message : '未知错误'));

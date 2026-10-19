@@ -354,6 +354,28 @@
         return null;
     }
 
+    /* ---------- 空工程 ---------- */
+
+    /**
+     * 新建工程时落盘的最小状态。
+     *
+     * version 必须是 1：restoreProject 开头就是 `if (!t || t.version !== 1)
+     * return 'bad-version'`，空工程也要走同一条还原路径，不能省。
+     * 数组字段给空数组而不是缺省，省得脏检查里 `current.puppets || []`
+     * 这种写法在两边写法不一致时判出假脏。
+     */
+    function emptyProjectState() {
+        return {
+            version: 1,
+            model: null,
+            puppets: [],
+            props: [],
+            shots: [],
+            camera: null,
+            cursor: null
+        };
+    }
+
     window.__projectLogic = {
         PROJECTS_ROOT: PROJECTS_ROOT,
         STATE_ENTRY: STATE_ENTRY,
@@ -370,6 +392,7 @@
         buildProjectZip: buildProjectZip,
         parseProjectFile: parseProjectFile,
         parseMeta: parseMeta,
+        emptyProjectState: emptyProjectState,
         isNative: isNative
     };
 })();
