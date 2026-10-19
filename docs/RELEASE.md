@@ -130,9 +130,11 @@ tuxedo.glb     602,496 B
 
 **历史问题（已不再适用）**：四个 secret（`ANDROID_KEYSTORE_B64` / `..._PASS` / `..._ALIAS` / `..._KEY_PASS`）上传后，只有引用 `ANDROID_KEYSTORE_B64` 的 workflow 会 `startup_failure` 且 0 job；改用字面量、不存在的 secret 名、`GITHUB_TOKEN` 都能正常调度。定位到 secret 条目本身有问题，与 YAML 语法无关。最后没有绕这个坑，改成把密钥随仓库提交。`tools/ci/prepare_signing.sh` 因此已删除。
 
+**过渡：这一次装仍要先卸载旧版**。之前那些包是用 CI 现场生成的临时密钥签的，与本仓库这把不同，所以从旧版升级到 v28d 仍会报「应用未安装」。**从 v28d 之后开始**，所有包签名一致，才能直接覆盖安装。
+
 **换密钥**（例如密钥丢失）：重新生成 p12 并覆盖 `android/app/keystore/ss-debug.p12` + 改 `keystore.properties`，同时更新工作流里的指纹常量。注意：**换了密钥就意味着装过旧版的人必须先卸载**，所以非必要不换。
 
-## 7. 网络
+**为什么 CI 校验用 `grep` 前缀而不是整串**：`apksigner` 输出的指纹是不带冒号的 64 位十六进制，本文件记录的是带冒号的写法，前缀比对已经能覆盖整串，也容忍 apksigner 未来改输出格式。
 
 ## 7. 网络
 
