@@ -238,7 +238,8 @@ try {
     };
     res.req2c = res.rotateAroundAnchor.orbitedAroundPivot;
 
-    // ---------- 定位面板里两个按钮确实存在 ----------
+    // ---------- 定位面板里的按钮确实存在 ----------
+    // v26 在定位组加了第三个按钮（重设基准点），所以这里是 3 而不是 2
     res.anchorButtons = document.querySelectorAll('.sd-anchor-btn').length;
 
     res.pass = res.req1 === true
@@ -246,7 +247,7 @@ try {
             && res.req2b === true
             && res.req2c === true
             && res.undo.bothRestored === true
-            && res.anchorButtons === 2;
+            && res.anchorButtons === 3;
 
     return res;
   })()`);
