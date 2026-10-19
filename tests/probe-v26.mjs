@@ -72,20 +72,13 @@ try {
     const near = (a, b, eps = 0.06) =>
       Math.abs(a.x - b.x) < eps && Math.abs(a.y - b.y) < eps && Math.abs(a.z - b.z) < eps;
     const pivotPos = () => scene.events.invoke('pivot').transform.position;
-    const yellowVisible = (ent) => {
-      // the selection dot is a child render entity of ent
-      let hit = null;
-      ent.findComponents('render').forEach(rc => {
-        if (!rc.entity || rc.entity === ent) return;
-        const n = rc.entity.name || '';
-        if (/marker/i.test(n)) hit = rc.entity;
-      });
-      return hit ? !!hit.enabled : null;
+    // v27: there is one dot on the scene root, positioned from the pivot, so
+    // "is a marker showing" is a single global question.
+    const selectionDot = () => {
+      const m = scene.app.root.findByName('selection-marker');
+      return m ? { enabled: m.enabled, pos: round(m.getLocalPosition()) } : null;
     };
-    const splatMarkerState = () => {
-      const m = scene.app.root.findByName('splat-marker');
-      return m ? { enabled: m.enabled, pos: m.enabled ? round(m.getLocalPosition()) : null } : null;
-    };
+    const splatMarkerState = () => selectionDot();
 
     // ---------- 需求 1a：GLB 选中时有黄点 ----------
     scene.events.fire('tool.move');
@@ -101,12 +94,12 @@ try {
     D.selectPropById(pr.id); await wait(700);
 
     res.propMarker = {
-      found: pent ? yellowVisible(pent) : null,
+      found: pent ? (selectionDot() || {}).enabled === true : null,
       deselected: null
     };
     // 取消选中后应当隐藏
     D.selectPropById(null); await wait(500);
-    res.propMarker.deselected = pent ? yellowVisible(pent) : null;
+    res.propMarker.deselected = (selectionDot() || {}).enabled === false;
     D.selectPropById(pr.id); await wait(600);
 
     // ---------- 需求 1b：人偶黄点仍然在（回归） ----------
@@ -116,7 +109,7 @@ try {
     const pup = D.listPuppets().slice(-1)[0];
     const pupent = scene.app.root.findByName(pup.name);
     res.puppetMarker = {
-      found: pupent ? yellowVisible(pupent) : null,
+      found: (selectionDot() || {}).enabled === true,
       selectedInList: pup && pup.selected
     };
 
@@ -160,7 +153,9 @@ try {
       marker: splatMarkerState()
     };
     res.req2a = res.splatCenter.ret === 'ok'
-             && near(splat.localFrameOrigin, splat.localBound.center, 0.01);
+             && (splat.densityValid
+                 ? near(splat.localFrameOrigin, splat.densityCenter, 0.01)
+                 : near(splat.localFrameOrigin, splat.localBound.center, 0.01));
 
     // 需求 2b：设到游标
     D.armPlaceCursor(); await wait(200);
@@ -216,7 +211,7 @@ try {
     res.anchorButtons = document.querySelectorAll('.sd-anchor-btn').length;
 
     res.pass = res.propMarker.found === true
-            && res.propMarker.deselected === false
+            && res.propMarker.deselected === true
             && res.puppetMarker.found === true
             && res.splatMarkerShown && res.splatMarkerShown.enabled === true
             && res.req2a === true

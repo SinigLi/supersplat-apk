@@ -546,7 +546,7 @@ waitUI(function () {
       container.appendChild(b);
       return b;
     };
-    mk('⊙', '基准点定位到外边中心', 'anchorPivotToCenter', '基准点已移到模型中心（可撤销）');
+    mk('⊙', '基准点定位到密度中心', 'anchorPivotToCenter', '基准点已移到模型密度中心（可撤销）');
     mk('⌖', '基准点定位到游标点', 'anchorPivotToCursor', '基准点已移到 3D 游标（可撤销）');
     // v26：第三个按钮，把基准点放回模型自己的原点。前两个把基准点挪到别处，
     // 这个负责挪回来，三个一组才对得起“定位”这个名字。
