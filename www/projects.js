@@ -174,27 +174,44 @@
         return u8;
     }
 
+    // Capacitor 的原生代理挂在 window.Capacitor.Plugins 上，由桥注入。
+    // 不能用 import('@capacitor/filesystem')：本文件是普通 <script>，不是打包产物，
+    // WebView 无法解析裸模块名，保存时会直接抛 "Failed to resolve module specifier"。
+    function fsPlugin() {
+        var cap = window.Capacitor;
+        return (cap && cap.Plugins && cap.Plugins.Filesystem) || null;
+    }
+
     var nativeStore = {
-        _fs: null,
-        async fs() {
-            if (!this._fs) {
-                var mod = await import('@capacitor/filesystem');
-                this._fs = mod;
+        _p: null,
+        fs() {
+            if (!this._p) {
+                this._p = fsPlugin();
+                if (!this._p) throw new Error('Filesystem 插件未就绪（原生桥未注入）');
             }
-            return this._fs;
+            return this._p;
         },
         async write(path, u8) {
-            var m = await this.fs();
-            await m.Filesystem.writeFile({
-                path: path,
-                data: bytesToBase64(u8),
-                directory: m.Directory.Data,
-                recursive: true
-            });
+            var b64 = bytesToBase64(u8);
+            var p = this.fs();
+            // 模型动辄 20MB+，base64 后更大。一次性过桥会撑爆 WebView 的
+            // 消息通道（整串 30MB+ JSON），所以大文件先建空文件再分块追加。
+            var CHUNK = 2 * 1024 * 1024;
+            if (b64.length <= CHUNK) {
+                await p.writeFile({ path: path, data: b64, directory: 'DATA', recursive: true });
+                return;
+            }
+            await p.writeFile({ path: path, data: '', directory: 'DATA', recursive: true });
+            for (var i = 0; i < b64.length; i += CHUNK) {
+                await p.appendFile({
+                    path: path,
+                    data: b64.slice(i, i + CHUNK),
+                    directory: 'DATA'
+                });
+            }
         },
         async read(path) {
-            var m = await this.fs();
-            var r = await m.Filesystem.readFile({ path: path, directory: m.Directory.Data });
+            var r = await this.fs().readFile({ path: path, directory: 'DATA' });
             var data = r.data;
             if (typeof data !== 'string') {
                 var buf = await data.arrayBuffer();
@@ -203,9 +220,8 @@
             return base64ToBytes(data);
         },
         async remove(path) {
-            var m = await this.fs();
             try {
-                await m.Filesystem.rmdir({ path: path, directory: m.Directory.Data, recursive: true });
+                await this.fs().rmdir({ path: path, directory: 'DATA', recursive: true });
             } catch (e) { /* 不存在就算了 */ }
         }
     };
@@ -262,8 +278,17 @@
     };
 
     function store() {
-        return isNative() ? nativeStore : webStore;
+        if (_storeImpl) return _storeImpl;
+        // 原生插件没注入时退回 IndexedDB：宁可存在 WebView 里，也不要让保存
+        // 直接抛错。真机上正常情况一定走 native。
+        _storeImpl = (isNative() && fsPlugin()) ? nativeStore : webStore;
+        if (isNative() && !fsPlugin()) {
+            console.warn('[projects] Filesystem 插件未注入，回退 IndexedDB');
+        }
+        return _storeImpl;
     }
+
+    var _storeImpl = null;
 
     /* ---------- 注册表读写 ---------- */
 

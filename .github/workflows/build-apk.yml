@@ -5,6 +5,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # secrets 不能直接在 step 的 if 里引用（GitHub 的上下文可用性限制），
+    # 先落到 job 级 env，再用 env.* 判断。
+    env:
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -13,7 +20,26 @@ jobs:
         with: { distribution: temurin, java-version: 21 }
       - run: npm ci
       - run: npx cap sync android
+      # v28: a stable debug signing key, when the repository has one configured.
+      # Without this every CI run generates a fresh debug key on the ephemeral
+      # runner, and Android rejects the next build as an update (INSTALL_FAILED_
+      # UPDATE_INCOMPATIBLE). Absent secrets => build signs with the default key.
+      - name: Restore signing key
+        if: env.ANDROID_KEYSTORE_B64 != ''
+        run: |
+          mkdir -p android/app/keystore
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > android/app/keystore/ss-debug.p12
+          cat > android/keystore.properties <<EOF
+          storeFile=keystore/ss-debug.p12
+          storePassword=$ANDROID_KEYSTORE_PASS
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASS
+          EOF
+          ls -l android/app/keystore/ss-debug.p12
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Verify signing certificate
+        run: |
+          cd android && ./gradlew -q signingReport 2>/dev/null | grep -A2 "Variant: debug" || true
       - uses: actions/upload-artifact@v4
         with:
           name: supersplat-debug-apk

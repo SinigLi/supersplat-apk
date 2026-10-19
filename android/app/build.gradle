@@ -1,5 +1,22 @@
 apply plugin: 'com.android.application'
 
+// v28: a stable debug signing key.
+//
+// GitHub Actions starts every job on a fresh runner, so ~/.android/debug.keystore
+// does not exist and Gradle generates a new one per build. Android refuses to
+// install a package whose signing certificate differs from the installed one, so
+// every CI build was effectively 'app not installed' over the previous version.
+//
+// The real keystore lives outside the repo (this repository is public). CI copies
+// it in from a secret and writes android/keystore.properties; locally the build
+// falls back to the default debug key when the file is absent.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def hasStableKey = keystorePropsFile.exists()
+def keystoreProps = new Properties()
+if (hasStableKey) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace "com.sinigli.supersplat"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,7 +33,27 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // signingConfigs must be declared before buildTypes references it:
+    // the DSL resolves names at configuration time, and a forward reference
+    // resolves to nothing rather than the block defined further down.
+    signingConfigs {
+        if (hasStableKey) {
+            stable {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+                storeType 'PKCS12'
+            }
+        }
+    }
     buildTypes {
+        debug {
+            // only override when a stable key was supplied
+            if (hasStableKey) {
+                signingConfig signingConfigs.stable
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

@@ -12,5 +12,12 @@ v28_result.json
 dist_v*/
 dist/
 
+# 签名密钥库：绝不进公开仓库（公共仓库泄露 = 任何人可签名冒充）
+android/app/keystore/
+android/keystore.properties
+*.jks
+*.keystore
+*.p12
+
 # 本地测试模型（13MB+，不进仓库）
 tests/assets/
