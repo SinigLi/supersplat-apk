@@ -6,7 +6,7 @@ SuperSplat 3.5.2 fork 的 Capacitor 7 Android 壳 + 移动端 UI 改造层 + 内
 - 本仓库：APK 壳 + `www/` 产物覆盖层（dock UI、导演台面板、角色资产）
 - 发版：push 到 `main` → GitHub Actions 构建 debug APK → 下载 artifact → 打 zip 发飞书
 
-**当前版本 v22**（2026-10-18）
+**当前版本 v27**（2026-10-19）
 
 ## 目录
 
@@ -38,10 +38,21 @@ DOCK.md                  停靠组 UI 架构与真机事故红线
 
 ```bash
 # 本地验证（headless，需 Edge；脚本自起静态服务）
+# 核心回归 —— 改任何东西都要跑
 node tests/director.mjs        # 导演台 16 项回归
 node tests/v13.mjs             # v13 起行为回归 15 项
+
+# 按版本存档的验收探针 —— 改了相关模块时重跑
 node tests/probe-v22a.mjs      # 机位相机模型 + 预览层按钮
 node tests/probe-v22b.mjs      # 相机就近隐藏
+node tests/probe-v23a.mjs      # 顶栏无渲染入口 + 视角立方体常驻
+node tests/probe-v23b.mjs      # 视角立方体六轴映射
+node tests/probe-v24c.mjs      # 导入自动选中 / 平点切换 / 锁对象
+node tests/probe-v25.mjs       # 移动到游标带基准点 + 基准点按钮
+node tests/probe-v26.mjs       # 三种对象黄点 + 泼溅基准点 + 重设
+node tests/probe-v27.mjs       # 黄点屏幕等比 + 抓拍隐藏 + 跟随基准点 + 密度中心
+
+# 布局量测（截图，非断言）
 node tests/probe-layout.mjs    # 390x844 面板布局量测
 node tests/probe-bottom.mjs    # 底栏按钮量测
 

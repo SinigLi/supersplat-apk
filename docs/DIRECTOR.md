@@ -1,8 +1,8 @@
 # 导演台模块（Director Console）— 移动端架构与开发手册
 
-> 版本：v22（2026-10-18） · 维护者：全栈工程师
-> 代码：`supersplat-main/src/director.ts`（56KB / 1563 行）· 面板 UI：`supersplat-apk/www/dock.js`
-> 关联：`docs/DOCK.md`（停靠组 UI）· `docs/RELEASE.md`（构建发版）· `../splat-viewer/docs/MOBILE_DIRECTOR_CONSOLE_PLAN.md`（移植路线）
+> 版本：v27（2026-10-19） · 维护者：全栈工程师
+> 代码：`supersplat-main/src/director.ts`（73.9KB / 1970 行）· 面板 UI：`supersplat-apk/www/dock.js`
+> 关联：`DOCK.md`（停靠组 UI）· `docs/RELEASE.md`（构建发版）· `../splat-viewer/docs/MOBILE_DIRECTOR_CONSOLE_PLAN.md`（移植路线）
 
 ## 1. 它是什么
 
@@ -75,11 +75,25 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 
 | 方法 | 说明 |
 |---|---|
-| `importModel(file)` | `File` → PlayCanvas container，落在 3D 游标，走 undo |
+| `importModel(file)` | `File` → PlayCanvas container，落在 3D 游标，走 undo；**导入后自动选中**（v24） |
 | `listProps()` | 道具列表 |
 | `selectProp(p)` / `selectPropById(id)` | 选中；`id` 传 null 表示取消选中（v24） |
 | `setPropLocked(id, v)` | **v24**：禁止选中（同人偶） |
 | `deletePropById(id)` | 删除（走 undo） |
+
+### 2.4b 基准点（v25–v27）
+
+基准点就是 SS 的 pivot：gizmo 挂在那里，旋转/缩放绕它进行。三个按钮都在右栏「定位」组，全部走 undo。
+
+| 方法 | 返回 | 说明 |
+|---|---|---|
+| `anchorPivotToCenter()` | `'ok' \| 'same' \| 'no-selection'` | 移到对象中心。**v27 起为高斯密度中心**（所有高斯点位置均值），不再用包围盒中心 |
+| `anchorPivotToCursor()` | 同上 + `'no-cursor'` | 移到 3D 游标；游标未放置时返回 `'no-cursor'` |
+| `resetPivot()` | 同上 | 回到对象自身原点（默认基准点），前两个的反向操作（v26） |
+
+人偶/道具走 `EntityAdapter.pivotOffset`（实体局部空间，`PivotAnchorOp` 入历史）；泼溅走原生 `Splat.setLocalFrame` + `SetLocalFrameOp`——两条通道都是「真的改了锚点」，不是只挪 gizmo 显示。
+
+`'same'` 表示基准点已经在该位置，此时不往撤销栈塞空记录。
 
 ### 2.5 机位（v20+）
 
@@ -108,10 +122,12 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 4. **动作切换要停住**：`anim.speed = 0` + `baseLayer.play(state)` + `activeStateCurrentTime = 0`，冻结在首帧。
 5. **点击手势在捕获阶段吞掉**：武装模式下 `pointerdown/up` 用 capture 且 `stopPropagation`；位移 > 8px 或 > 600ms 视为拖动，保持武装（`TAP_MAX_MS=600`、`TAP_MAX_DIST=8`）。
 6. **落点吸附优先级**（v17 起）：① 场景对象网格（`nearestMeshHit` 逐 meshInstance 做 AABB 射线求交）→ ② SS 深度拾取（泼溅表面）→ ③ y=0 地面 → ④ 射线平行地面时退化到视平面。
-7. **屏幕空间选人偶**：脚/胸/头三点 `worldToScreen` 距离判定（`SELECT_RADIUS=0.15`，探测高度 `[0.15, 1.0, 1.6]`），没命中人偶再走泼溅拾取。
+7. **拾取走注册表射线，不是屏幕距离**（v27 整理时修正本条）：`tapSelect` 先 `objectAt` → `pickSceneObject`（`scene-objects.ts`：对 `registerPickable` 注册的实体做 AABB 射线求交，人偶用胶囊细化、道具用 `nearestMeshHit` 贴到真实表面），没命中再走 SS 深度拾取 `camera.intersect` 选泼溅。早期版本曾用脚/胸/头三点 `worldToScreen` 距离判定（`SELECT_RADIUS`/`PUPPET_PROBE_Y`），v24 统一拾取后这两个常量已无人引用，v27 删除。
 8. **染色 = multiply**：克隆材质后给 `diffuse` 赋值，等价 Blender 的 MULTIPLY 混色节点（`TINT_COLORS` 与 Blender 侧一致）。
 9. **灯光要自己加**：SS 场景没有灯。导演台加一盏方向性太阳 + 环境光 `(0.45, 0.45, 0.5)`。
 10. **模型被近裁剪切掉**：`scene.ts` 的 `boundContributors` 注册表把新增实体纳入场景包围盒，`camera.ts` 的 `fitClippingPlanes` 用该 AABB 的 8 个角投影算远平面（v16）。新增会改包围盒的实体时**必须注册**。
+11. **WGSL 分支条件必须是标量**（v27 踩到）：`select(a, b, cond)` 允许 `vec3<bool>` 按分量挑，但 `if` 只吃标量 bool。写成 `if (finite)`（`finite` 是 `vec3<bool>`）会让**整个 compute pipeline 编译失败**，而且不抛异常——同一 pipeline 里的包围盒计算一起归零，界面只表现为「没反应」。用 `all(finite)` 折叠。教训：GPU 计算失败是静默的，必须用正向断言（"密度中心必须 ≠ 包围盒中心"）才抓得到。
+12. **显隐由状态反推时，恢复顺序会咬人**（v27 踩到）：黄点可见性 = `f(capturing)`，抓拍前置 `capturing = true` 再刷新，等于「关掉但没记录原值」。恢复时必须显式存旧值、先 `capturing = false` 再还原并重新刷新，否则拍一次照黄点就永久消失。
 
 ## 4. 机位与相机模型（v20–v22）
 
@@ -191,17 +207,30 @@ game_artist_workspace/tools/3D-models/blender-addon/
 headless Edge（WebGPU / ANGLE）+ CDP，390×844：
 
 ```bash
+# 核心回归（改任何东西都要跑）
 node tests/director.mjs      # 16 项：API 就绪 / 4 角色 / woman 43 clips / 材质+蒙皮 /
-                             # 摆放 / 移动游标可撤销 / 三个下拉预填充 / 底栏五连 / 无渲染循环异常
+                             # 摆放 / 移动游标可撤销 / 三个下拉预填充 / 底栏四连 / 无渲染循环异常
 node tests/v13.mjs           # 15 项：v13 起的行为回归（无选择按钮 / 平点选中 / 道具导入等）
+
+# 按版本存档的验收探针（每个都覆盖当时那一轮的需求，改了相关模块要重跑）
 node tests/probe-v22a.mjs    # 机位相机模型尺寸 + 预览层按钮
 node tests/probe-v22b.mjs    # 就近隐藏 + 渲染期间全部隐藏
+node tests/probe-v23a.mjs    # 顶栏无渲染入口 + 视角立方体常驻
+node tests/probe-v23b.mjs    # 视角立方体六个轴与 SS camera.align 的映射
+node tests/probe-v24c.mjs    # 导入自动选中 / 平点切换 / 锁对象
+node tests/probe-v25.mjs     # 移动到游标带基准点 + 三个基准点按钮
+node tests/probe-v26.mjs     # 三种对象都有黄点 + 泼溅基准点 + 重设
+node tests/probe-v27.mjs     # 黄点屏幕等比 + 抓拍隐藏 + 黄点跟随基准点 + 密度中心
+
+# 布局量测（会截图，非断言型）
 node tests/probe-layout.mjs  # 面板行布局量测 + 截图
 node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 ```
 
-脚本自起静态服务（`tools/dev/staticsrv.cjs`）与 Edge，退出前打印 `N/M passed`。
+脚本自起静态服务（`tools/dev/staticsrv.cjs`）与 Edge，退出前打印 `N/M passed`；探针输出 JSON（含 `pass` 字段）。
 
+> 探针会随设计变化而失效，这属于正常情况。改设计后先看断言是否还在描述新行为，别把「断言过期」当成「功能回归」——v26 探针在 v27 改单黄点模型后就属于这一类。
+>
 > 历史探针（v13–v21 的一次性验证脚本）已在 v22 整理时归档删除；需要复现某版问题时从 git 历史取回。
 
 ## 8. 版本史
@@ -226,7 +255,10 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v21 | 721cdbb | 5873c4c + 013bcdd | 每个机位生成相机模型、渲染时隐藏相机、原生存相册 |
 | v22 | c6ad615 | 65952f7 | 相机模型改固定世界尺寸、就近隐藏、另存为 + 分享 |
 | v23 | — | 87578f6 | 顶栏去掉「渲染」分组按钮；恢复右上角视角立方体 |
-| v24 | 本地 | 分支 | 导入 GLB 自动选中（gizmo 立刻可见）；变换工具下点击切换选中；场景管理器「禁止选中」锁；人偶实体命名修复；`selectXById(null)` 取消选中。**当前** |
+| v24 | f385586 | 4c61967 | 导入 GLB 自动选中（gizmo 立刻可见）；变换工具下点击切换选中；场景管理器「禁止选中」锁；人偶实体命名修复；`selectXById(null)` 取消选中 |
+| v25 | e0b6d23 | 80edc6f | 「移动到游标」带基准点一起走（一次 undo 全还原）；定位组加两个基准点按钮（外边中心 / 游标点） |
+| v26 | 30c1ba5 | cecf13d | GLB 与泼溅也有黄点；泼溅基准点打通原生 `SetLocalFrameOp`；加「重设基准点」按钮 |
+| v27 | 109b308 | 2437d99 | 黄点改场景根单体 + 屏幕等比（26px）；抓拍隐藏游标与黄点；黄点改跟随基准点；中心改用高斯密度中心。**当前** |
 
 ## 9. 已知边界 / 待办
 
@@ -236,3 +268,5 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 - 分镜序列（机位排序 + 转场播放）为 F2 阶段，未开始。
 - 真实大场景（1–3M splats）遮挡与帧率复验未做。
 - 测量结果在退出测量工具后仍保留（是否改为退出即清空，待产品确认）。
+- **密度中心是纯位置均值**，不做不透明度加权、不做离群点截断。扫描类场景若带大量背景噪点，中心会被噪点拉偏；真机遇到再考虑加权重或分位数截断。
+- **黄点屏幕尺寸固定，不看遮挡**：被模型挡住时不会变暗或透视显示，这是有意的（作为定位锚点必须随时可见）。

@@ -1,6 +1,6 @@
 # 构建与发版手册
 
-> 版本：v22（2026-10-18） · 适用：`supersplat-apk` + `../supersplat-main`
+> 版本：v27（2026-10-19） · 适用：`supersplat-apk` + `../supersplat-main`
 > 相关：`docs/DIRECTOR.md`（导演台）· `DOCK.md`（停靠组 UI）
 
 ## 0. 两个仓库的分工
@@ -50,6 +50,7 @@ node tests/director.mjs         # 期望 === 16/16 passed ===
 node tests/v13.mjs              # 期望 === 15/15 passed ===
 node tests/probe-v22a.mjs       # 机位相机世界尺寸 + 预览层四按钮
 node tests/probe-v22b.mjs       # 相机就近隐藏 + 渲染期间全隐
+node tests/probe-v27.mjs        # 黄点屏幕等比 + 抓拍隐藏 + 密度中心（当前版）
 ```
 
 脚本自起 `tools/dev/staticsrv.cjs` 与 headless Edge（WebGPU/ANGLE），端口各版本不同（v22 用 4270/4271，CDP 9330/9331）。跑完自动退出，约 30–60s/个。

@@ -1,7 +1,7 @@
 # 移动端分组工具栏（Dock）架构文档
 
-> 版本：v22（2026-10-18） · 维护者：全栈工程师 · 上游：SuperSplat 3.5.2 fork
-> `www/dock.js` 50.9KB / 1065 行 · `www/dock.css` 17.7KB / 245 行
+> 版本：v27（2026-10-19） · 维护者：全栈工程师 · 上游：SuperSplat 3.5.2 fork
+> `www/dock.js` 52.3KB / 1108 行 · `www/dock.css` 17.9KB / 255 行
 > 相关：`docs/DIRECTOR.md`（导演台）· `docs/RELEASE.md`（构建发版）· `README.md`（仓库总览）
 
 ## 1. 它是什么
@@ -50,7 +50,11 @@ bindToolWatch()          工具让位监听（失败则 500ms × 60 次轮询兜
 |---|---|---|
 | 相机 🎥 | `right-toolbar-orbit-mode`、`right-toolbar-fly-mode` | 面板主体是**机位列表**（新增/移除/查看/渲染），两个模式按钮被塞进面板底部一行（轨道=绕目标转，飞行=第一人称） |
 | 设置 ⚙️ | `right-toolbar-appearance`、`right-toolbar-overlays`、`right-toolbar-settings` | 外观 / 浮层 / 设置，三者都是全屏层 |
-| 定位 🎯 | `right-toolbar-frame-selection`、`right-toolbar-camera-origin` | 框选 / 回原点 |
+| 定位 🎯 | `right-toolbar-frame-selection`、`right-toolbar-camera-origin` | 框选 / 回原点，**外加三个基准点按钮**：⊙ 密度中心 · ⌖ 游标点 · ↺ 重设（见下文） |
+
+基准点三个按钮是 dock 自己生成的（`buildAnchorButtons()`，class `sd-anchor-btn`），不是收养 SS 的。它们只调 `window.__director` 的 `anchorPivotToCenter` / `anchorPivotToCursor` / `resetPivot`，具体逻辑全在引擎侧（见 `docs/DIRECTOR.md` §2.4b）。
+
+原因是 SS 原生只有 `right-toolbar-frame-selection`（框选）这类视图操作，没有「把 pivot 挪到指定点」的入口；而这三个按钮必须走 director 的适配器通道才能同时覆盖人偶、道具和泼溅三种对象。
 
 ### 3.2 底栏四连
 
@@ -122,6 +126,14 @@ const hasBottomToolbar = () => [...document.querySelectorAll('.select-toolbar')]
 # headless + CDP，仓库根执行（自带静态服务与 Edge）
 node tests/director.mjs        # 导演台 16 项回归
 node tests/v13.mjs             # v13 起行为回归 15 项
+node tests/probe-v22a.mjs      # 机位相机模型尺寸 + 预览层按钮
+node tests/probe-v22b.mjs      # 就近隐藏 + 渲染期间全部隐藏
+node tests/probe-v23a.mjs      # 顶栏无渲染入口 + 视角立方体常驻
+node tests/probe-v23b.mjs      # 视角立方体六轴映射
+node tests/probe-v24c.mjs      # 导入自动选中 / 平点切换 / 锁对象
+node tests/probe-v25.mjs       # 移动到游标带基准点 + 三个基准点按钮
+node tests/probe-v26.mjs       # 三种对象黄点 + 泼溅基准点 + 重设
+node tests/probe-v27.mjs       # 黄点屏幕等比 + 抓拍隐藏 + 跟随基准点 + 密度中心
 node tests/probe-layout.mjs    # 390x844 面板布局量测 + 截图
 node tests/probe-bottom.mjs    # 底栏按钮量测 + 截图
 
@@ -150,6 +162,10 @@ node tools/dev/staticsrv.cjs . 4225
 | v19 | ed5f0a6 | 面板返回钮改走 SS 事件（重开修复） |
 | v20–v22 | cd777e9…65952f7 | 相机组变机位面板、机位相机模型、预览层保存/另存为/分享 |
 | v23 | 一次性修复 | 顶栏去掉「渲染」分组按钮；恢复右上角视角立方体（`#view-cube-container`） |
+| v24 | 4c61967 | 场景管理器锁开关（`sd-pup-lock`）、导入自动选中、变换工具下平点切换选中 |
+| v25 | 80edc6f | 定位组加两个基准点按钮（⊙ 外边中心 / ⌖ 游标点） |
+| v26 | cecf13d | 定位组加第三个按钮 ↺ 重设基准点；黄点覆盖 GLB 与泼溅 |
+| v27 | 2437d99 | 中心按钮改高斯密度中心（文案同步）；引擎侧黄点改屏幕等比 + 抓拍隐藏 |
 
 ## 9. 已知边界 / 待办
 
@@ -157,3 +173,4 @@ node tools/dev/staticsrv.cjs . 4225
 - 全屏名单目前 4 类：dialog 系列 / scene / appearance+overlays / settings。新增入口面板照红线⑥加。
 - 网页原型 v7 与 APP 交互已基本对齐；后续 UI 迭代先改原型页定稿。
 - `MENU_ORDER` 仍按 SS 原有顺序索引 `.menu-panel`，若上游增删菜单项需同步。
+- 基准点三按钮的提示文案里，「已在那里」对应 director 返回 `'same'`——不往撤销栈塞空记录，这是有意的。
