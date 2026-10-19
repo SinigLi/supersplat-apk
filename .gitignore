@@ -12,12 +12,16 @@ v28_result.json
 dist_v*/
 dist/
 
-# 签名密钥库：绝不进公开仓库（公共仓库泄露 = 任何人可签名冒充）
-android/app/keystore/
-android/keystore.properties
+# 签名密钥库
+#
+# 默认仍然忽略一切密钥。唯一的例外是下面那把 debug 密钥：
+# 它必须跟着仓库走，否则 CI 每次现场生成新密钥，新包就装不上旧版。
+# debug key 公开无风险（能拿它签的也只有 debug 包）；
+# 真正要保密的 release 密钥（*.jks / *.keystore）依旧不会进仓库。
 *.jks
 *.keystore
 *.p12
+!android/app/keystore/ss-debug.p12
 
 # 本地测试模型（13MB+，不进仓库）
 tests/assets/

@@ -117,25 +117,22 @@ tuxedo.glb     602,496 B
 
 **规矩：改完实现立刻同步改校验脚本；报 MISS 先 diff 实现与检查项。**
 
-## 6. 签名：当前是每构建一把新密钥（已知问题）
+## 6. 签名：固定 debug 密钥（v28d 已解决）
 
-现状：`build-apk.yml` 刻意**不引用任何 secret**，每次构建用 CI 现场生成的临时 debug 密钥。
+**现状**：`android/app/keystore/ss-debug.p12` 与 `android/keystore.properties` 都跟着仓库走，CI 不需要注入任何 secret，每次构建签出同一张证书。新包可以直接覆盖安装旧版，不需要卸载，工程不会丢。
 
-后果：新包覆盖安装会报「应用未安装」（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`）。**装着旧版时必须先卸载再装**，卸载等于清掉 App 私有目录里的工程。
+- 证书：`CN=SuperSplat Debug, O=SinigLi, C=CN`
+- SHA-256：`A0:6F:71:89:91:E1:51:E1:BB:A4:5F:7E:3F:E8:48:5D:17:3D:8A:9A:0B:10:91:40:2E:59:D6:58:1A:0E:9C:AF`
+- `android/app/build.gradle` 的 `signingConfigs.stable` 读 `android/keystore.properties`（`storeFile` 相对模块目录解析，所以是 `keystore/ss-debug.p12`）
+- CI 最后一步 `Verify signing certificate` 用 `apksigner --print-certs` 核对指纹：签名一旦退回「每构建一把新钥匙」，构建会直接失败，而不是把一个装不上的包静悄悄发出去
 
-已经做好的部分（只差把密钥送进 CI）：
+> **安全说明**：这是 **debug 密钥**，公开仓库里放它没有实际风险——它能签的只有 debug 包，任何人拿到也只能伪造 debug 包，装不到正式渠道。真正要保密的是 release 密钥（`*.jks` / `*.keystore`），那些仍然在 `.gitignore` 里。
 
-- `android/app/keystore/ss-debug.p12`（PKCS12，CN=SuperSplat Debug，本地校验通过）
-- `android/app/build.gradle` 的 `signingConfigs.stable`，读 `android/keystore.properties`
-- `tools/ci/prepare_signing.sh`：从环境变量还原密钥库与 properties；变量缺失时 exit 0，不阻塞构建
+**历史问题（已不再适用）**：四个 secret（`ANDROID_KEYSTORE_B64` / `..._PASS` / `..._ALIAS` / `..._KEY_PASS`）上传后，只有引用 `ANDROID_KEYSTORE_B64` 的 workflow 会 `startup_failure` 且 0 job；改用字面量、不存在的 secret 名、`GITHUB_TOKEN` 都能正常调度。定位到 secret 条目本身有问题，与 YAML 语法无关。最后没有绕这个坑，改成把密钥随仓库提交。`tools/ci/prepare_signing.sh` 因此已删除。
 
-**为什么没用 secret**：四个 secret（`ANDROID_KEYSTORE_B64` / `..._PASS` / `..._ALIAS` / `..._KEY_PASS`）上传后，只有引用 `ANDROID_KEYSTORE_B64` 的 workflow 会 `startup_failure` 且 0 job；改用字面量、改用不存在的 secret 名、改用 `GITHUB_TOKEN` 都能正常调度。已定位到那个 secret 条目本身有问题，与 YAML 语法无关。
+**换密钥**（例如密钥丢失）：重新生成 p12 并覆盖 `android/app/keystore/ss-debug.p12` + 改 `keystore.properties`，同时更新工作流里的指纹常量。注意：**换了密钥就意味着装过旧版的人必须先卸载**，所以非必要不换。
 
-三条出路（待定）：
-
-1. 把 debug 密钥库**提交进仓库**——debug 密钥，仓库公开也无所谓（推荐）
-2. 用 `tools/ci/set_secret.mjs` 重建四个 secret（换了新 p12）
-3. 维持现状（每次卸载重装，工程会丢）
+## 7. 网络
 
 ## 7. 网络
 

@@ -1,4 +1,4 @@
-﻿name: Build APK
+name: Build APK
 on:
   push:
     branches: [main]
@@ -14,8 +14,21 @@ jobs:
       - run: npm ci
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      # 固定签名自检：证书指纹必须等于仓库里那把 debug 密钥。
+      # 这一步是为了防止「签名悄悄退回每构建一把新钥匙」——那种情况下
+      # 包照样能构建成功，只是装不上旧版，不检查就发现不了。
+      # A0:6F:71:89:91:E1:51:E1:BB:A4:5F:7E:3F:E8:48:5D:17:3D:8A:9A:0B:10:91:40:2E:59:D6:58:1A:0E:9C:AF
+      - name: Verify signing certificate
+        run: |
+          set -e
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK" | tee /tmp/certs.txt
+          # 指纹带冒号，先去掉再比对（-i 大小写不敏感）
+          FLAT=$(tr -d ':' < /tmp/certs.txt)
+          echo "$FLAT" | grep -i 'a06f718991e151e1bba45f7e3fe8485d'
+          echo "signing certificate matches the pinned debug key"
       - uses: actions/upload-artifact@v4
         with:
           name: supersplat-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
