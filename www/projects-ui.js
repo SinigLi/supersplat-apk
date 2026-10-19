@@ -63,6 +63,8 @@
         barEl.appendChild(saveBtn);
         barEl.appendChild(backBtn);
         document.body.appendChild(barEl);
+        // 条子建好后补两帧再量一次：字体/安全区会改变它的高度
+        requestAnimationFrame(function () { requestAnimationFrame(syncEditorBar); });
 
         // ---- 提示 ----
         toastEl = el('div', 'pj-toast');
@@ -179,13 +181,37 @@
         lastSavedSnapshot = null;
         page.classList.add('open');
         barEl.classList.remove('open');
+        syncEditorBar();
         refreshList();
     }
 
     function showEditorPage() {
         page.classList.remove('open');
         barEl.classList.add('open');
+        syncEditorBar();
     }
+
+    /* 保存/返回小条的位置是固定的（左上角）。停靠区要绕开它，但不能反过来
+     * 挤动这条按钮，所以这里把条子的底边实测出来写进 CSS 变量，由 dock.css
+     * 让顶部/左右停靠区自己让位。
+     * 只在编辑页（条子可见）时生效：body.sd-has-bar 是开关。 */
+    function syncEditorBar() {
+        // 模块加载时 rAF 就会跑一次，而 barEl 是在 init() 里才创建的，
+        // 这里必须护一下，否则读 null.classList 直接抛错（会污染整页运行时）。
+        if (!barEl || !document.body) return;
+        var on = barEl.classList.contains('open');
+        document.body.classList.toggle('sd-has-bar', on);
+        if (!on) {
+            document.body.style.removeProperty('--sd-bar-bottom');
+            return;
+        }
+        // 先让布局落定再量，否则拿到的是上一次的尺寸
+        var r = barEl.getBoundingClientRect();
+        var bottom = r.bottom > 0 ? r.bottom + 8 : 0;
+        if (bottom) document.body.style.setProperty('--sd-bar-bottom', bottom + 'px');
+    }
+    addEventListener('resize', syncEditorBar);
+    addEventListener('orientationchange', syncEditorBar);
 
     /* ===================== 列表 ===================== */
 

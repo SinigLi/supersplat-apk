@@ -252,3 +252,17 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 #sd-shot-preview .sd-shot-saveas:disabled,
 #sd-shot-preview .sd-shot-share:disabled { opacity:.55; }
 #sd-shot-preview .sd-shot-bar { align-items:flex-end; flex-direction:column; gap:8px; }
+
+/* ===== v28b: 让开工程页的保存/返回条 ===== */
+/* 保存/返回按钮（.pj-bar）固定在左上角，位置不动；由这里让停靠区躲开：
+ *   --sd-bar-bottom 由 projects-ui.js 实测保存条底边后写入，
+ *   未进入工程（条子不可见）时 body 上没有 sd-has-bar，规则不生效。 */
+body.sd-has-bar .sd-dock.sd-top {
+    top: calc(var(--sd-bar-bottom, 46px) + 6px);
+}
+body.sd-has-bar .sd-dock.sd-left,
+body.sd-has-bar .sd-dock.sd-right {
+    /* 在条子以下的区域里居中，避免竖列顶到保存按钮 */
+    top: calc(var(--sd-bar-bottom, 46px) + (100vh - var(--sd-bar-bottom, 46px)) / 2);
+    max-height: calc(100vh - var(--sd-bar-bottom, 46px) - 26px);
+}

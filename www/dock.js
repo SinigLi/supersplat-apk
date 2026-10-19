@@ -773,7 +773,11 @@ waitUI(function () {
       dock.style.left = st.freePos.left + 'px';
     } else {
       dock.style.transform = 'none';
-      dock.style.top = st.freePos.top + 'px';
+      // v28b: 行内 top 会盖过 dock.css 的避让规则，所以这里也要夹一次：
+      // 拖动后的左右停靠区同样不能顶到工程页的保存/返回条。
+      const barBottom = parseFloat(getComputedStyle(document.body).getPropertyValue('--sd-bar-bottom')) || 0;
+      const minTop = barBottom ? barBottom + 6 : 8;
+      dock.style.top = Math.max(minTop, st.freePos.top) + 'px';
     }
   }
 
