@@ -1,9 +1,0 @@
-name: probe without secrets
-on:
-  workflow_dispatch:
-jobs:
-  probe:
-    runs-on: ubuntu-latest
-    steps:
-      - name: echo
-        run: echo hello
