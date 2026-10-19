@@ -13,30 +13,13 @@ jobs:
         with: { distribution: temurin, java-version: 21 }
       - run: npm ci
       - run: npx cap sync android
-      # v28: restore the stable debug signing key when the repo has one.
-      # A fresh GitHub runner has no ~/.android/debug.keystore, so Gradle
-      # generates a new key per build and Android then refuses to install the
-      # next APK over the previous one. The key itself stays out of this repo.
-      - name: Restore signing key
+      - name: Prepare signing key
         env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
-        run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "no signing key configured; building with the default debug key"
-            exit 0
-          fi
-          mkdir -p android/app/keystore
-          printf '%s' "$KEYSTORE_B64" | base64 -d > android/app/keystore/ss-debug.p12
-          {
-            echo "storeFile=keystore/ss-debug.p12"
-            echo "storePassword=$KEYSTORE_PASS"
-            echo "keyAlias=$KEY_ALIAS"
-            echo "keyPassword=$KEY_PASS"
-          } > android/keystore.properties
-          ls -l android/app/keystore/ss-debug.p12 android/keystore.properties
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.ANDROID_KEY_PASS }}
+        run: sh tools/ci/prepare_signing.sh
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
