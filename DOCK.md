@@ -1,8 +1,8 @@
 # 移动端分组工具栏（Dock）架构文档
 
-> 版本：v27（2026-10-19） · 维护者：全栈工程师 · 上游：SuperSplat 3.5.2 fork
-> `www/dock.js` 52.3KB / 1108 行 · `www/dock.css` 17.9KB / 255 行
-> 相关：`docs/DIRECTOR.md`（导演台）· `docs/RELEASE.md`（构建发版）· `README.md`（仓库总览）
+> 版本：v28c（2026-10-19） · 维护者：全栈工程师 · 上游：SuperSplat 3.5.2 fork
+> `www/dock.js` 53.9KB / 1111 行 · `www/dock.css` 19.1KB / 268 行
+> 相关：`docs/DIRECTOR.md`（导演台）· `docs/PROJECTS.md`（工程管理）· `docs/RELEASE.md`（构建发版）· `README.md`（仓库总览）
 
 ## 1. 它是什么
 
@@ -11,7 +11,7 @@ SuperSplat APK（Capacitor 壳）的移动端 UI 改造层。**不修改 SS 源�
 | 文件 | 作用 |
 |---|---|
 | `www/dock.js` | 建三停靠组、收养 SS 按钮、子面板定位、拖动吸附、全屏层接管、导演台/机位面板 |
-| `www/dock.css` | dock 样式、全屏层规则、手势防护 |
+| `www/dock.css` | dock 样式、全屏层规则、手势防护、工程页保存条避让 |
 | `www/mobile.css` / `www/mobile.js` | `body.mobile-mode` 标记等小补充 |
 
 核心思路：**把 SuperSplat 现有按钮 DOM（含事件）重挂进 dock**——功能零重写，只管布局与手势。SS 升级后按钮 id 变了只需改 `GROUPS` / `DOCKS` / `MENU_ORDER` 配置。
@@ -104,7 +104,25 @@ z-index 统一 **1300**（压过 dock 的 1000）。
 6. **名单外面板**：SS 随时可能插入新面板。某面板显示异常，先查它是否在 `watchDialogs()` 名单外。每加一个面板 = `watchDialogs()` 数组 + dock.css 三处选择器同步加。
 7. **桌面 headless 正常 ≠ 真机正常**：内联样式竞态、100vw 差异只在真机暴露。每个弹窗/面板必须真机过一遍启动态 + 打开态。
 
-## 6. 工具让位（`sd-tool-yield`）
+## 6. 工程页的保存条避让（v28b）
+
+工程编辑器页面左上角有一条固定的 `💾 保存 / ← 返回` 条（`.pj-bar`，`left:8px; top:safe+8px; z-index:1200`）。顶部停靠组默认水平居中在 `top:safe+10px`，390px 屏上两者会撞在一起。
+
+**约束：按钮位置不动**，所以改让停靠组让位：
+
+```
+projects-ui.js  ── 条子可见时实测底边 ──▶  body 上 --sd-bar-bottom + body.sd-has-bar
+                                              │
+                        dock.css  ────────────┘
+                          .sd-top   → top: bar-bottom + 6px
+                          .sd-left/.sd-right → 在条子以下的空间里居中
+```
+
+- `sd-has-bar` 只在编辑页存在，工程列表页不受影响。
+- **拖动过的停靠组要单独夹一次**：`applyDockPos()` 会把 freePos 写成内联 `top`，内联样式优先级高于 CSS 规则，不夹就会重新压回保存条上。
+- 量兄弟元素尺寸要等布局落定：rAF 套两帧；`barEl` 还没建出来时直接 return（早先版本在这里抛 `null.classList`，被工程回归测试抓到）。
+
+## 7. 工具让位（`sd-tool-yield`）
 
 某些 SS 工具（测量、框选、涂抹）自带底部工具条，会与我们的底栏重叠。`bindToolWatch()` 监听 `tool.activated` / `tool.deactivated` / `tool.deactivate`，给 `body` 加 `sd-tool-yield` 隐藏底栏。
 
@@ -120,7 +138,7 @@ const hasBottomToolbar = () => [...document.querySelectorAll('.select-toolbar')]
 
 移动/旋转/缩放是纯 gizmo 工具，本来没有底部工具条。早期对它们也让位，于是底栏一消失、「变换」按钮又在底栏里——**再也点不回来**。工具条是异步显示/隐藏的，所以还要 `requestAnimationFrame` 套两层再算一次。
 
-## 7. 开发与验证
+## 8. 开发与验证
 
 ```bash
 # headless + CDP，仓库根执行（自带静态服务与 Edge）
@@ -134,6 +152,8 @@ node tests/probe-v24c.mjs      # 导入自动选中 / 平点切换 / 锁对象
 node tests/probe-v25.mjs       # 移动到游标带基准点 + 三个基准点按钮
 node tests/probe-v26.mjs       # 三种对象黄点 + 泼溅基准点 + 重设
 node tests/probe-v27.mjs       # 黄点屏幕等比 + 抓拍隐藏 + 跟随基准点 + 密度中心
+node tests/probe-v28b.mjs      # 停靠区避让保存条 + 保存条位置不动
+node tests/probe-empty-project.mjs  # 空工程「新建→返回→再打开」闭环
 node tests/probe-layout.mjs    # 390x844 面板布局量测 + 截图
 node tests/probe-bottom.mjs    # 底栏按钮量测 + 截图
 
@@ -147,7 +167,7 @@ node tools/dev/staticsrv.cjs . 4225
 原型页（交互定稿用）：`prototype/mobile-ui-v7.html` → https://sinigli.github.io/supersplat-apk/prototype/mobile-ui-v7.html
 流程：网页原型迭代定稿 → 一次性移植 APK → 真机只做验证，不在 APK 里试错。
 
-## 8. 版本史（真机验证节点）
+## 9. 版本史（真机验证节点）
 
 | 版本 | commit | 内容 |
 |---|---|---|
@@ -166,8 +186,11 @@ node tools/dev/staticsrv.cjs . 4225
 | v25 | 80edc6f | 定位组加两个基准点按钮（⊙ 外边中心 / ⌖ 游标点） |
 | v26 | cecf13d | 定位组加第三个按钮 ↺ 重设基准点；黄点覆盖 GLB 与泼溅 |
 | v27 | 2437d99 | 中心按钮改高斯密度中心（文案同步）；引擎侧黄点改屏幕等比 + 抓拍隐藏 |
+| v28 | e8d8c9d | 工程管理层：双页 UI（工程列表 ↔ 编辑器）+ 自包含 zip 存开 |
+| v28b | 5b29521 | 停靠组避让工程页保存条（按钮位置不动，拖动过的也夹住） |
+| v28c | 6faadb1 | 新建工程即落盘（修“新建→返回→再打开失败”）；旧空壳工程可恢复 |
 
-## 9. 已知边界 / 待办
+## 10. 已知边界 / 待办
 
 - SS 上游升级时：核对 `GROUPS` / `DOCKS` / `MENU_ORDER` 里的按钮 id 与菜单顺序。
 - 全屏名单目前 4 类：dialog 系列 / scene / appearance+overlays / settings。新增入口面板照红线⑥加。

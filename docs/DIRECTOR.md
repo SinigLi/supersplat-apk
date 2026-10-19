@@ -1,8 +1,8 @@
 # 导演台模块（Director Console）— 移动端架构与开发手册
 
-> 版本：v27（2026-10-19） · 维护者：全栈工程师
-> 代码：`supersplat-main/src/director.ts`（73.9KB / 1970 行）· 面板 UI：`supersplat-apk/www/dock.js`
-> 关联：`DOCK.md`（停靠组 UI）· `docs/RELEASE.md`（构建发版）· `../splat-viewer/docs/MOBILE_DIRECTOR_CONSOLE_PLAN.md`（移植路线）
+> 版本：v28c（2026-10-19） · 维护者：全栈工程师
+> 代码：`supersplat-main/src/director.ts`（85.8KB / 2198 行）· 面板 UI：`supersplat-apk/www/dock.js`
+> 关联：`DOCK.md`（停靠组 UI）· `docs/PROJECTS.md`（工程存档与恢复）· `docs/RELEASE.md`（构建发版）· `../splat-viewer/docs/MOBILE_DIRECTOR_CONSOLE_PLAN.md`（移植路线）
 
 ## 1. 它是什么
 
@@ -104,6 +104,22 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `removeShot(id)` | `'ok' \| 'none'` | 删除机位（连同相机模型） |
 | `gotoShot(id)` | `'ok' \| 'none'` | 视口跳到该机位 |
 | `renderShot(id, w?, h?)` | `{ok, name, bytes, width, height, dataUrl}` | 从该机位渲染 PNG（默认 1280×720），返回 **data URL** |
+
+### 2.5b 工程存档（v28）
+
+这四个方法只负责“场景状态 ↔ 普通 JS 对象”的转换，不碰文件系统。存到哪、怎么打包由 `www/projects.js` 决定（见 `docs/PROJECTS.md`）。
+
+| 方法 | 说明 |
+|---|---|
+| `projectSnapshot()` | 当前场景快照：`{version:1, model, puppets, props, shots, camera, cursor}` |
+| `restoreProject(state, files)` | 清空现有场景后按快照重建；返回 `{ok}` 或 `{ok:false, failed:[名字]}`；`version !== 1` 返回 `'bad-version'` |
+| `projectModel()` | 主泼溅模型的 `{name, bytes}`（原始字节），无模型返回 `null` |
+| `projectPropFiles()` | 道具源字节 `[{path, bytes}]`，路径形如 `props/0.glb` |
+
+两个实现细节：
+
+- **模型字节靠 `sourceBytes` 留存**：导入/加载时把原始字节存在 splat 元素上（`sourceName` / `sourceBytes`），否则存盘时只能拿到解码后的高斯数据，写不回 PLY。
+- **恢复不走撤销栈**：`restoreProject` 直接销毁重建，不产生 op。所以“打开工程”不可撤销，脏检查由 UI 层负责（`isDirty`）。
 
 ### 2.6 状态快照
 
@@ -222,6 +238,10 @@ node tests/probe-v25.mjs     # 移动到游标带基准点 + 三个基准点按�
 node tests/probe-v26.mjs     # 三种对象都有黄点 + 泼溅基准点 + 重设
 node tests/probe-v27.mjs     # 黄点屏幕等比 + 抓拍隐藏 + 黄点跟随基准点 + 密度中心
 
+# 工程存档（v28）
+node tests/project.mjs       # 26 项：新建 → 导入 → 摆人偶 → 保存 → 校 zip → 重开还原 → 脏检查 → 删除
+node tests/probe-empty-project.mjs  # 9 项：空工程「新建 → 返回 → 再打开」闭环
+
 # 布局量测（会截图，非断言型）
 node tests/probe-layout.mjs  # 面板行布局量测 + 截图
 node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
@@ -258,7 +278,8 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v24 | f385586 | 4c61967 | 导入 GLB 自动选中（gizmo 立刻可见）；变换工具下点击切换选中；场景管理器「禁止选中」锁；人偶实体命名修复；`selectXById(null)` 取消选中 |
 | v25 | e0b6d23 | 80edc6f | 「移动到游标」带基准点一起走（一次 undo 全还原）；定位组加两个基准点按钮（外边中心 / 游标点） |
 | v26 | 30c1ba5 | cecf13d | GLB 与泼溅也有黄点；泼溅基准点打通原生 `SetLocalFrameOp`；加「重设基准点」按钮 |
-| v27 | 109b308 | 2437d99 | 黄点改场景根单体 + 屏幕等比（26px）；抓拍隐藏游标与黄点；黄点改跟随基准点；中心改用高斯密度中心。**当前** |
+| v27 | 109b308 | 2437d99 | 黄点改场景根单体 + 屏幕等比（26px）；抓拍隐藏游标与黄点；黄点改跟随基准点；中心改用高斯密度中心 |
+| v28 | 995c18e | e8d8c9d | 工程存档 API：`projectSnapshot` / `restoreProject` / `projectModel` / `projectPropFiles`；导入时留存源字节。**当前** |
 
 ## 9. 已知边界 / 待办
 

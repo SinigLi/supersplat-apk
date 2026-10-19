@@ -1,7 +1,7 @@
 # 构建与发版手册
 
-> 版本：v27（2026-10-19） · 适用：`supersplat-apk` + `../supersplat-main`
-> 相关：`docs/DIRECTOR.md`（导演台）· `DOCK.md`（停靠组 UI）
+> 版本：v28c（2026-10-19） · 适用：`supersplat-apk` + `../supersplat-main`
+> 相关：`docs/DIRECTOR.md`（导演台）· `docs/PROJECTS.md`（工程管理）· `DOCK.md`（停靠组 UI）
 
 ## 0. 两个仓库的分工
 
@@ -48,9 +48,12 @@ www/dock.js  www/dock.css  www/mobile.css  www/mobile.js  www/index.html
 cd projects/supersplat-apk      # 必须在仓库根执行，静态服务根 = cwd
 node tests/director.mjs         # 期望 === 16/16 passed ===
 node tests/v13.mjs              # 期望 === 15/15 passed ===
+node tests/project.mjs          # 期望 === 26/26 passed ===（工程管理全流程）
+node tests/probe-empty-project.mjs  # 期望 9/9（空工程重开）
+node tests/probe-v28b.mjs       # 期望 9/9（停靠区避让保存条）
 node tests/probe-v22a.mjs       # 机位相机世界尺寸 + 预览层四按钮
 node tests/probe-v22b.mjs       # 相机就近隐藏 + 渲染期间全隐
-node tests/probe-v27.mjs        # 黄点屏幕等比 + 抓拍隐藏 + 密度中心（当前版）
+node tests/probe-v27.mjs        # 黄点屏幕等比 + 抓拍隐藏 + 密度中心
 ```
 
 脚本自起 `tools/dev/staticsrv.cjs` 与 headless Edge（WebGPU/ANGLE），端口各版本不同（v22 用 4270/4271，CDP 9330/9331）。跑完自动退出，约 30–60s/个。
@@ -92,6 +95,7 @@ node tools/ci/verify_v21.cjs dist/supersplat-vNN-debug.apk   # 原生插件 dex 
 |---|---|
 | `verify_v14.cjs` | APK 魔数；`dock.js` 标记（`data-act="import"`、`pickAssets()`、`SPLAT_EXT`、`资产列表`、`sd-tool-yield`）；`index.js` 标记（`importModel`、`listProps`、`measure.debug`、`director-char-`）；四个 GLB 的字节数 |
 | `verify_v21.cjs` | dex 里 `Lcom/sinigli/supersplat/SaveImagePlugin;`、`MediaStore`、小写字面量 `relative_path`/`is_pending`；web 侧 `sd-shot-save`/`saveas`/`share`、`Plugins.SaveImage`、`api[method]({`、`filename: r.name` |
+| `tools/dev/deadcode.cjs` | 覆盖层死函数扫描（定义次数 vs 全文引用）；不是校验 APK，提交前自查用 |
 
 **GLB 体积基准**（改动资产后要同步更新脚本）：
 
@@ -113,7 +117,27 @@ tuxedo.glb     602,496 B
 
 **规矩：改完实现立刻同步改校验脚本；报 MISS 先 diff 实现与检查项。**
 
-## 6. 网络
+## 6. 签名：当前是每构建一把新密钥（已知问题）
+
+现状：`build-apk.yml` 刻意**不引用任何 secret**，每次构建用 CI 现场生成的临时 debug 密钥。
+
+后果：新包覆盖安装会报「应用未安装」（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`）。**装着旧版时必须先卸载再装**，卸载等于清掉 App 私有目录里的工程。
+
+已经做好的部分（只差把密钥送进 CI）：
+
+- `android/app/keystore/ss-debug.p12`（PKCS12，CN=SuperSplat Debug，本地校验通过）
+- `android/app/build.gradle` 的 `signingConfigs.stable`，读 `android/keystore.properties`
+- `tools/ci/prepare_signing.sh`：从环境变量还原密钥库与 properties；变量缺失时 exit 0，不阻塞构建
+
+**为什么没用 secret**：四个 secret（`ANDROID_KEYSTORE_B64` / `..._PASS` / `..._ALIAS` / `..._KEY_PASS`）上传后，只有引用 `ANDROID_KEYSTORE_B64` 的 workflow 会 `startup_failure` 且 0 job；改用字面量、改用不存在的 secret 名、改用 `GITHUB_TOKEN` 都能正常调度。已定位到那个 secret 条目本身有问题，与 YAML 语法无关。
+
+三条出路（待定）：
+
+1. 把 debug 密钥库**提交进仓库**——debug 密钥，仓库公开也无所谓（推荐）
+2. 用 `tools/ci/set_secret.mjs` 重建四个 secret（换了新 p12）
+3. 维持现状（每次卸载重装，工程会丢）
+
+## 7. 网络
 
 | 场景 | 做法 |
 |---|---|
@@ -122,7 +146,7 @@ tuxedo.glb     602,496 B
 | token | 运行时从 `F:/openclawhome/openclaw/fullstack_workspace/githubapi.txt` 读第一行，**绝不写进脚本或输出** |
 | `curl -L` 下 artifact | 会丢 Authorization 导致拿到损坏 zip，别用 |
 
-## 7. 铁律
+## 8. 铁律
 
 - **下新 artifact 前必须删 `.parts` 和 `_unzip`**：残留分片会让大小校验出现假的 MATCH/MISMATCH 混淆。
 - **不要把 `dist/` 提交进仓库**（已在 `.gitignore`）。
@@ -130,7 +154,7 @@ tuxedo.glb     602,496 B
 - 长命令用 `*> logfile` 重定向再轮询，避免网关会话回收导致中断。
 - 大文件下载/推送中途被打断，可能表现为假的 `401 Bad credentials`——先重试，别急着换 token。
 
-## 8. 原生插件的坑（`SaveImagePlugin`）
+## 9. 原生插件的坑（`SaveImagePlugin`）
 
 - Capacitor 插件必须在 `super.onCreate()` **之前**注册（`BridgeActivity` 在那里 build bridge）。
 - Android 10+ 写相册用 MediaStore + `IS_PENDING` 1→0，**不需要权限**；9 及以下需要 `WRITE_EXTERNAL_STORAGE`（清单里 `maxSdkVersion="28"` + 运行时申请）。
