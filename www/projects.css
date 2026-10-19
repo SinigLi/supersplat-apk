@@ -1,0 +1,182 @@
+/* SuperSplat APK —— 工程管理界面样式
+ *
+ * 视觉沿用 dock 的全屏层约定（z-index 1300，左上角返回，全屏 100% 不用 vw/vh），
+ * 但这一层盖在编辑器之上，所以固定 1500：它是最外层，编辑器整个被它遮住。
+ */
+
+/* ===== 工程页 ===== */
+.pj-page {
+    position: fixed; inset: 0;
+    z-index: 1500;
+    display: none;
+    flex-direction: column;
+    background: #14161a;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px
+             calc(env(safe-area-inset-bottom, 0px) + 12px);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+.pj-page.open { display: flex; }
+
+.pj-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.2rem 0.2rem 0.9rem;
+    flex: 0 0 auto;
+}
+.pj-title { font-size: 1.3rem; font-weight: 600; color: #eef1f5; letter-spacing: .02em; }
+.pj-new {
+    padding: 0.45rem 0.9rem; border-radius: 10px;
+    border: 1px solid rgba(120, 190, 255, .45);
+    background: rgba(60, 130, 200, .22);
+    color: #cfe6ff; font-size: 0.95rem;
+}
+
+.pj-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 0.6rem;
+    scrollbar-width: none;
+}
+.pj-list::-webkit-scrollbar { display: none; }
+
+.pj-card {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.6rem;
+    border-radius: 14px;
+    background: #1d2127;
+    border: 1px solid rgba(255, 255, 255, .06);
+    cursor: pointer;
+    transition: background .12s;
+}
+.pj-card:active { background: #262b33; }
+
+.pj-thumb, .pj-thumb-empty {
+    width: 96px; height: 54px;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #12151a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem;
+    color: #4a5563;
+}
+
+.pj-info { flex: 1 1 auto; min-width: 0; }
+.pj-name {
+    font-size: 1.02rem; color: #e8edf3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pj-sub { font-size: 0.78rem; color: #7d8896; margin-top: 0.22rem; }
+
+.pj-del {
+    flex: 0 0 auto;
+    width: 2.2rem; height: 2.2rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 120, 120, .25);
+    background: rgba(120, 40, 40, .2);
+    color: #ff9a9a; font-size: 1rem;
+}
+
+.pj-empty {
+    flex: 1 1 auto;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0.5rem;
+    color: #5f6b79; font-size: 1rem;
+}
+.pj-empty-ico { font-size: 3rem; opacity: .5; }
+.pj-empty-sub { font-size: 0.82rem; color: #4a5563; }
+
+/* ===== 编辑器页顶部小条 ===== */
+.pj-bar {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    left: 8px;
+    z-index: 1200;
+    display: none;
+    gap: 6px;
+    pointer-events: none;
+}
+.pj-bar.open { display: flex; }
+.pj-bar-btn {
+    pointer-events: auto;
+    padding: 0.42rem 0.72rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(21, 24, 28, .92);
+    color: #dfe6ee;
+    font-size: 0.86rem;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .45);
+}
+
+/* ===== 对话框 ===== */
+.pj-dlg-mask {
+    position: fixed; inset: 0;
+    z-index: 1600;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(6, 8, 11, .72);
+    padding: 1rem;
+}
+.pj-dlg-mask.open { display: flex; }
+
+.pj-dlg {
+    width: 100%;
+    max-width: 22rem;
+    border-radius: 16px;
+    background: #1c2027;
+    border: 1px solid rgba(255, 255, 255, .08);
+    padding: 1rem;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
+}
+.pj-dlg-title { font-size: 1.06rem; color: #eef1f5; margin-bottom: 0.7rem; }
+.pj-dlg-hint { font-size: 0.82rem; color: #8b96a4; min-height: 1.1em; margin-bottom: 0.5rem; }
+.pj-dlg-row { display: flex; gap: 0.6rem; justify-content: flex-end; }
+.pj-dlg-col { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.pj-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 0.7rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: #12151a;
+    color: #e8edf3;
+    font-size: 1rem;
+    margin-bottom: 0.4rem;
+}
+.pj-input:focus { outline: none; border-color: rgba(110, 180, 255, .6); }
+
+.pj-dlg-btn {
+    padding: 0.58rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: #262b33;
+    color: #dfe6ee;
+    font-size: 0.94rem;
+}
+.pj-dlg-btn.pj-primary {
+    border-color: rgba(120, 190, 255, .5);
+    background: rgba(60, 130, 200, .3);
+    color: #d6ecff;
+}
+
+/* ===== 提示 ===== */
+.pj-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+    transform: translateX(-50%) translateY(8px);
+    z-index: 1700;
+    max-width: 88vw;
+    padding: 0.6rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(24, 28, 34, .97);
+    border: 1px solid rgba(255, 255, 255, .1);
+    color: #e6ebf2;
+    font-size: 0.88rem;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s, transform .18s;
+}
+.pj-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

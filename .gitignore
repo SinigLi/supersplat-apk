@@ -6,6 +6,7 @@ android/.gradle/
 shot_*.png
 v12b_result.json
 v13_result.json
+v28_result.json
 
 # artifact 下载目录
 dist_v*/

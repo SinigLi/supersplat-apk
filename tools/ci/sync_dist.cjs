@@ -11,7 +11,11 @@ const path = require('path');
 const SRC = 'F:/openclawhome/openclaw/fullstack_workspace/projects/supersplat-main/dist';
 const DST = 'F:/openclawhome/openclaw/fullstack_workspace/projects/supersplat-apk/www';
 
-const PROTECTED = new Set(['dock.js', 'dock.css', 'mobile.css', 'mobile.js', 'index.html']);
+const PROTECTED = new Set([
+    'dock.js', 'dock.css', 'mobile.css', 'mobile.js', 'index.html',
+    // v28 工程管理层：同样只存在于覆盖层，dist 里没有
+    'projects.js', 'projects-ui.js', 'projects.css', 'fflate.js'
+]);
 
 const copyRec = (src, dst) => {
     fs.mkdirSync(dst, { recursive: true });
