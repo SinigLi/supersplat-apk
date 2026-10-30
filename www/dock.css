@@ -5,11 +5,11 @@ html, body { overscroll-behavior:none; touch-action:manipulation; }
 body { -webkit-user-select:none; user-select:none; }
 body canvas, #application-canvas { touch-action:none !important; }
 .sd-dock, .sd-sub-wrap, .sd-sheet-header, .sd-back-btn { touch-action:manipulation; }
-:root { --sd-btn: 2.5rem; --sd-gap: 0.45rem; }
+:root { --sd-btn: 2.5rem; --sd-gap: 0.45rem; --sd-alpha:.6; }
 
 /* ===== 鍋滈潬缁勫鍣?===== */
 .sd-dock { position:fixed; z-index:1000; display:flex; gap:var(--sd-gap); padding:0.45rem;
-        background:rgba(21,24,28,.95); border-radius:14px;
+        background:rgba(21,24,28,var(--sd-alpha,.6)); border-radius:14px;
         box-shadow:0 4px 16px rgba(0,0,0,.5); align-items:center; }
 .sd-dock.sd-bottom { bottom:calc(env(safe-area-inset-bottom,0px) + 10px); left:50%; transform:translateX(-50%); flex-direction:row;
                      overflow-x:auto; overflow-y:hidden; max-width:calc(100vw - 16px); }
@@ -30,7 +30,7 @@ body canvas, #application-canvas { touch-action:none !important; }
 .sd-handle { min-width:18px; min-height:18px; display:flex; align-items:center; justify-content:center;
              color:#777; font-size:14px; cursor:grab; touch-action:none; flex-shrink:0; letter-spacing:2px; }
 .sd-dock.sd-left .sd-handle, .sd-dock.sd-right .sd-handle { writing-mode:vertical-lr; }
-.sd-dock.sd-collapsed .sd-handle { width:40px; height:40px; background:rgba(21,24,28,.95); border-radius:50%;
+.sd-dock.sd-collapsed .sd-handle { width:40px; height:40px; background:rgba(21,24,28,var(--sd-alpha,.6)); border-radius:50%;
                                color:#4a9eff; font-size:16px; box-shadow:0 4px 16px rgba(0,0,0,.5); writing-mode:horizontal-tb; }
 
 .sd-label { font-size:11px; color:#888; writing-mode:vertical-lr; letter-spacing:2px; flex-shrink:0; }
@@ -51,7 +51,7 @@ body canvas, #application-canvas { touch-action:none !important; }
 
 /* ===== 瀛愬伐鍏锋诞灞傦紙鍐呭惈琚敹鍏荤殑 SS 鍘熸寜閽級 ===== */
 .sd-sub-wrap { position:fixed; z-index:999; display:flex; gap:8px; padding:8px;
-            background:rgba(30,33,38,.97); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.5);
+            background:rgba(30,33,38,var(--sd-alpha,.6)); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.5);
             opacity:0; pointer-events:none; transition:opacity .18s ease; }
 .sd-sub-wrap.sd-open { opacity:1; pointer-events:auto; }
 .sd-sub-wrap.sd-up   { flex-direction:row; }
@@ -244,6 +244,30 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-shot-panel .sd-cam-modes { justify-content:flex-start; padding-top:2px;
   border-top:1px solid rgba(148,163,184,.18); margin-top:2px; }
 .sd-shot-panel .sd-cam-modes .sd-adopted { display:flex; }
+
+/* v32 相机面板重排：机位行（下拉+两小钮）、内联改名行、模式注释 */
+.sd-shot-pick-row { gap:6px; }
+.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; }
+.sd-shot-panel .sd-shot-btn.sd-shot-mini { flex:0 0 auto; width:2.5rem; height:2.5rem; padding:0 !important;
+  justify-content:center; font-size:16px !important; }
+.sd-shot-edit-row { gap:6px; }
+.sd-shot-edit-row[hidden] { display:none; }
+.sd-shot-edit { flex:1; min-width:0; min-height:40px; background:rgba(30,41,59,.92); color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 10px; font-size:13px; }
+.sd-mode-hint { flex:none; font-size:11px; color:#8b96a5; padding:0 2px; margin-top:2px; }
+
+/* v32 设置页透明度滑条 */
+.sd-alpha-row { display:flex; align-items:center; gap:10px; margin:0 0 8px 0; padding:12px 14px;
+  background:rgba(30,41,59,.5); border-radius:10px; }
+.sd-alpha-lab { flex:none; font-size:13px; color:#e2e8f0; }
+.sd-alpha-row input[type=range] { flex:1; min-width:0; -webkit-appearance:none; appearance:none;
+  height:28px; background:transparent; }
+.sd-alpha-row input[type=range]::-webkit-slider-runnable-track { height:6px; border-radius:3px;
+  background:linear-gradient(90deg,#2563eb,#7dd3fc); }
+.sd-alpha-row input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none;
+  width:20px; height:20px; border-radius:50%; background:#e2e8f0; border:3px solid #1e293b;
+  margin-top:-7px; box-shadow:0 1px 4px rgba(0,0,0,.5); }
+.sd-alpha-val { flex:none; font-size:12px; color:#94a3b8; min-width:34px; text-align:right; }
 
 /* ===== v20 渲染照片预览层（长按保存） ===== */
 #sd-shot-preview { position:fixed; inset:0; z-index:2000; display:flex; flex-direction:column;

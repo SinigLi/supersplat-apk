@@ -16,6 +16,18 @@
 (function () {
 'use strict';
 
+/* v32：悬浮窗半透明 —— CSS 变量 --sd-alpha 驱动停靠栏/子工具浮层背景，
+ * 值存 localStorage（默认 0.6），设置页滑条实时改（同步改 dock.css 三处 rgba） */
+const SD_ALPHA_KEY = 'sd-alpha';
+const SD_ALPHA_DEFAULT = 0.6;
+function applySdAlpha(v) {
+  const a = Math.min(1, Math.max(0.2, +v || SD_ALPHA_DEFAULT));
+  document.documentElement.style.setProperty('--sd-alpha', String(a));
+  try { localStorage.setItem(SD_ALPHA_KEY, String(a)); } catch (e) {}
+  return a;
+}
+try { applySdAlpha(localStorage.getItem(SD_ALPHA_KEY) || SD_ALPHA_DEFAULT); } catch (e) { applySdAlpha(SD_ALPHA_DEFAULT); }
+
 /* ===================== 配置区说明 =====================
  * GROUPS：底栏二级分组（ids 为 SS 原按钮 id，收养后功能不变）
  * DOCKS：三个停靠组；menuOptions=顶栏菜单模式，viewOptions=右栏一级分组模式
@@ -417,7 +429,16 @@ waitUI(function () {
   function buildShotPanel(wrap) {
     wrap.classList.add("sd-dir-panel", "sd-shot-panel");
     wrap.innerHTML =
-      '<div class="sd-dir-row"><select class="sd-shot-list" title="机位列表"></select></div>' +
+      '<div class="sd-dir-row sd-shot-pick-row">' +
+        '<select class="sd-shot-list" title="机位列表"></select>' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="rename" title="重命名选中的机位">✏️</button>' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="relocate" title="重定位：把选中的机位移到当前视角">📍</button>' +
+      '</div>' +
+      '<div class="sd-dir-row sd-shot-edit-row" hidden>' +
+        '<input class="sd-shot-edit" type="text" maxlength="50" placeholder="机位名称">' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="rename-ok" title="确定">✓</button>' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="rename-no" title="取消">✕</button>' +
+      '</div>' +
       '<div class="sd-dir-row">' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="add" title="新增机位：记录当前视角">＋ 新增</button>' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="remove" title="移除选中的机位">－ 移除</button>' +
@@ -427,6 +448,7 @@ waitUI(function () {
         '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
       '</div>' +
       '<div class="sd-dir-row sd-cam-modes"></div>' +
+      '<div class="sd-dir-hint sd-mode-hint">轨道 = 绕目标转 · 飞行 = 第一人称</div>' +
       '<div class="sd-dir-row sd-clip-row">' +
         '<span class="sd-clip-lab">近</span><input class="sd-clip-num" data-clip="near" type="number" min="0.01" step="0.1" title="近裁剪距离（比它近的不画）">' +
         '<span class="sd-clip-lab">远</span><input class="sd-clip-num" data-clip="far" type="number" min="0.1" step="1" title="远裁剪距离（比它远的不画）">' +
@@ -438,8 +460,7 @@ waitUI(function () {
       '<div class="sd-dir-row sd-clip-slider-row">' +
         '<input class="sd-clip-slider" data-slider="near" type="range" min="0" max="1000" step="1" title="近裁剪（拖动按比例取值）">' +
         '<input class="sd-clip-slider" data-slider="far" type="range" min="0" max="1000" step="1" title="远裁剪（拖动按比例取值）">' +
-      '</div>' +
-      '<div class="sd-dir-hint">下排：轨道=绕目标转，飞行=第一人称</div>';
+      '</div>';
 
     const list = wrap.querySelector(".sd-shot-list");
     const modes = wrap.querySelector(".sd-cam-modes");
@@ -488,6 +509,48 @@ waitUI(function () {
       const r = d.removeShot(id);
       fill();
       showMsg(r === "ok" ? "机位已移除" : "没有这个机位");
+    };
+
+    // v32：改名 + 重定位（下拉右侧两个小图标钮）。
+    // 改名用内联输入行，不用 window.prompt —— Android WebView 的 prompt 弹窗
+    // 行为不可控（v31 教训：桌面过的真机未必过）。
+    const editRow = wrap.querySelector(".sd-shot-edit-row");
+    const editInput = wrap.querySelector(".sd-shot-edit");
+    const bRename = btn("rename");
+    if (bRename) bRename.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      const shot = (d.listShots() || []).find(s => s.id === id);
+      if (editInput) editInput.value = shot ? shot.name : "";
+      if (editRow) { editRow.hidden = false; if (editInput) editInput.focus(); }
+    };
+    const bRenameOk = btn("rename-ok");
+    if (bRenameOk) bRenameOk.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      const r = d.renameShot(id, editInput ? editInput.value : "");
+      if (editRow) editRow.hidden = true;
+      fill();
+      if (list) list.value = String(id);
+      showMsg(r === "ok" ? "已重命名" : (r === "no-name" ? "名字不能为空" : "没有这个机位"));
+    };
+    const bRenameNo = btn("rename-no");
+    if (bRenameNo) bRenameNo.onclick = (e) => {
+      e.stopPropagation();
+      if (editRow) editRow.hidden = true;
+    };
+
+    const bRelocate = btn("relocate");
+    if (bRelocate) bRelocate.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      const r = d.relocateShot(id);
+      fill();
+      if (list) list.value = String(id);
+      showMsg(r === "ok" ? "已把该机位重定位到当前视角" : "没有这个机位");
     };
 
     const bGo = btn("goto");
@@ -1072,6 +1135,27 @@ waitUI(function () {
       [['appearance-panel','外观','right-toolbar-appearance','appearancePanel'], ['overlays-panel','浮层','right-toolbar-overlays','overlaysPanel'], ['settings-panel','设置','right-toolbar-settings','settingsPanel']].forEach(function(def){
         var p = document.getElementById(def[0]);
         if (!p || p.querySelector(':scope > .sd-sheet-header')) return;
+      // v32：设置面板注入悬浮窗透明度滑条（默认 0.6，存 localStorage）
+      if (def[0] === 'settings-panel') (function injectAlpha(){
+        if (p.querySelector('#sd-alpha-row')) return;
+        const cur = (parseFloat(document.documentElement.style.getPropertyValue('--sd-alpha')) || SD_ALPHA_DEFAULT) * 100;
+        const row = makeShell(
+          '<span class="sd-alpha-lab">悬浮窗透明度</span>' +
+          '<input id="sd-alpha-slider" type="range" min="20" max="100" step="5">' +
+          '<span class="sd-alpha-val"></span>', 'sd-alpha-row');
+        row.id = 'sd-alpha-row';
+        const slider = row.querySelector('#sd-alpha-slider');
+        const val = row.querySelector('.sd-alpha-val');
+        slider.value = String(Math.round(cur));
+        val.textContent = Math.round(cur) + '%';
+        slider.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+        slider.addEventListener('input', function(){
+          const a = applySdAlpha((+slider.value) / 100);
+          val.textContent = Math.round(a * 100) + '%';
+        });
+        const first = p.querySelector(':scope > .pcui-element');
+        p.insertBefore(row, first || null);
+      })();
         var hd = makeShell('<span class="sd-back-btn">‹ 返回</span><span class="sd-sheet-title">' + def[1] + '</span>', 'sd-sheet-header');
         p.insertBefore(hd, p.firstChild);
         hd.querySelector('.sd-back-btn').addEventListener('pointerdown', function(e){ e.stopPropagation(); });
