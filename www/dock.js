@@ -122,7 +122,6 @@ waitUI(function () {
     '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
     '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select></div>' +
     '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="import" title="导入资产（泼溅 / 3D 模型，按后缀自动识别）">📥</button>' +
-    '<button class="sd-dir-btn" data-act="box" title="生成正方形方块（占位/布局用，点颜色下拉换色）">🧊</button>' +
     '<button class="sd-dir-btn" data-act="delete" title="删除选中对象">🗑</button>' +
     '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="资产列表（人偶/道具/泼溅）">🗂 资产列表</button></div>' +
     '<div class="sd-dir-info">选角色 → 摆放人偶</div>';
@@ -136,7 +135,8 @@ waitUI(function () {
     panel.querySelectorAll('.sd-dir-btn').forEach(b => { btns[b.dataset.act] = b; });
     const setActive = (act, on) => { if (btns[act]) btns[act].classList.toggle('sd-on', on); };
 
-    // 角色下拉：来自 window.__director.listCharacters()
+    // 角色下拉：来自 window.__director.listCharacters()；v31 方块作为模型数据
+    // 入选下拉（老板反馈：方块和人偶一样是模型，不该独立按钮）
     function fillChars() {
       const d = window.__director;
       if (!d || charSel.options.length) return;
@@ -146,6 +146,10 @@ waitUI(function () {
         o.textContent = c.name;
         charSel.appendChild(o);
       });
+      const bo = document.createElement('option');
+      bo.value = '__box';
+      bo.textContent = '方块';
+      charSel.appendChild(bo);
       charSel.value = d.currentCharId || 'woman';
     }
 
@@ -208,16 +212,23 @@ waitUI(function () {
       if (!d) { showMsg('导演台模块未就绪'); return; }
       const act = b.dataset.act;
       if (act === 'add') {
-        const r = d.addPuppet();
-        showMsg(r === 'loading' ? '人偶资源加载中…' : '人偶已在游标处生成');
+        // v31：选「方块」时摆放的是方块模型（同一人偶入口）
+        if (charSel.value === '__box') {
+          if (d.addBoxAtCursor) {
+            d.addBoxAtCursor(BOX_HEX[tintSel.value] || BOX_HEX.GRAY);
+            showMsg('方块已生成（可撤销），选中后点颜色下拉换色');
+          } else {
+            showMsg('引擎无方块接口');
+          }
+        } else {
+          const r = d.addPuppet();
+          showMsg(r === 'loading' ? '人偶资源加载中…' : '人偶已在游标处生成');
+        }
       } else if (act === 'move') {
         const r = d.armPlacePuppet();
         showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
       } else if (act === 'import') {
         pickAssets();
-      } else if (act === 'box') {
-        d.addBoxAtCursor();
-        showMsg('方块已生成（可撤销），选中后点颜色下拉换色');
       } else if (act === 'delete') {
         const r = d.deleteSelected();
         showMsg(r === 'ok' ? '已删除选中对象（可撤销）' : '没有可删除的对象');
@@ -424,6 +435,10 @@ waitUI(function () {
         '<button class="sd-dir-btn sd-shot-btn" data-shot="clip-on" title="启用显示范围：只渲染近/远之间的内容（Blender 式）">📏 启用范围</button>' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="clip-off" title="关闭手动范围，恢复自动裁剪">✕ 自动</button>' +
       '</div>' +
+      '<div class="sd-dir-row sd-clip-slider-row">' +
+        '<input class="sd-clip-slider" data-slider="near" type="range" min="0" max="1000" step="1" title="近裁剪（拖动按比例取值）">' +
+        '<input class="sd-clip-slider" data-slider="far" type="range" min="0" max="1000" step="1" title="远裁剪（拖动按比例取值）">' +
+      '</div>' +
       '<div class="sd-dir-hint">下排：轨道=绕目标转，飞行=第一人称</div>';
 
     const list = wrap.querySelector(".sd-shot-list");
@@ -499,42 +514,115 @@ waitUI(function () {
       }
     };
 
-    // v30 #5：显示范围控制（手动近/远裁剪，像 Blender）
+    // v30 #5 / v31 反馈：显示范围控制（手动近/远裁剪，像 Blender）
+    // v31：数字输入保留为精确设置，双头滑轨为主交互——拖动按对数比例
+    // 取真实值（近端密度高，远端跨度大），松手即生效。
+    // 滑轨语义：min/max 是用户设的「范围两端」，拖到 0 = 取最小值，1000 = 取最大值
+    const CLIP_MIN_DEFAULT = 0.05;
+    const CLIP_MAX_DEFAULT = 2000;
+    const clipState = { min: CLIP_MIN_DEFAULT, max: CLIP_MAX_DEFAULT, enabled: false, near: 0.1, far: 1000 };
+
+    // 对数映射：slider [0..1000] ↔ 值域 [min..max]（两端都可为 0 时退化线性）
+    const sliderToVal = (t, min, max) => {
+        if (max <= min) return min;
+        if (min > 0) return min * Math.pow(max / min, t / 1000);
+        return min + (max - min) * (t / 1000);
+    };
+    const valToSlider = (v, min, max) => {
+        if (max <= min) return 0;
+        if (min > 0 && v > 0) return Math.round(1000 * Math.log(v / min) / Math.log(max / min));
+        return Math.round(1000 * (v - min) / (max - min));
+    };
+
     const clipFill = () => {
       const d = window.__director;
       if (!d || !d.getClipRange) return;
       const cr = d.getClipRange();
       const nEl = wrap.querySelector('[data-clip="near"]');
       const fEl = wrap.querySelector('[data-clip="far"]');
-      if (nEl && document.activeElement !== nEl) nEl.value = (+cr.near).toFixed(2);
-      if (fEl && document.activeElement !== fEl) fEl.value = Math.round(cr.far);
+      const nSl = wrap.querySelector('[data-slider="near"]');
+      const fSl = wrap.querySelector('[data-slider="far"]');
+      if (cr.enabled) { clipState.near = cr.near; clipState.far = cr.far; }
+      if (nEl && document.activeElement !== nEl) nEl.value = (+clipState.near).toFixed(2);
+      if (fEl && document.activeElement !== fEl) fEl.value = Math.round(clipState.far);
+      if (nSl) nSl.value = valToSlider(clipState.near, clipState.min, clipState.far);
+      if (fSl) fSl.value = valToSlider(clipState.far, clipState.near, clipState.max);
       const on = wrap.querySelector('[data-shot="clip-on"]');
       if (on) on.classList.toggle('sd-on', !!cr.enabled);
     };
+
+    // 应用当前值（滑轨拖动实时调；数字输入变更也走这里）
+    const clipApply = (live) => {
+      const d = window.__director;
+      if (!d || !d.setClipRange) return;
+      if (!clipState.enabled) return;
+      const near = Math.max(0.01, +clipState.near);
+      let far = Math.max(near * 2, +clipState.far);
+      clipState.far = far;
+      d.setClipRange({ enabled: true, near: near, far: far });
+      if (!live) clipFill();
+    };
+
+    ['near', 'far'].forEach((key) => {
+      const sl = wrap.querySelector('[data-slider="' + key + '"]');
+      if (!sl) return;
+      sl.addEventListener('input', () => {
+        const t = +sl.value;
+        const lo = key === 'near' ? clipState.min : clipState.near;
+        const hi = key === 'far' ? clipState.max : clipState.far;
+        const v = sliderToVal(t, lo, hi);
+        if (key === 'near') clipState.near = Math.min(v, clipState.far / 2);
+        else clipState.far = Math.max(v, clipState.near * 2);
+        clipApply(true);
+        const nEl = wrap.querySelector('[data-clip="near"]');
+        const fEl = wrap.querySelector('[data-clip="far"]');
+        if (nEl) nEl.value = (+clipState.near).toFixed(2);
+        if (fEl) fEl.value = Math.round(clipState.far);
+      });
+      sl.addEventListener('change', () => clipApply(false));
+    });
+
     const bClipOn = btn("clip-on");
     if (bClipOn) bClipOn.onclick = (e) => {
       e.stopPropagation();
       const d = window.__director;
       if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
-      const nEl = wrap.querySelector('[data-clip="near"]');
-      const fEl = wrap.querySelector('[data-clip="far"]');
-      const near = parseFloat(nEl && nEl.value);
-      const far = parseFloat(fEl && fEl.value);
-      const n = near > 0 ? near : 0.1;
-      const f = far > 0 ? far : 1000;
-      const r = d.setClipRange({ enabled: true, near: n, far: f });
-      showMsg(r === 'ok' ? '已启用显示范围（近 ' + n + ' / 远 ' + f + '）' : '设置失败');
-      clipFill();
+      clipState.enabled = true;
+      // 首次启用：若还没设过值，用当前自动裁剪值作起点（拖滑轨调的就是它）
+      const cr = d.getClipRange ? d.getClipRange() : null;
+      if (cr && !cr.enabled) {
+        if (!clipState.touched) { clipState.near = Math.max(0.05, cr.near); clipState.far = Math.max(clipState.near * 2, cr.far); }
+      }
+      clipApply(false);
+      showMsg('已启用显示范围（近 ' + (+clipState.near).toFixed(2) + ' / 远 ' + Math.round(clipState.far) + '），拖滑轨微调');
     };
     const bClipOff = btn("clip-off");
     if (bClipOff) bClipOff.onclick = (e) => {
       e.stopPropagation();
       const d = window.__director;
       if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
+      clipState.enabled = false;
       d.setClipRange({ enabled: false });
       showMsg('已恢复自动裁剪');
       clipFill();
     };
+    // 数字输入仍可精确设置（回车/失焦生效）
+    ['near', 'far'].forEach((key) => {
+      const numEl = wrap.querySelector('[data-clip="' + key + '"]');
+      if (!numEl) return;
+      const applyNum = () => {
+        const v = parseFloat(numEl.value);
+        if (!(v > 0)) return;
+        if (key === 'near') clipState.near = Math.min(v, clipState.far / 2);
+        else clipState.far = Math.max(v, clipState.near * 2);
+        clipState.touched = true;
+        clipApply(false);
+      };
+      numEl.addEventListener('change', applyNum);
+    });
+    wrap.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.sd-clip-slider')) clipState.touched = true;
+    });
 
     // 每次展开都刷新（新增/删除后外部也可能变化）
     wrap.__sdRefresh = () => { fill(); clipFill(); };
@@ -693,7 +781,7 @@ waitUI(function () {
       bindDirectorPanel(dwrap2);
       [
         { act:'cursor',   ico:'🎯', name:'游标' },
-        { act:'movegroup', ico:'🧲', name:'移动模型' },
+        { act:'movegroup', ico:'🧲', name:'移动' },
         { act:'xform',    ico:'🔢', name:'变换' },
         { act:'director', ico:'🎬', name:DIR_NAME }
       ].forEach(b => {
@@ -707,14 +795,14 @@ waitUI(function () {
 
         else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
         else if (b.act === 'movegroup') {
-          // v30 #3：移动模型组——移动到游标 / 复制到游标（老板拍板的两钮分组）
+          // v30 #3 / v31 反馈：移动模型组——两钮纯图标（不带文字，老板反馈带字会折行布局乱）
           const mwrap = makeShell(
-            '<button class="sd-dir-btn" data-mact="move">🧲 移动到游标</button>' +
-            '<button class="sd-dir-btn" data-mact="copy">📋 复制到游标</button>',
-            'sd-sub-wrap sd-dir-panel');
+            '<button class="sd-dir-btn sd-mv-btn" data-mact="move" title="移动到游标">🧲</button>' +
+            '<button class="sd-dir-btn sd-mv-btn" data-mact="copy" title="复制到游标">📋</button>',
+            'sd-sub-wrap sd-dir-panel sd-mv-panel');
           mwrap.dataset.grp = 'movegroup';
           document.body.appendChild(mwrap);
-          allPanels.set('移动模型', mwrap);
+          allPanels.set('移动', mwrap);
           mwrap.addEventListener('click', (e) => {
             const mb = e.target.closest('[data-mact]');
             if (!mb) return;
@@ -735,7 +823,7 @@ waitUI(function () {
             }
             closeAll(docks.find(s => s.dock === dock) || { openPanels: new Set() });
           });
-          btn.onclick = () => toggleNamed('移动模型', btn, dock);
+          btn.onclick = () => toggleNamed('移动', btn, dock);
         }
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
         dock.appendChild(btn);
@@ -1074,6 +1162,14 @@ waitUI(function () {
     }
     if (open && window.__renderPuppetList) window.__renderPuppetList();
   }
+
+  // v31：打开场景页时隐藏 SS 原生泼溅列表（老板真机反馈：样式不一致、
+  // 删除走它的 showPopup 确认框）。我们注入的统一泼溅行已接管展示与删除。
+  // 只在面板打开期间隐藏，返回时恢复，不动 SS 源码。
+  const styleNativeSplatList = document.createElement('style');
+  styleNativeSplatList.textContent =
+    'body.sd-scene-open .splat-list-container { display:none !important; }';
+  document.head.appendChild(styleNativeSplatList);
 
   /* ===================== v10 场景页人偶列表 =====================
    * 人偶行：点行选中（进 SS 变换/撤销管线）、眼睛切显隐、锁切禁止选中、垃圾桶删（走 undo）。

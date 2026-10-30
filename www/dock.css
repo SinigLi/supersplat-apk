@@ -224,6 +224,23 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-clip-num { flex:1; min-width:0; min-height:40px; background:#1e293b; color:#e2e8f0;
   border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 8px; font-size:13px; }
 .sd-shot-panel .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
+
+/* v31 双头滑轨（近/远裁剪主交互）：两条细轨叠一行，拖动按对数比例取值 */
+.sd-clip-slider-row { flex-direction:column; gap:8px; padding:4px 2px; }
+.sd-clip-slider { width:100%; height:32px; -webkit-appearance:none; appearance:none;
+  background:transparent; margin:0; }
+.sd-clip-slider::-webkit-slider-runnable-track { height:6px; border-radius:3px;
+  background:linear-gradient(90deg,#1f59e6 0%,#1f59e6 var(--fill,0%),#334155 var(--fill,0%),#334155 100%); }
+.sd-clip-slider[data-slider="far"]::-webkit-slider-runnable-track {
+  background:linear-gradient(90deg,#26b333 0%,#26b333 var(--fill,0%),#334155 var(--fill,0%),#334155 100%); }
+.sd-clip-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none;
+  width:22px; height:22px; border-radius:50%; background:#e2e8f0; border:3px solid #1e293b;
+  margin-top:-8px; box-shadow:0 1px 4px rgba(0,0,0,.5); }
+.sd-clip-slider:active::-webkit-slider-thumb { border-color:#6eb4ff; }
+
+/* v31 移动模型组：两钮纯图标，固定宽，不再折行 */
+.sd-mv-panel { flex-direction:row !important; }
+.sd-mv-btn { flex:1 1 0; min-width:56px; justify-content:center; font-size:20px !important; padding:10px 0 !important; }
 .sd-shot-panel .sd-cam-modes { justify-content:flex-start; padding-top:2px;
   border-top:1px solid rgba(148,163,184,.18); margin-top:2px; }
 .sd-shot-panel .sd-cam-modes .sd-adopted { display:flex; }
