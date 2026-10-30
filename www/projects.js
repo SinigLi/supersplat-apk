@@ -325,7 +325,8 @@
                 await p.appendFile({
                     path: path,
                     data: bytesToBase64(u8.subarray(i, end)),
-                    directory: 'DATA'
+                    directory: 'DATA',
+                    recursive: true
                 });
             }
         },
@@ -361,7 +362,9 @@
             await this.fs().rename({ from: from, to: to, directory: 'DATA', toDirectory: 'DATA' });
         },
         async append(path, u8) {
-            await this.fs().appendFile({ path: path, data: bytesToBase64(u8), directory: 'DATA' });
+            // recursive 必须带：迁移首块落在 files/ 子目录，父目录还不存在
+            //（真机报过 Missing parent directory；web 端无目录概念测不出来）
+            await this.fs().appendFile({ path: path, data: bytesToBase64(u8), directory: 'DATA', recursive: true });
         },
         // 大文件流式读取：把 zip/模型字节分块喂给 push(chunk, final)。
         // 优先 fetch 流（ReadableStream），WebView 不给流就退回整包一次性 push。
@@ -595,15 +598,23 @@
             return {
                 name: name,
                 tempRel: FILES_DIR + '/.tmp-' + tmpCount + '.part',
-                sha: sha1New(), size: 0, buf: [], bufLen: 0, final: false
+                sha: sha1New(), size: 0, buf: [], bufLen: 0, final: false, started: false
             };
         }
 
         async function flushRec(r) {
             if (!r.bufLen) return;
+            var tmpAbs = p.dir + '/' + r.tempRel;
+            // 首次 flush 先截断建档：上次迁移半途而废留下的同名 .tmp 有残尾，
+            // 直接 append 会叠出坏文件；write 空内容顺便把 files/ 父目录建好
+            //（真机 v29 就是死在 append 建不了父目录）。
+            if (!r.started) {
+                await store().write(tmpAbs, new Uint8Array(0));
+                r.started = true;
+            }
             var cat = concatU8(r.buf, r.bufLen);
             r.buf = []; r.bufLen = 0;
-            await store().append(p.dir + '/' + r.tempRel, cat);
+            await store().append(tmpAbs, cat);
         }
 
         async function finishRec(r) {

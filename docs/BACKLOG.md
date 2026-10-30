@@ -16,7 +16,7 @@
 | # | 模块 | 现象 | 复现路径 | 期望 | 状态 |
 |---|---|---|---|---|---|
 | 1 | 工程 / 场景状态 | 新建工程时，上一个工程的坐标轴或相机位置被带入新工程 | 打开工程 A（调整过坐标轴/视角）→ 返回列表 → 新建工程 B → 观察坐标轴/相机 | 新工程应为干净的默认状态，不继承上一个工程的坐标轴与相机位姿 | 待确认 |
-| 2 | 工程保存 / 读取 | 资料保存退出后，再次打开失败，提示 `readFile` 错误 | 编辑工程 → 保存 → 退出 → 重新打开该工程 → 报错 | 保存后应能正常重新打开 | 已定位（内存 OOM，见下） |
+| 2 | 工程保存 / 读取 | 资料保存退出后，再次打开失败，提示 `readFile` 错误 | 编辑工程 → 保存 → 退出 → 重新打开该工程 → 报错 | 保存后应能正常重新打开 | 已修复待验（v29 存储重构，见下） |
 | 4 | 资产列表 / 泼溅 | ①泼溅列表的显示样式与 GLB、人偶等不一致；②点泼溅条目的删除无反应，必须返回后才看到「是否删除」弹窗 | 打开资产列表 → 观察泼溅条目样式 → 点删除 → 无反应 → 返回 → 才见确认弹窗 | ①泼溅列表样式与其他资产类型统一；②点删除**直接删除**，不弹确认框 | 待确认 |
 
 ---
@@ -97,6 +97,14 @@ hasModel: !!snap.model
 而 `snap.model` 只来自 `director.projectModel()`，那个方法只认 **splat 元素**（`ElementType.splat` + `sourceBytes`）。GLB 在导演台里是**道具**，走的是 `projectPropFiles()`，根本不进 `snap.model`。
 
 所以：**纯 GLB 工程必然显示「空工程」**，哪怕里面塞了 173 MB 的道具。修 #2 时一并改判定口径（把 props 也算进去）。
+
+### ⚠ 真机首开报 Missing parent directory（2026-10-30，v29 首发版）
+
+v29 包真机打开旧工程报 `打开失败：Missing parent directory – possibly recursive=false was passed or parent directory creation failed`。
+
+根因：迁移首块走 `appendFile` 往 `files/.tmp-N.part` 写，父目录 `files/` 尚不存在。Capacitor Filesystem 的 appendFile 在 Android 端走 writeFile 同一实现，`recursive` 不传就不建父目录（Kotlin 源码 FilesystemPlugin.kt `getWriteFileOptions` 读 `recursive` → IONFILESaveOptions）。桌面/测试端 web store 没有目录概念，测不出来——又一次「桌面绿 ≠ 真机过」。
+
+v29b 修复：所有 appendFile 带 `recursive:true`；迁移首块 flush 先 write 空文件（建档 + 建父目录 + 截断上次中断的残尾 .tmp）；新增 tests/probe-v29-migrate.mjs 端到端验证流式迁移（去重/字节一致/旧 zip 删除）。
 
 ---
 
