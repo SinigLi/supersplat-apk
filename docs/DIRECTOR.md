@@ -116,6 +116,8 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `listShots()` | `[{id,name,pos,target,fov}]` | 机位列表 |
 | `addShot(name?)` | `Shot` | 记录当前视角为新机位，并在该处生成相机模型 |
 | `removeShot(id)` | `'ok' \| 'none'` | 删除机位（连同相机模型） |
+| `renameShot(id, name)` | `'ok' \| 'none' \| 'no-name'` | **v32**：机位改名（trim 后最多 50 字），3D 机身同步重建 |
+| `relocateShot(id)` | `'ok' \| 'none'` | **v32**：把选中机位的 pos/target/fov 覆写为当前视角，机身跳到新位置 |
 | `gotoShot(id)` | `'ok' \| 'none'` | 视口跳到该机位 |
 | `renderShot(id, w?, h?)` | `{ok, name, bytes, width, height, dataUrl}` | 从该机位渲染 PNG（默认 1280×720），返回 **data URL** |
 | `setClipRange({enabled,near,far})` | `'ok' \| 'no-camera'` | **v30/v31**：手动近/远裁剪；启用后 `camera.ts` 停用自动 fit，钉住两平面。UI 为主交互：双头滑轨（近蓝/远绿）对数映射拖动实时生效，数字输入精调 |
@@ -272,6 +274,7 @@ node tests/probe-empty-project.mjs  # 9 项：空工程闭环
 node tests/probe-v29-migrate.mjs    # 13 项：legacy zip 流式迁移/去重/重开（v29b）
 node tests/probe-v30.mjs     # 24 项：方块/泼溅行/手动裁剪/复制到游标/视口重置
 node tests/probe-v31.mjs     # 13 项：方块入下拉/纯图标/原生列表隐藏/滑轨拖动
+node tests/probe-v32.mjs     # 13 项：面板重排/改名重定位/透明度滑条
 node tests/probe-empty-project.mjs  # 9 项：空工程「新建 → 返回 → 再打开」闭环
 
 # 布局量测（会截图，非断言型）
@@ -315,7 +318,8 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v29 | （未随引擎出包） | 9fe1cec | #2 根治：内容寻址存储（project.json + files/<sha1>）、同字节去重、零 base64 读写、旧工程流式迁移 |
 | v29b | — | 5cc3efe | 真机 `Missing parent directory` 修复：appendFile 带 recursive、迁移先建档截断残尾 |
 | v30 | 8cd29dc | 4ac2df9 | 全局等待进度条；#1 新建重置视口；#3 移动模型分组+`copySelectedToCursor`；#4 泼溅行统一+直接删除；#5 手动裁剪；#6 方块原语（`spawnBox`/`BoxAddOp`） |
-| v31 | 8cd29dc（同上） | 02bfdbd | 真机反馈四条：方块入角色下拉（`__box`）、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射实时生效）。**当前** |
+| v31 | 8cd29dc（同上） | 02bfdbd | 真机反馈四条：方块入角色下拉（`__box`）、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射实时生效） |
+| v32 | 02b2b7e | PENDING | 相机面板重排（注释贴模式按钮旁）、机位改名/重定位（`renameShot`/`relocateShot`）、悬浮窗半透明 `--sd-alpha` + 设置页滑条（默认 0.6）。**当前** |
 
 ## 9. 已知边界 / 待办
 

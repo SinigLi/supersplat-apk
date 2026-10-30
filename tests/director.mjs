@@ -158,15 +158,15 @@ try {
       charOpts: chars ? chars.options.length : -1,
       tintOpts: tints ? tints.options.length : -1,
       clipOpts: clips ? clips.options.length : -1,
-      hasMoveBtn: !!document.querySelector('.sd-dir-act[data-act="movetocursor"]'),
+      hasMoveBtn: !!document.querySelector('.sd-sub-wrap[data-grp="movegroup"] .sd-mv-btn'),
       hasAddInBar: !!document.querySelector('.sd-dir-act[data-act="add"]'),
       panelAdd: !!p.querySelector('.sd-dir-btn[data-act="add"]')
     };
   })()`);
-  check('character dropdown pre-filled', panel?.charOpts === 4, `opts=${panel?.charOpts}`);
+  check('character dropdown pre-filled (4 chars + 方块)', panel?.charOpts === 5, `opts=${panel?.charOpts}`);
   check('tint dropdown pre-filled', panel?.tintOpts === 8, `opts=${panel?.tintOpts}`);
   check('clip dropdown pre-filled', (panel?.clipOpts || 0) > 0, `opts=${panel?.clipOpts}`);
-  check('bottom bar has 移动到游标 (not 摆放人偶)', panel?.hasMoveBtn === true && panel?.hasAddInBar === false,
+  check('move buttons live in movegroup sub-panel (bar has none)', panel?.hasMoveBtn === true && panel?.hasAddInBar === false,
     JSON.stringify({ move: panel?.hasMoveBtn, oldAdd: panel?.hasAddInBar }));
   check('panel has 摆放人偶 button', panel?.panelAdd === true);
 
