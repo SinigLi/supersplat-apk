@@ -217,6 +217,13 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-shot-panel .sd-shot-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px;
   font-size:13px !important; white-space:nowrap; }
 .sd-shot-panel .sd-shot-btn:disabled { opacity:.42; }
+
+/* v30 #5 显示范围控制（手动近/远裁剪） */
+.sd-shot-panel .sd-clip-row { gap:6px; }
+.sd-clip-lab { font-size:12px; color:#94a3b8; min-width:16px; text-align:center; }
+.sd-clip-num { flex:1; min-width:0; min-height:40px; background:#1e293b; color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 8px; font-size:13px; }
+.sd-shot-panel .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
 .sd-shot-panel .sd-cam-modes { justify-content:flex-start; padding-top:2px;
   border-top:1px solid rgba(148,163,184,.18); margin-top:2px; }
 .sd-shot-panel .sd-cam-modes .sd-adopted { display:flex; }

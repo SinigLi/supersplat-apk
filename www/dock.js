@@ -122,6 +122,7 @@ waitUI(function () {
     '<button class="sd-dir-btn" data-act="playpause" title="播放/暂停">⏯</button></div>' +
     '<div class="sd-dir-row"><select class="sd-dir-tints" title="颜色"></select></div>' +
     '<div class="sd-dir-row"><button class="sd-dir-btn" data-act="import" title="导入资产（泼溅 / 3D 模型，按后缀自动识别）">📥</button>' +
+    '<button class="sd-dir-btn" data-act="box" title="生成正方形方块（占位/布局用，点颜色下拉换色）">🧊</button>' +
     '<button class="sd-dir-btn" data-act="delete" title="删除选中对象">🗑</button>' +
     '<button class="sd-dir-btn sd-dir-scene" data-act="scene" data-role="scene-toggle" title="资产列表（人偶/道具/泼溅）">🗂 资产列表</button></div>' +
     '<div class="sd-dir-info">选角色 → 摆放人偶</div>';
@@ -156,6 +157,10 @@ waitUI(function () {
       o.value = v; o.textContent = n;
       tintSel.appendChild(o);
     });
+
+    // v30 #6：方块固定色板（拍板沿用固定色板，不吃 multiply 染色，直接换 diffuse）
+    const BOX_HEX = { NONE:'#808080', RED:'#bf1414', ORANGE:'#e56b14', YELLOW:'#f2d41f',
+                      GREEN:'#26b333', BLUE:'#1f59e6', GRAY:'#808080', PURPLE:'#8026cc' };
 
     function fillClips() {
       const d = window.__director;
@@ -210,6 +215,9 @@ waitUI(function () {
         showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
       } else if (act === 'import') {
         pickAssets();
+      } else if (act === 'box') {
+        d.addBoxAtCursor();
+        showMsg('方块已生成（可撤销），选中后点颜色下拉换色');
       } else if (act === 'delete') {
         const r = d.deleteSelected();
         showMsg(r === 'ok' ? '已删除选中对象（可撤销）' : '没有可删除的对象');
@@ -238,8 +246,17 @@ waitUI(function () {
     tintSel.addEventListener('change', () => {
       const d = window.__director;
       if (!d) return;
+      // v30 #6：选中的是方块时走 setBoxColor（方块不吃 multiply 染色）
+      const props = (d.listProps && d.listProps()) || [];
+      const box = props.find(function (p) { return p.selected && p.kind === 'box'; });
+      if (box) {
+        const hex = BOX_HEX[tintSel.value] || BOX_HEX.GRAY;
+        const r = d.setBoxColor(box.id, hex);
+        showMsg(r === 'ok' ? '方块已换色' : '换色失败');
+        return;
+      }
       const r = d.setTint(tintSel.value);
-      showMsg(r === 'ok' ? '已换色' : '先选中一个人偶');
+      showMsg(r === 'ok' ? '已换色' : '先选中一个人偶或方块');
     });
 
     document.addEventListener('director-state', (ev) => {
@@ -399,6 +416,14 @@ waitUI(function () {
         '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
       '</div>' +
       '<div class="sd-dir-row sd-cam-modes"></div>' +
+      '<div class="sd-dir-row sd-clip-row">' +
+        '<span class="sd-clip-lab">近</span><input class="sd-clip-num" data-clip="near" type="number" min="0.01" step="0.1" title="近裁剪距离（比它近的不画）">' +
+        '<span class="sd-clip-lab">远</span><input class="sd-clip-num" data-clip="far" type="number" min="0.1" step="1" title="远裁剪距离（比它远的不画）">' +
+      '</div>' +
+      '<div class="sd-dir-row">' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="clip-on" title="启用显示范围：只渲染近/远之间的内容（Blender 式）">📏 启用范围</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="clip-off" title="关闭手动范围，恢复自动裁剪">✕ 自动</button>' +
+      '</div>' +
       '<div class="sd-dir-hint">下排：轨道=绕目标转，飞行=第一人称</div>';
 
     const list = wrap.querySelector(".sd-shot-list");
@@ -474,9 +499,47 @@ waitUI(function () {
       }
     };
 
+    // v30 #5：显示范围控制（手动近/远裁剪，像 Blender）
+    const clipFill = () => {
+      const d = window.__director;
+      if (!d || !d.getClipRange) return;
+      const cr = d.getClipRange();
+      const nEl = wrap.querySelector('[data-clip="near"]');
+      const fEl = wrap.querySelector('[data-clip="far"]');
+      if (nEl && document.activeElement !== nEl) nEl.value = (+cr.near).toFixed(2);
+      if (fEl && document.activeElement !== fEl) fEl.value = Math.round(cr.far);
+      const on = wrap.querySelector('[data-shot="clip-on"]');
+      if (on) on.classList.toggle('sd-on', !!cr.enabled);
+    };
+    const bClipOn = btn("clip-on");
+    if (bClipOn) bClipOn.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director;
+      if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
+      const nEl = wrap.querySelector('[data-clip="near"]');
+      const fEl = wrap.querySelector('[data-clip="far"]');
+      const near = parseFloat(nEl && nEl.value);
+      const far = parseFloat(fEl && fEl.value);
+      const n = near > 0 ? near : 0.1;
+      const f = far > 0 ? far : 1000;
+      const r = d.setClipRange({ enabled: true, near: n, far: f });
+      showMsg(r === 'ok' ? '已启用显示范围（近 ' + n + ' / 远 ' + f + '）' : '设置失败');
+      clipFill();
+    };
+    const bClipOff = btn("clip-off");
+    if (bClipOff) bClipOff.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director;
+      if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
+      d.setClipRange({ enabled: false });
+      showMsg('已恢复自动裁剪');
+      clipFill();
+    };
+
     // 每次展开都刷新（新增/删除后外部也可能变化）
-    wrap.__sdRefresh = fill;
+    wrap.__sdRefresh = () => { fill(); clipFill(); };
     fill();
+    clipFill();
     return modes;
   }
 
@@ -630,7 +693,7 @@ waitUI(function () {
       bindDirectorPanel(dwrap2);
       [
         { act:'cursor',   ico:'🎯', name:'游标' },
-        { act:'movetocursor', ico:'🧲', name:'移动到游标' },
+        { act:'movegroup', ico:'🧲', name:'移动模型' },
         { act:'xform',    ico:'🔢', name:'变换' },
         { act:'director', ico:'🎬', name:DIR_NAME }
       ].forEach(b => {
@@ -643,13 +706,37 @@ waitUI(function () {
         }
 
         else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
-        else if (b.act === 'movetocursor') btn.onclick = () => {
-          const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;}
-          const r=d.moveSelectedToCursor();
-          showMsg(r==='ok'?'人偶已移到 3D 游标（可撤销）':
-                  r==='no-selection'?'先选中一个人偶':
-                  r==='no-cursor'?'先点「游标」在场景里定个位置':'已取消');
-        };
+        else if (b.act === 'movegroup') {
+          // v30 #3：移动模型组——移动到游标 / 复制到游标（老板拍板的两钮分组）
+          const mwrap = makeShell(
+            '<button class="sd-dir-btn" data-mact="move">🧲 移动到游标</button>' +
+            '<button class="sd-dir-btn" data-mact="copy">📋 复制到游标</button>',
+            'sd-sub-wrap sd-dir-panel');
+          mwrap.dataset.grp = 'movegroup';
+          document.body.appendChild(mwrap);
+          allPanels.set('移动模型', mwrap);
+          mwrap.addEventListener('click', (e) => {
+            const mb = e.target.closest('[data-mact]');
+            if (!mb) return;
+            e.stopPropagation();
+            const dd = window.__director;
+            if (!dd) { showMsg('导演台模块未就绪'); return; }
+            if (mb.dataset.mact === 'move') {
+              const r = dd.moveSelectedToCursor();
+              showMsg(r==='ok' ? '已移到 3D 游标（可撤销）' :
+                      r==='no-selection' ? '先选中一个对象' :
+                      r==='no-cursor' ? '先点「游标」定个位置' : '已取消');
+            } else {
+              const r = dd.copySelectedToCursor ? dd.copySelectedToCursor() : 'no-api';
+              showMsg(r==='ok' ? '副本已生成在游标处（可撤销）' :
+                      r==='no-selection' ? '先选中一个对象' :
+                      r==='no-cursor' ? '先点「游标」定个位置' :
+                      r==='no-api' ? '引擎版本过旧，无复制接口' : '已取消');
+            }
+            closeAll(docks.find(s => s.dock === dock) || { openPanels: new Set() });
+          });
+          btn.onclick = () => toggleNamed('移动模型', btn, dock);
+        }
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
         dock.appendChild(btn);
       });
@@ -998,8 +1085,9 @@ waitUI(function () {
     const d = window.__director;
     const list = (d && d.listPuppets) ? d.listPuppets() : [];
     const props = (d && d.listProps) ? d.listProps() : [];
+    const splats = (d && d.listSplats) ? d.listSplats() : [];
     host.innerHTML = '';
-    if (!list.length && !props.length) return;
+    if (!list.length && !props.length && !splats.length) return;
     if (list.length) {
       const title = makeShell('<span class="sd-pup-title">人偶</span>', 'sd-pup-head');
       host.appendChild(title);
@@ -1049,6 +1137,34 @@ waitUI(function () {
           else if (e.target.classList.contains('sd-pup-del')) dd.deletePropById(pr.id);
           else if (pr.locked) showMsg('该对象已禁止选中，先解锁');
           else dd.selectPropById(pr.id);
+          renderPuppetList();
+        });
+        host.appendChild(row);
+      });
+    }
+
+    // v30 #4：泼溅行——与道具/人偶同一套样式；删除直接删（不再弹确认框）
+    if (splats.length) {
+      const h3 = makeShell('<span class="sd-pup-title">泼溅</span>', 'sd-pup-head');
+      host.appendChild(h3);
+      splats.forEach((sp) => {
+        const row = makeShell(
+          '<span class="sd-pup-name">🌫 ' + sp.name + '</span>' +
+          '<span class="sd-pup-eye" title="显示/隐藏">' + (sp.visible ? '👁' : '🚫') + '</span>' +
+          '<span class="sd-pup-del" title="删除">🗑</span>',
+          'sd-pup-row' + (sp.selected ? ' sd-pup-sel' : ''));
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const dd = window.__director;
+          if (!dd) return;
+          if (e.target.classList.contains('sd-pup-eye')) {
+            dd.setSplatVisibleByIndex(sp.index, !sp.visible);
+          } else if (e.target.classList.contains('sd-pup-del')) {
+            dd.deleteSplatByIndex(sp.index);
+            showMsg('已删除泼溅');
+          } else {
+            dd.selectSplatByIndex(sp.index);
+          }
           renderPuppetList();
         });
         host.appendChild(row);

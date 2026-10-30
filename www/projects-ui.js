@@ -84,6 +84,25 @@
         toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
     }
 
+    /* ---------- 全局等待层（v30：打开/保存大工程耗时数秒到数十秒，
+     * 没有反馈时界面像卡死；轻量遮罩 + 旋转圈 + 阶段文字） ---------- */
+    var waitEl = null, waitTextEl = null;
+    function showWait(msg) {
+        if (!waitEl) {
+            waitEl = el('div', 'pj-wait');
+            var box = el('div', 'pj-wait-box');
+            box.appendChild(el('div', 'pj-wait-spin'));
+            waitTextEl = el('div', 'pj-wait-text');
+            box.appendChild(waitTextEl);
+            waitEl.appendChild(box);
+            document.body.appendChild(waitEl);
+        }
+        waitTextEl.textContent = msg;
+        requestAnimationFrame(function () { waitEl.classList.add('show'); });
+    }
+    function setWait(msg) { if (waitTextEl) waitTextEl.textContent = msg; }
+    function hideWait() { if (waitEl) waitEl.classList.remove('show'); }
+
     /* ---------- 新建对话框 ---------- */
 
     var newDlg, newInput;
@@ -289,6 +308,14 @@
             currentProject = name;
             lastSavedSnapshot = null;
             clearScene();
+            showWait('创建工程…');
+
+            // v30 #1：新工程从干净默认视口开始——相机/基准点/游标/手动裁剪
+            // 全部重置，不再继承上一个工程调整过的视角
+            try {
+                var d0 = window.__director;
+                if (d0 && d0.resetViewport) d0.resetViewport();
+            } catch (e) { /* 引擎未就绪就算了 */ }
 
             // 关键：新建就得把空工程落盘。v29 起写的是纯状态 project.json
             // （几 KB），不再打 zip；模型字节由保存时按内容寻址另存。
@@ -303,6 +330,7 @@
             await store().write(p.meta, new TextEncoder().encode(JSON.stringify(meta)));
             L.saveRegistry(L.upsertProject(L.loadRegistry(), meta));
 
+            hideWait();
             showEditorPage();
             // 空工程落盘后就是“已保存”状态，返回时不该弹未保存确认
             lastSavedSnapshot = snapshotNow();
@@ -311,6 +339,7 @@
             console.error('[projects] create failed', err);
             toast('创建失败：' + (err && err.message ? err.message : '未知错误'));
         } finally {
+            hideWait();
             busy = false;
         }
     }
@@ -331,6 +360,7 @@
         if (busy) return;
         busy = true;
         try {
+            showWait('打开工程：读取数据…');
             var p = L.pathsFor(name);
             var state, files = {}, recovered = false, migrated = false;
 
@@ -343,6 +373,7 @@
                 if (legacy && legacy.size) {
                     // v28- 的自包含 zip：流式迁移成内容寻址布局（边解压边落盘，
                     // 不整包进内存），迁移完旧 zip 已删、state 已写，直接用。
+                    setWait('打开工程：升级旧格式存储…');
                     state = await L.migrateLegacyProject(p);
                     migrated = true;
                 } else if (isMissingFileError(v29Err)) {
@@ -356,6 +387,7 @@
             }
 
             clearScene();
+            setWait('打开工程：载入模型…');
 
             // v29：模型/道具字节按引用从 files/<hash> 逐个读。
             // 同一个 GLB 放两个道具也只有一个文件，两实例共享同一份字节——
@@ -376,6 +408,7 @@
 
             var d = window.__director;
             if (d && d.restoreProject) {
+                setWait('打开工程：还原场景…');
                 var r = await d.restoreProject(state, files);
                 if (r && r.ok === false) {
                     toast('部分对象未能还原：' + (r.failed || []).join('、'));
@@ -390,6 +423,7 @@
 
             currentProject = name;
             lastSavedSnapshot = snapshotNow();
+            hideWait();
             showEditorPage();
             toast(recovered ?
                 '已按空工程打开「' + name + '」（工程文件原先缺失，已补写）' :
@@ -399,6 +433,7 @@
             console.error('[projects] open failed', err);
             toast('打开失败：' + (err && err.message ? err.message : '未知错误'));
         } finally {
+            hideWait();
             busy = false;
         }
     }
@@ -422,7 +457,9 @@
         if (!currentProject) { toast('不在工程中'); return false; }
         if (busy) return false;
         busy = true;
+        var t0 = Date.now();
         try {
+            showWait('保存工程…');
             var snap = snapshotNow();
             if (!snap) { toast('场景状态未就绪'); return false; }
 
@@ -446,6 +483,7 @@
             // 道具：同一个模型放 N 个也只存一份——#2 的 173MB 就是两份 86MB。
             var propFiles = d && d.projectPropFiles ? d.projectPropFiles() : [];
             for (var i = 0; i < propFiles.length; i++) {
+                setWait('保存工程：写入模型 ' + (i + 1) + '/' + propFiles.length + '…');
                 var f = propFiles[i];
                 var ref = await L.putContentFile(p, extOf(f.path), f.bytes);
                 (snap.props || []).forEach(function (r) {
@@ -472,14 +510,17 @@
             L.saveRegistry(L.upsertProject(L.loadRegistry(), meta));
 
             lastSavedSnapshot = snap;
+            hideWait();
             toast('已保存「' + currentProject + '」 状态' + fmtBytes(stBytes.length) +
-                (totalBytes ? ' · 模型' + fmtBytes(totalBytes) : ''));
+                (totalBytes ? ' · 模型' + fmtBytes(totalBytes) : '') +
+                ' · ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
             return true;
         } catch (err) {
             console.error('[projects] save failed', err);
             toast('保存失败：' + (err && err.message ? err.message : '未知错误'));
             return false;
         } finally {
+            hideWait();
             busy = false;
         }
     }
