@@ -290,12 +290,10 @@
             lastSavedSnapshot = null;
             clearScene();
 
-            // 关键：新建就得把空工程写盘。以前这里只写注册表，
-            // project.svproj 根本不存在，返回后再点开必然读不到文件、
-            // 报“打开失败”。
+            // 关键：新建就得把空工程落盘。v29 起写的是纯状态 project.json
+            // （几 KB），不再打 zip；模型字节由保存时按内容寻址另存。
             var p = L.pathsFor(name);
-            var zip = L.buildProjectZip(L.emptyProjectState(), {});
-            await store().write(p.proj, zip);
+            await store().write(p.state, new TextEncoder().encode(JSON.stringify(L.emptyProjectState())));
 
             var meta = {
                 name: name,
@@ -334,24 +332,42 @@
         busy = true;
         try {
             var p = L.pathsFor(name);
-            var state, files = {}, recovered = false;
+            var state, files = {}, recovered = false, migrated = false;
 
             try {
-                var projBytes = await store().read(p.proj);
-                var parsed = L.parseProjectFile(projBytes);
-                state = parsed.state;
-                files = parsed.files || {};
-            } catch (readErr) {
-                // v28 及以前新建工程只往注册表写了一条记录，没有落盘
-                // project.svproj，所以“新建→返回→点开”必然读不到文件。
-                // 这类空壳工程按空工程恢复，并把空文件补写回去，
-                // 否则这个工程就永远打不开了。
-                if (!isMissingFileError(readErr)) throw readErr;
-                state = L.emptyProjectState();
-                recovered = true;
+                // v29：先读纯状态（几 KB）。读不到再着 legacy zip 迁移。
+                var stateBytes = await store().read(p.state);
+                state = JSON.parse(new TextDecoder().decode(stateBytes));
+            } catch (v29Err) {
+                var legacy = await store().stat(p.proj);
+                if (legacy && legacy.size) {
+                    // v28- 的自包含 zip：流式迁移成内容寻址布局（边解压边落盘，
+                    // 不整包进内存），迁移完旧 zip 已删、state 已写，直接用。
+                    state = await L.migrateLegacyProject(p);
+                    migrated = true;
+                } else if (isMissingFileError(v29Err)) {
+                    // v28 及以前新建工程只往注册表写了一条记录，没有落盘，
+                    // “新建→返回→点开”必然读不到。这类空壳按空工程恢复并补写。
+                    state = L.emptyProjectState();
+                    recovered = true;
+                } else {
+                    throw v29Err;
+                }
             }
 
             clearScene();
+
+            // v29：模型/道具字节按引用从 files/<hash> 逐个读。
+            // 同一个 GLB 放两个道具也只有一个文件，两实例共享同一份字节——
+            // #2 的双份内存占用在这里一并解决。
+            var need = [];
+            if (state.model && state.model.path) need.push(state.model.path);
+            (state.props || []).forEach(function (r) {
+                if (r.file && need.indexOf(r.file) < 0) need.push(r.file);
+            });
+            for (var i = 0; i < need.length; i++) {
+                files[need[i]] = await store().readViaUri(p.dir + '/' + need[i]);
+            }
 
             // 先重建模型：导演台的对象都摆在模型上，且相机包围盒依赖它
             if (state.model && state.model.path && files[state.model.path]) {
@@ -369,7 +385,7 @@
             }
 
             if (recovered) {
-                await store().write(p.proj, L.buildProjectZip(state, {}));
+                await store().write(p.state, new TextEncoder().encode(JSON.stringify(state)));
             }
 
             currentProject = name;
@@ -377,7 +393,8 @@
             showEditorPage();
             toast(recovered ?
                 '已按空工程打开「' + name + '」（工程文件原先缺失，已补写）' :
-                '已打开「' + name + '」');
+                (migrated ? '已打开「' + name + '」（存储已升级，体积去重）' :
+                 '已打开「' + name + '」'));
         } catch (err) {
             console.error('[projects] open failed', err);
             toast('打开失败：' + (err && err.message ? err.message : '未知错误'));
@@ -409,42 +426,54 @@
             var snap = snapshotNow();
             if (!snap) { toast('场景状态未就绪'); return false; }
 
-            var files = {};
-
-            // 模型：工程里带原始字节（Android SAF 路径授权不跨会话，只能内嵌）
             var d = window.__director;
+            var p = L.pathsFor(currentProject);
+            var totalBytes = 0;
+
+            // 模型：内容寻址落盘（SHA-1 命名，已存在就跳过——跨保存去重），
+            // state 只存引用。打开时按需读，不再整包 zip 过 base64。
             var model = d && d.projectModel ? d.projectModel() : null;
             if (model && model.bytes && model.bytes.length) {
-                var modelPath = 'model.' + extOf(model.name);
-                files[modelPath] = model.bytes;
-                snap.model = { name: model.name, path: modelPath };
+                snap.model = {
+                    name: model.name,
+                    path: await L.putContentFile(p, extOf(model.name), model.bytes)
+                };
+                totalBytes += model.bytes.length;
             } else {
                 snap.model = null;
             }
 
-            // 道具：每个 GLB 的源字节
+            // 道具：同一个模型放 N 个也只存一份——#2 的 173MB 就是两份 86MB。
             var propFiles = d && d.projectPropFiles ? d.projectPropFiles() : [];
-            propFiles.forEach(function (f) { files[f.path] = f.bytes; });
+            for (var i = 0; i < propFiles.length; i++) {
+                var f = propFiles[i];
+                var ref = await L.putContentFile(p, extOf(f.path), f.bytes);
+                (snap.props || []).forEach(function (r) {
+                    if (r.file === f.path) r.file = ref;
+                });
+                totalBytes += f.bytes.length;
+            }
 
-            var zip = L.buildProjectZip(snap, files);
-            var p = L.pathsFor(currentProject);
-
-            await store().write(p.proj, zip);
+            var stBytes = new TextEncoder().encode(JSON.stringify(snap));
+            await store().write(p.state, stBytes);
 
             // 缩略图
             var thumb = await captureThumb();
             if (thumb) await store().write(p.thumb, thumb);
 
+            // hasModel 口径修正：GLB 道具也算有模型（v28 只认 splat，
+            // 纯 GLB 工程一直错标“空工程”）
             var meta = {
                 name: currentProject,
                 updatedAt: new Date().toISOString(),
-                hasModel: !!snap.model
+                hasModel: !!(snap.model || (snap.props && snap.props.length))
             };
             await store().write(p.meta, new TextEncoder().encode(JSON.stringify(meta)));
             L.saveRegistry(L.upsertProject(L.loadRegistry(), meta));
 
             lastSavedSnapshot = snap;
-            toast('已保存「' + currentProject + '」 ' + fmtBytes(zip.length));
+            toast('已保存「' + currentProject + '」 状态' + fmtBytes(stBytes.length) +
+                (totalBytes ? ' · 模型' + fmtBytes(totalBytes) : ''));
             return true;
         } catch (err) {
             console.error('[projects] save failed', err);

@@ -117,11 +117,12 @@ try {
         const L = window.__projectLogic;
         const p = L.pathsFor(${JSON.stringify(NAME)});
         try {
-            const bytes = await L.store().read(p.proj);
-            const parsed = L.parseProjectFile(bytes);
-            return { ok: true, version: parsed.state.version,
-                     puppets: (parsed.state.puppets||[]).length,
-                     model: !!parsed.state.model, bytes: bytes.length };
+            // v29：空工程就是几 KB 的纯状态 project.json
+            const bytes = await L.store().read(p.state);
+            const st = JSON.parse(new TextDecoder().decode(bytes));
+            return { ok: true, version: st.version,
+                     puppets: (st.puppets||[]).length,
+                     model: !!st.model, bytes: bytes.length };
         } catch (e) { return { ok: false, err: String(e && e.message || e) }; }
     })()`);
     check('project file exists and parses', stored && stored.ok === true,

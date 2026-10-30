@@ -190,25 +190,37 @@ try {
     const zipInfo = await evalJs(`(async () => {
         const L = window.__projectLogic;
         const p = L.pathsFor(${JSON.stringify(NAME)});
-        const bytes = await L.store().read(p.proj);
-        const parsed = L.parseProjectFile(bytes);
-        const st = parsed.state;
+        // v29：纯状态 project.json + 内容寻址 files/<sha1>，不再有自包含 zip
+        const stateBytes = await L.store().read(p.state);
+        const st = JSON.parse(new TextDecoder().decode(stateBytes));
+        const refs = [];
+        if (st.model && st.model.path) refs.push(st.model.path);
+        (st.props || []).forEach(r => { if (r.file && refs.indexOf(r.file) < 0) refs.push(r.file); });
+        let modelBytes = 0, deduped = 0;
+        for (const ref of refs) {
+            const u8 = await L.store().read(p.dir + '/' + ref);
+            if (u8.length > 1000000) modelBytes = u8.length;
+            deduped++;
+        }
         return {
-            size: bytes.length,
-            magic: String.fromCharCode(bytes[0], bytes[1]),
+            stateSize: stateBytes.length,
             version: st.version,
             puppets: (st.puppets || []).length,
             hasModel: !!st.model,
             modelPath: st.model && st.model.path,
-            fileKeys: Object.keys(parsed.files || {}),
-            modelBytes: st.model && parsed.files[st.model.path] ? parsed.files[st.model.path].length : 0,
+            contentFiles: deduped,
+            modelBytes: modelBytes,
+            inFilesDir: st.model && st.model.path && st.model.path.indexOf('files/') === 0,
             firstPuppet: (st.puppets || [])[0] || null
         };
     })()`);
-    check('zip is a real zip', zipInfo?.magic === 'PK', JSON.stringify({ magic: zipInfo?.magic, size: zipInfo?.size }));
-    check('state.json version 1', zipInfo?.version === 1);
+    check('project.json is small pure state', zipInfo?.stateSize < 100000,
+        JSON.stringify({ size: zipInfo?.stateSize }));
+    check('state version 1', zipInfo?.version === 1);
     check('puppet recorded', zipInfo?.puppets === 1, `n=${zipInfo?.puppets}`);
-    check('model embedded in archive', zipInfo?.hasModel === true && zipInfo?.modelBytes > 1000000,
+    check('model referenced via content address', zipInfo?.hasModel === true && zipInfo?.inFilesDir === true,
+        JSON.stringify({ path: zipInfo?.modelPath }));
+    check('model bytes on disk', zipInfo?.modelBytes > 1000000,
         JSON.stringify({ path: zipInfo?.modelPath, bytes: zipInfo?.modelBytes }));
     check('puppet state persisted', zipInfo?.firstPuppet?.tint === 'RED' && zipInfo?.firstPuppet?.clip === 2,
         JSON.stringify(zipInfo?.firstPuppet));
