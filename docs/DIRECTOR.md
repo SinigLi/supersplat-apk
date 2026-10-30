@@ -59,6 +59,7 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `armPlaceCursor()` | 下一次点击移动 3D 游标 |
 | `armSelect()` | 保留接口；v13 起**平点即选中**，已不需要武装 |
 | `moveSelectedToCursor()` | `'ok' \| 'no-selection' \| 'no-cursor'`，走 undo |
+| `copySelectedToCursor()` | **v30**：复制选中到游标（同上返回值），走 undo |
 | `disarm()` | 手动解除 |
 
 ### 2.3 动作与染色
@@ -71,15 +72,28 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `playClip(i, target?)` | 切动作并播放 |
 | `setTint(tint)` / `setTintById(id, tint)` | 八色 multiply 染色；`tint` 见 `info().tints` |
 
-### 2.4 道具（GLB 导入）
+### 2.4 道具（GLB 导入 / 程序方块）
 
 | 方法 | 说明 |
 |---|---|
 | `importModel(file)` | `File` → PlayCanvas container，落在 3D 游标，走 undo；**导入后自动选中**（v24） |
-| `listProps()` | 道具列表 |
+| `listProps()` | 道具列表（含 `kind:'glb'\|'box'`、`boxColor`，v30） |
 | `selectProp(p)` / `selectPropById(id)` | 选中；`id` 传 null 表示取消选中（v24） |
 | `setPropLocked(id, v)` | **v24**：禁止选中（同人偶） |
 | `deletePropById(id)` | 删除（走 undo） |
+
+### 2.4a 方块原语（v30/v31，拍板 2026-10-29）
+
+程序生成的占位几何：`Entity` + box render + StandardMaterial，反相外壳描边（front-cull 放大 6%）。**入口在角色下拉的「方块」选项**（v31 老板反馈：方块是和人偶同级的模型数据，不设独立按钮）；选中后颜色下拉换色（固定 8 色板 → diffuse 直改，不吃 multiply 染色）。
+
+| 方法 | 说明 |
+|---|---|
+| `addBoxAtCursor(colorHex?)` | 在游标处生成方块（走 undo）；默认灰 `#808080`、尺寸≈礼服猫（0.4） |
+| `spawnBox(pos, {size,color})` | 内部/恢复工程用 |
+| `setBoxColor(id, hex)` | 换 diffuse 色 |
+| `copySelectedToCursor()` | **v30 #3**：复制选中对象到游标（人偶继承姿态/动作/颜色，方块继承尺寸/颜色/变换，GLB 复用常驻 template+源字节） |
+
+存盘：`kind:'box'` 只记 size/color/transform，零字节开销（`docs/PROJECTS.md` §3）；快照 version 仍为 1。
 
 ### 2.4b 基准点（v25–v27）
 
@@ -95,7 +109,7 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 
 `'same'` 表示基准点已经在该位置，此时不往撤销栈塞空记录。
 
-### 2.5 机位（v20+）
+### 2.5 机位（v20+）与显示范围（v30）
 
 | 方法 | 返回 | 说明 |
 |---|---|---|
@@ -104,6 +118,9 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `removeShot(id)` | `'ok' \| 'none'` | 删除机位（连同相机模型） |
 | `gotoShot(id)` | `'ok' \| 'none'` | 视口跳到该机位 |
 | `renderShot(id, w?, h?)` | `{ok, name, bytes, width, height, dataUrl}` | 从该机位渲染 PNG（默认 1280×720），返回 **data URL** |
+| `setClipRange({enabled,near,far})` | `'ok' \| 'no-camera'` | **v30/v31**：手动近/远裁剪；启用后 `camera.ts` 停用自动 fit，钉住两平面。UI 为主交互：双头滑轨（近蓝/远绿）对数映射拖动实时生效，数字输入精调 |
+| `getClipRange()` | `{enabled,near,far}` | 读当前裁剪状态（未启用时返回自动值） |
+| `resetViewport()` | `'ok'` | **v30 #1**：camera.reset + 基准点归零 + 游标隐藏 + 手动裁剪清除（新建工程的干净默认视口） |
 
 ### 2.5b 工程存档（v28）
 
@@ -121,7 +138,18 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 - **模型字节靠 `sourceBytes` 留存**：导入/加载时把原始字节存在 splat 元素上（`sourceName` / `sourceBytes`），否则存盘时只能拿到解码后的高斯数据，写不回 PLY。
 - **恢复不走撤销栈**：`restoreProject` 直接销毁重建，不产生 op。所以“打开工程”不可撤销，脏检查由 UI 层负责（`isDirty`）。
 
-### 2.6 状态快照
+### 2.5c 泼溅行 API（v30/v31，资产列表统一化）
+
+SS 原生 SplatList（PCUI）在移动端样式不统一、删除走英文 showPopup 确认框（老板两张截图的同根因）。v31 起场景页打开期间隐藏原生列表，由 dock.js 注入的统一行接管（人偶/道具/泼溅同款：点行选中、👁 显隐、🗑 直接删除）。
+
+| 方法 | 返回 | 说明 |
+|---|---|---|
+| `listSplats()` | `[{index,name,visible,selected}]` | 泼溅行数据（index 是渲染时序号，仅在列表刷新周期内稳定） |
+| `selectSplatByIndex(i)` | `'ok' \| 'none'` | 选中（fire selection，进 SS 变换/撤销管线） |
+| `setSplatVisibleByIndex(i, v)` | `'ok' \| 'none'` | 显隐 |
+| `deleteSplatByIndex(i)` | `'ok' \| 'none'` | **直接销毁**（同 SS 场景面板删除语义，不可撤销；scene.elementRemoved 会清 op 历史引用） |
+
+
 
 | 方法 | 说明 |
 |---|---|
@@ -238,8 +266,12 @@ node tests/probe-v25.mjs     # 移动到游标带基准点 + 三个基准点按�
 node tests/probe-v26.mjs     # 三种对象都有黄点 + 泼溅基准点 + 重设
 node tests/probe-v27.mjs     # 黄点屏幕等比 + 抓拍隐藏 + 黄点跟随基准点 + 密度中心
 
-# 工程存档（v28）
-node tests/project.mjs       # 26 项：新建 → 导入 → 摆人偶 → 保存 → 校 zip → 重开还原 → 脏检查 → 删除
+# 工程存档 + 新功能（v28–v31）
+node tests/project.mjs       # 27 项：新建 → 导入 → 摆人偶 → 保存 → 校验内容寻址 → 重开还原 → 脏检查 → 删除
+node tests/probe-empty-project.mjs  # 9 项：空工程闭环
+node tests/probe-v29-migrate.mjs    # 13 项：legacy zip 流式迁移/去重/重开（v29b）
+node tests/probe-v30.mjs     # 24 项：方块/泼溅行/手动裁剪/复制到游标/视口重置
+node tests/probe-v31.mjs     # 13 项：方块入下拉/纯图标/原生列表隐藏/滑轨拖动
 node tests/probe-empty-project.mjs  # 9 项：空工程「新建 → 返回 → 再打开」闭环
 
 # 布局量测（会截图，非断言型）
@@ -279,7 +311,11 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v25 | e0b6d23 | 80edc6f | 「移动到游标」带基准点一起走（一次 undo 全还原）；定位组加两个基准点按钮（外边中心 / 游标点） |
 | v26 | 30c1ba5 | cecf13d | GLB 与泼溅也有黄点；泼溅基准点打通原生 `SetLocalFrameOp`；加「重设基准点」按钮 |
 | v27 | 109b308 | 2437d99 | 黄点改场景根单体 + 屏幕等比（26px）；抓拍隐藏游标与黄点；黄点改跟随基准点；中心改用高斯密度中心 |
-| v28 | 995c18e | e8d8c9d | 工程存档 API：`projectSnapshot` / `restoreProject` / `projectModel` / `projectPropFiles`；导入时留存源字节。**当前** |
+| v28 | 995c18e | e8d8c9d | 工程存档 API：`projectSnapshot` / `restoreProject` / `projectModel` / `projectPropFiles`；导入时留存源字节 |
+| v29 | （未随引擎出包） | 9fe1cec | #2 根治：内容寻址存储（project.json + files/<sha1>）、同字节去重、零 base64 读写、旧工程流式迁移 |
+| v29b | — | 5cc3efe | 真机 `Missing parent directory` 修复：appendFile 带 recursive、迁移先建档截断残尾 |
+| v30 | 8cd29dc | 4ac2df9 | 全局等待进度条；#1 新建重置视口；#3 移动模型分组+`copySelectedToCursor`；#4 泼溅行统一+直接删除；#5 手动裁剪；#6 方块原语（`spawnBox`/`BoxAddOp`） |
+| v31 | 8cd29dc（同上） | 02bfdbd | 真机反馈四条：方块入角色下拉（`__box`）、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射实时生效）。**当前** |
 
 ## 9. 已知边界 / 待办
 
