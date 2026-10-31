@@ -275,6 +275,7 @@ node tests/probe-v29-migrate.mjs    # 13 项：legacy zip 流式迁移/去重/�
 node tests/probe-v30.mjs     # 24 项：方块/泼溅行/手动裁剪/复制到游标/视口重置
 node tests/probe-v31.mjs     # 13 项：方块入下拉/纯图标/原生列表隐藏/滑轨拖动
 node tests/probe-v32.mjs     # 13 项：面板重排/改名重定位/透明度滑条
+node tests/probe-v33.mjs     # 12 项：按钮加大/测量挪组/二级页半透明/游标相关组/相机组四钮
 node tests/probe-empty-project.mjs  # 9 项：空工程「新建 → 返回 → 再打开」闭环
 
 # 布局量测（会截图，非断言型）
@@ -319,7 +320,8 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v29b | — | 5cc3efe | 真机 `Missing parent directory` 修复：appendFile 带 recursive、迁移先建档截断残尾 |
 | v30 | 8cd29dc | 4ac2df9 | 全局等待进度条；#1 新建重置视口；#3 移动模型分组+`copySelectedToCursor`；#4 泼溅行统一+直接删除；#5 手动裁剪；#6 方块原语（`spawnBox`/`BoxAddOp`） |
 | v31 | 8cd29dc（同上） | 02bfdbd | 真机反馈四条：方块入角色下拉（`__box`）、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射实时生效） |
-| v32 | 02b2b7e | PENDING | 相机面板重排（注释贴模式按钮旁）、机位改名/重定位（`renameShot`/`relocateShot`）、悬浮窗半透明 `--sd-alpha` + 设置页滑条（默认 0.6）。**当前** |
+| v32 | 02b2b7e | PENDING | 相机面板重排（注释贴模式按钮旁）、机位改名/重定位（`renameShot`/`relocateShot`）、悬浮窗半透明 `--sd-alpha` + 设置页滑条（默认 0.6） |
+| v33 | —（纯 UI） | bc8a0ac | 反馈五条：四钮加大 3 倍（135px 见方）、测量入定位组、二级页面/弹窗半透明（--sd-alpha）、底栏合并「游标相关」三钮（图文）、框选/回原点入相机组+注释补全。**当前** |
 
 ## 9. 已知边界 / 待办
 
