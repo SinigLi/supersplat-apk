@@ -115,6 +115,8 @@ try {
     const boxEntity = `window.scene.app.root.findByName("selection-box-marker")`;
     check('selection box entity exists', await evalJs(`!!${boxEntity}`));
     check('box has 12 edges', await evalJs(`${boxEntity}.children.length === 12`));
+    check('outline box depth-tested (v37: occludable)', await evalJs(
+        `${boxEntity}.children[0].render.material.depthTest === true && ${boxEntity}.children[0].render.material.depthWrite === false`));
     check('box hidden before any selection', await evalJs(`!${boxEntity}.enabled`));
 
     // ---- 1) 人偶选中 → 白盒出现、中心贴合 ----
