@@ -80,7 +80,7 @@ try {
 
   // ---- 1) woman asset identity ----
   const chars = await evalJs('window.__director.listCharacters()');
-  check('4 characters listed', chars?.length === 4, JSON.stringify(chars?.map(c => c.name)));
+  check('5 characters listed (v35: +方块)', chars?.length === 5, JSON.stringify(chars?.map(c => c.name)));
 
   await evalJs(`window.__director.switchCharacter('woman')`);
   let wOk = false;
