@@ -85,7 +85,7 @@ try {
     check('director ready', await waitFor('!!window.__director', 60, 500));
     check('dock ready', await waitFor('document.body.classList.contains("sd-docks-ready")', 60, 500));
 
-    // ---- 1) mini 按钮加大 3 倍（≥7rem ≈ 100px+）；先建机位并打开改名行，否则确定/取消钮 display:none 量不到 ----
+    // ---- 1) mini 按钮尺寸（v34 老板反馈太大减半：预期 56–100px）；先建机位并打开改名行，否则确定/取消钮 display:none 量不到 ----
     const sizes = await evalJs(`(async () => {
         const d = window.__director;
         if (!d.listShots().length) d.addShot();
@@ -103,8 +103,8 @@ try {
         };
     })()`);
     const px = v => v ? parseFloat(v) : 0;
-    check('rename/relocate/ok/no buttons >= 100px wide',
-        [sizes.rename, sizes.relocate, sizes.ok, sizes.no].every(v => px(v) >= 100), JSON.stringify(sizes));
+    check('rename/relocate/ok/no buttons halved (56-100px)',
+        [sizes.rename, sizes.relocate, sizes.ok, sizes.no].every(v => px(v) >= 56 && px(v) < 100), JSON.stringify(sizes));
 
     // ---- 2) 测量按钮在定位组面板里，视图栏没有 ----
     const measure = await evalJs(`(() => {

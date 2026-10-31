@@ -227,7 +227,10 @@
         // 先让布局落定再量，否则拿到的是上一次的尺寸
         var r = barEl.getBoundingClientRect();
         var bottom = r.bottom > 0 ? r.bottom + 8 : 0;
+        // v34：条子被 dock 收编后 display:none，量到零矩形 —— 旧变量必须清掉，
+        // 否则左右停靠区还按旧值避让一个已经不存在的条子
         if (bottom) document.body.style.setProperty('--sd-bar-bottom', bottom + 'px');
+        else document.body.style.removeProperty('--sd-bar-bottom');
     }
     addEventListener('resize', syncEditorBar);
     addEventListener('orientationchange', syncEditorBar);

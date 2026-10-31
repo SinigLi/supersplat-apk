@@ -122,6 +122,25 @@ waitUI(function () {
     return el;
   }
 
+  /* v34：保存/返回并入顶部菜单停靠栏。原 pj-bar 固定在屏幕左上角独占一条，
+   * 老板要求并进菜单停靠栏。两个按钮带着原事件搬进 dock（紧贴 ≡ 把手右侧），
+   * 原 bar 容器隐藏（display:none），syncEditorBar 量到零矩形会自动清掉避让变量；
+   * 显隐仍由 body.sd-has-bar 驱动（工程列表页隐藏、编辑页显示）。
+   * projects-ui 的初始化与 waitUI 有竞态，用轮询兜底（同 bindToolWatch 模式）。 */
+  function adoptProjectButtons(dock) {
+    let n = 0;
+    const t = setInterval(() => {
+      const bar = document.querySelector('.pj-bar');
+      if (bar && bar.children.length) {
+        clearInterval(t);
+        const btns = Array.from(bar.querySelectorAll('.pj-bar-btn'));
+        btns.forEach(b => b.classList.add('sd-adopted', 'sd-pjbtn'));
+        btns.reverse().forEach(b => dock.querySelector('.sd-handle').insertAdjacentElement('afterend', b));
+        bar.style.display = 'none';
+      } else if (++n > 120) clearInterval(t);
+    }, 500);
+  }
+
   /* ===== 导演台组（v9）：SS 源码侧 src/director.ts 提供 window.__director，
    * 通过 'director-state' DOM 事件同步状态；本面板只发命令不解析 GLB ===== */
   const DIR_NAME = '导演台';
@@ -778,6 +797,7 @@ waitUI(function () {
     if (def.menuOptions) {
       // v11：撤销/重做先挂（左起撤销、重做、渲染）
       (def.extra || []).forEach(t => { const el = makeExtraBtn(t, dock); if (el) dock.appendChild(el); });
+      adoptProjectButtons(dock);   // v34：保存/返回收进顶部菜单停靠栏
       // v3：把 SS 五个一级菜单的 .menu-panel 整体搬进各自子面板容器
       // 菜单行点击绑定在行上（stopPropagation），整体搬后功能保留；
       // 行点击后 SS 会隐藏面板，用 MutationObserver 同步关闭我们的 wrap
@@ -843,8 +863,8 @@ waitUI(function () {
       allPanels.set(DIR_NAME, dwrap2);
       bindDirectorPanel(dwrap2);
       [
-        // v33：游标+移动合并为「游标相关」组（三钮：设置游标/移动模型/复制模型）
-        { act:'cursorgrp', ico:'🎯', name:'游标相关' },
+        // v33：游标+移动合并为一组；v34 组名「游标相关」→「游标」（三钮不变）
+        { act:'cursorgrp', ico:'🎯', name:'游标' },
         { act:'xform',    ico:'🔢', name:'变换' },
         { act:'director', ico:'🎬', name:DIR_NAME }
       ].forEach(b => {
@@ -865,7 +885,7 @@ waitUI(function () {
             'sd-sub-wrap sd-dir-panel sd-cur-panel');
           cwrap.dataset.grp = 'cursorgrp';
           document.body.appendChild(cwrap);
-          allPanels.set('游标相关', cwrap);
+          allPanels.set('游标', cwrap);
           cwrap.addEventListener('click', (e) => {
             const cb = e.target.closest('[data-cact]');
             if (!cb) return;
@@ -889,7 +909,7 @@ waitUI(function () {
             }
             closeAll(docks.find(s => s.dock === dock) || { openPanels: new Set() });
           });
-          btn.onclick = () => toggleNamed('游标相关', btn, dock);
+          btn.onclick = () => toggleNamed('游标', btn, dock);
         }
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
         dock.appendChild(btn);
