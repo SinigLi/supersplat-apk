@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>v38 相机面板重排原型</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(160deg, #2a2f36 0%, #171a1f 60%, #101318 100%);
+    color: #d8dce2;
+    touch-action: pan-y;
+    user-select: none;
+  }
+  /* 伪 3D 画布背景：预览半透明面板叠在场景上的观感 */
+  #stage { position: fixed; inset: 0; }
+  #stage .blob { position: absolute; border-radius: 50%; filter: blur(2px); }
+  #stage .b1 { width: 180px; height: 220px; left: 40px; bottom: 180px; background: radial-gradient(circle at 35% 30%, #7d8b99, #3a434d 70%); }
+  #stage .b2 { width: 110px; height: 130px; right: 50px; bottom: 230px; background: radial-gradient(circle at 40% 30%, #9aa7b3, #465059 70%); }
+  #stage .ground { position: absolute; left: -20%; right: -20%; bottom: 0; height: 34%;
+    background: linear-gradient(#2c333b, #1b2026); transform: perspective(500px) rotateX(55deg); }
+  #stage .grid { position: absolute; inset: 0; opacity: .16;
+    background-image: linear-gradient(#8b98a5 1px, transparent 1px), linear-gradient(90deg, #8b98a5 1px, transparent 1px);
+    background-size: 44px 44px; }
+
+  #wrap { position: relative; height: 100%; overflow-y: auto; padding: 10px 10px 90px; }
+  header.top { font-size: 12px; color: #9aa4ae; padding: 2px 4px 8px; }
+  header.top b { color: #cfd6dc; font-size: 13px; }
+
+  /* ===== 导演台面板风格 ===== */
+  .grp {
+    background: rgba(24, 27, 31, .78); border: 1px solid #2c3238; border-radius: 14px;
+    margin-bottom: 12px; overflow: hidden; backdrop-filter: blur(6px);
+  }
+  .grp-h {
+    display: flex; align-items: baseline; gap: 8px; padding: 10px 12px 8px;
+    background: #22262b; font-size: 15px; font-weight: 600; color: #eef1f4;
+  }
+  .grp-h .sub { font-size: 11px; font-weight: 400; color: #8d97a1; }
+  .grp-body { padding: 8px 12px 12px; }
+  .row { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 3px 0; }
+  .row label.lab { flex: 0 0 52px; font-size: 12px; color: #9aa4ae; }
+  .kv { display: grid; grid-template-columns: 52px 1fr; row-gap: 4px; padding: 4px 0; align-items: center; }
+  .kv .lab { font-size: 12px; color: #9aa4ae; }
+  .val { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; color: #dfe4e9;
+    background: #1d2126; border: 1px solid #2c3238; border-radius: 8px; padding: 7px 9px; }
+  .hint { font-size: 11px; color: #7e8892; line-height: 1.5; padding: 2px 2px 4px; }
+
+  button { font-family: inherit; border: 1px solid #3a424a; background: #262c33; color: #dfe4e9;
+    border-radius: 9px; font-size: 13px; padding: 9px 10px; cursor: pointer; }
+  button:active { background: #323a43; }
+  .btnrow { display: flex; gap: 8px; padding: 3px 0; }
+  .btnrow button { flex: 1; min-height: 40px; }
+  .mini { flex: 0 0 42px; min-height: 38px; padding: 6px 0; font-size: 14px; }
+  button.on { border-color: #4da3ff; background: #223140; color: #bcdcff; }
+
+  /* 模式按钮 4 联 */
+  .modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 4px 0; }
+  .modes button { min-height: 44px; }
+
+  /* 裁剪行 */
+  .cliprow { display: flex; align-items: center; gap: 8px; padding: 6px 0; flex-wrap: wrap; }
+  .pill { font-size: 11px; border-radius: 999px; padding: 3px 10px; border: 1px solid #3a424a; color: #9aa4ae; }
+  .pill.manual { border-color: #f2d41f; color: #f2d41f; }
+  .clipval {
+    font-family: ui-monospace, Menlo, monospace; font-size: 14px; border-radius: 9px;
+    padding: 9px 12px; min-width: 86px; text-align: center; border: 1px solid #2c3238; background: #1d2126;
+    touch-action: none;
+  }
+  .clipval .t { display: block; font-size: 10px; letter-spacing: 2px; color: #8d97a1; margin-bottom: 2px; }
+  .clipval.near { border-bottom: 2px solid #4da3ff; }
+  .clipval.far  { border-bottom: 2px solid #35c26e; }
+  .clipval.drag { background: #243040; border-color: #4da3ff; color: #fff; }
+  .clipbar { height: 3px; border-radius: 2px; background: #2c3238; margin: 2px 0 4px; overflow: hidden; }
+  .clipbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #4da3ff, #35c26e); }
+
+  /* 机位 nudge */
+  .nudge { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 4px 0; }
+  .nudge button { min-height: 44px; font-size: 15px; padding: 0; }
+  .steprow { display: flex; align-items: center; gap: 8px; padding: 4px 0 2px; }
+  .steprow label { font-size: 12px; color: #9aa4ae; flex: 0 0 52px; }
+  input[type=number], input[type=text], select {
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #eef1f4;
+    background: #1d2126; border: 1px solid #3a424a; border-radius: 9px; padding: 9px 10px; min-width: 0;
+  }
+  select { flex: 1; }
+  input[type=number] { width: 92px; }
+  .rotrow { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .rotrow label { font-size: 12px; color: #9aa4ae; flex: 0 0 52px; }
+  .rotrow .unit { font-size: 11px; color: #7e8892; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* toast */
+  #msg { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: #0f1317ee; border: 1px solid #3a424a; color: #dfe4e9; font-size: 12px;
+    border-radius: 10px; padding: 8px 14px; max-width: 86%; text-align: center; z-index: 9;
+    opacity: 0; transition: opacity .18s; pointer-events: none; }
+  #msg.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="ground"></div><div class="grid"></div>
+  <div class="blob b1"></div><div class="blob b2"></div>
+</div>
+
+<div id="wrap">
+  <header class="top"><b>v38 相机面板重排原型</b> · 2026-10-31 · 交互可直接试：长按裁剪数值左右拖、切机位、点移动按钮、改旋转角</header>
+
+  <!-- ============ 视口组：全局相机 ============ -->
+  <section class="grp" id="grp-viewport">
+    <div class="grp-h">👁 视口 <span class="sub">全局相机 · 实时参数</span></div>
+    <div class="grp-body">
+      <div class="kv"><span class="lab">位置</span><span class="val" id="vp-pos">2.50, 1.80, 4.20</span></div>
+      <div class="kv"><span class="lab">方向</span><span class="val" id="vp-tgt">0.00, 0.80, 0.00</span></div>
+      <div class="kv"><span class="lab">旋转角</span><span class="val" id="vp-rot">-30.2° / +12.5°</span></div>
+
+      <div class="cliprow">
+        <span class="lab" style="font-size:12px;color:#9aa4ae;flex:0 0 52px;">裁剪</span>
+        <span class="pill" id="clip-state">自动</span>
+        <span class="clipval near" id="cv-near"><span class="t">近 NEAR</span><b id="cv-near-v">0.42</b></span>
+        <span class="clipval far" id="cv-far"><span class="t">远 FAR</span><b id="cv-far-v">63.8</b></span>
+      </div>
+      <div class="clipbar"><i id="clip-bar"></i></div>
+      <div class="hint">长按数值左右拖动修改（拖动范围 ±2×按下时的值，近端不会 ≤0），松手生效；「恢复默认」回到自动裁剪（按场景包围盒逐帧自适应）</div>
+
+      <div class="modes">
+        <button class="mode-btn" data-mode="orbit">轨道</button>
+        <button class="mode-btn" data-mode="fly">飞行</button>
+        <button class="mode-btn" data-mode="frame">框选</button>
+        <button class="mode-btn" data-mode="home">回原点</button>
+      </div>
+      <div class="hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>
+      <div class="btnrow"><button id="btn-restore">↺ 恢复默认（自动裁剪）</button></div>
+    </div>
+  </section>
+
+  <!-- ============ 机位组：局部相机 ============ -->
+  <section class="grp" id="grp-shot">
+    <div class="grp-h">🎥 机位 <span class="sub">局部相机 · 选中机位参数（只读）</span></div>
+    <div class="grp-body">
+      <div class="row">
+        <select id="shot-list" title="机位列表"></select>
+        <button class="mini" id="shot-rename" title="重命名">✏️</button>
+        <button class="mini" id="shot-relocate" title="重定位：用当前视角覆写此机位（含裁剪）">📍</button>
+      </div>
+      <div class="btnrow">
+        <button id="shot-add">＋ 新增</button>
+        <button id="shot-remove">－ 移除</button>
+      </div>
+      <div class="btnrow">
+        <button id="shot-goto">👁 查看</button>
+        <button id="shot-render">📷 渲染</button>
+      </div>
+
+      <div class="kv" style="margin-top:4px;"><span class="lab">裁剪近</span><span class="val" id="sh-near" style="border-bottom:2px solid #4da3ff;">0.50</span></div>
+      <div class="kv"><span class="lab">裁剪远</span><span class="val" id="sh-far" style="border-bottom:2px solid #35c26e;">50.0</span></div>
+      <div class="kv"><span class="lab">位置</span><span class="val" id="sh-pos">2.50, 1.80, 4.20</span></div>
+      <div class="kv"><span class="lab">方向</span><span class="val" id="sh-tgt">0.00, 0.80, 0.00</span></div>
+      <div class="kv"><span class="lab">旋转角</span><span class="val" id="sh-rot">-30.2° / +12.5°</span></div>
+
+      <div class="steprow">
+        <label>步进</label>
+        <input type="number" id="step" value="0.1" step="0.01" min="0.01">
+        <span class="unit">米 / 次 · 可自由设置</span>
+      </div>
+      <div class="nudge">
+        <button class="nudge-btn" data-axis="left"  title="左移">←</button>
+        <button class="nudge-btn" data-axis="right" title="右移">→</button>
+        <button class="nudge-btn" data-axis="up"    title="上移">↑</button>
+        <button class="nudge-btn" data-axis="down"  title="下移">↓</button>
+        <button class="nudge-btn" data-axis="fwd"   title="前移（朝看向方向）">前</button>
+        <button class="nudge-btn" data-axis="back"  title="后移">后</button>
+      </div>
+      <div class="hint">移动 = 机身与看向点一起平移（朝向不变）；「前/后」沿当前视线方向</div>
+
+      <div class="rotrow">
+        <label>旋转</label>
+        <input type="number" id="rot-in" step="1" value="-30" style="flex:0 0 84px;">
+        <span class="unit">° 水平朝向</span>
+        <button class="mini" id="rot-ok" style="flex:0 0 52px;">应用</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="msg"></div>
+
+<script>
+"use strict";
+/* ===== 原型模拟数据与交互（仅布局/手感验证，不接引擎） ===== */
+var fmt = function (v) { return (Math.abs(v) < 1e-4 ? 0 : v).toFixed(2); };
+var fmt3 = function (v) { return v.toFixed(1); };
+var msgEl = document.getElementById("msg"), msgTimer = 0;
+function showMsg(t) {
+  msgEl.textContent = t; msgEl.classList.add("show");
+  clearTimeout(msgTimer); msgTimer = setTimeout(function () { msgEl.classList.remove("show"); }, 2200);
+}
+
+/* ---- 全局视口（演示值；真实实现从引擎实时读） ---- */
+var vp = { pos: [2.50, 1.80, 4.20], tgt: [0.00, 0.80, 0.00], auto: true, near: 0.42, far: 63.8 };
+function vpRot() {
+  var dx = vp.tgt[0] - vp.pos[0], dy = vp.tgt[1] - vp.pos[1], dz = vp.tgt[2] - vp.pos[2];
+  var yaw = Math.atan2(dx, dz) * 180 / Math.PI;
+  var pit = Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI;
+  return { yaw: yaw, pit: pit };
+}
+function vpRender() {
+  document.getElementById("vp-pos").textContent = vp.pos.map(fmt).join(", ");
+  document.getElementById("vp-tgt").textContent = vp.tgt.map(fmt).join(", ");
+  var r = vpRot();
+  document.getElementById("vp-rot").textContent = fmt3(r.yaw) + "° / " + (r.pit >= 0 ? "+" : "") + fmt3(r.pit) + "°";
+  document.getElementById("cv-near-v").textContent = vp.near.toFixed(2);
+  document.getElementById("cv-far-v").textContent = vp.far.toFixed(1);
+  var st = document.getElementById("clip-state");
+  st.textContent = vp.auto ? "自动" : "手动";
+  st.className = "pill" + (vp.auto ? "" : " manual");
+}
+vpRender();
+
+/* ---- 裁剪值：长按左右拖（范围 ±2×按下值，松手生效） ---- */
+function bindClipDrag(el, key, min) {
+  var startX = 0, startVal = 0, dragging = false, armed = false, pressT = 0, last = 0;
+  function preview(v) {
+    document.getElementById(key === "near" ? "cv-near-v" : "cv-far-v").textContent =
+      key === "near" ? v.toFixed(2) : v.toFixed(1);
+  }
+  el.addEventListener("pointerdown", function (e) {
+    startX = e.clientX; startVal = vp[key]; dragging = true; armed = false; pressT = Date.now();
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  el.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    var dx = e.clientX - startX;
+    if (!armed) {
+      if (Math.abs(dx) < 10) return;                 // 未超过死区先等长按成立
+      if (Date.now() - pressT < 220) return;          // 长按成立前不动
+      armed = true; el.classList.add("drag");
+    }
+    // 拖动范围 = ±2×按下时的值；120px 走满一半量程
+    var v = startVal + (dx / 120) * (2 * startVal);
+    v = Math.max(min, v);                             // 近端不能 ≤0
+    if (key === "far" && v <= vp.near + 0.05) v = vp.near + 0.05;
+    vp[key] = v; last = v; vp.auto = false; preview(v); vpRender();
+    var pct = Math.min(100, Math.abs(dx) / 120 * 50);
+    document.getElementById("clip-bar").style.width = pct + "%";
+  });
+  function up() {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove("drag");
+    document.getElementById("clip-bar").style.width = "0";
+    if (armed) showMsg("已生效：" + (key === "near" ? "近" : "远") + " = " +
+      (key === "near" ? last.toFixed(2) : last.toFixed(1)) + "（裁剪切换为手动）");
+    armed = false;
+  }
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+}
+bindClipDrag(document.getElementById("cv-near"), "near", 0.01);
+bindClipDrag(document.getElementById("cv-far"), "far", 0.1);
+
+/* ---- 模式按钮 ---- */
+document.querySelectorAll(".mode-btn").forEach(function (b) {
+  b.addEventListener("click", function () {
+    document.querySelectorAll(".mode-btn").forEach(function (x) { x.classList.remove("on"); });
+    b.classList.add("on");
+    showMsg({ orbit: "轨道模式：绕目标转", fly: "飞行模式：第一人称", frame: "框选：聚焦选中物", home: "回原点：重置视角" }[b.dataset.mode]);
+  });
+});
+/* ---- 恢复默认 ---- */
+document.getElementById("btn-restore").addEventListener("click", function () {
+  vp.auto = true; vp.near = 0.42; vp.far = 63.8; vpRender();
+  showMsg("已恢复默认视口：自动裁剪（FOV 85° 保持不变）");
+});
+
+/* ---- 机位（模拟数据；真实实现由引擎 addShot 时把全局相机含裁剪一并存入） ---- */
+var shots = [
+  { name: "机位1", near: 0.5, far: 50,  pos: [2.50, 1.80, 4.20], tgt: [0.00, 0.80, 0.00] },
+  { name: "机位2", near: 0.2, far: 120, pos: [-3.10, 2.20, 5.00], tgt: [1.00, 0.50, -2.00] },
+  { name: "机位3", near: 1.0, far: 30,  pos: [0.00, 3.50, 0.01], tgt: [0.00, 0.00, 0.00] }
+];
+var cur = 0;
+function shotRot(s) {
+  var dx = s.tgt[0] - s.pos[0], dy = s.tgt[1] - s.pos[1], dz = s.tgt[2] - s.pos[2];
+  return { yaw: Math.atan2(dx, dz) * 180 / Math.PI, pit: Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI };
+}
+function shotRender() {
+  var s = shots[cur];
+  document.getElementById("sh-near").textContent = s.near.toFixed(2);
+  document.getElementById("sh-far").textContent = s.far.toFixed(1);
+  document.getElementById("sh-pos").textContent = s.pos.map(fmt).join(", ");
+  document.getElementById("sh-tgt").textContent = s.tgt.map(fmt).join(", ");
+  var r = shotRot(s);
+  document.getElementById("sh-rot").textContent = fmt3(r.yaw) + "° / " + (r.pit >= 0 ? "+" : "") + fmt3(r.pit) + "°";
+  document.getElementById("rot-in").value = Math.round(r.yaw);
+}
+function fillShots() {
+  var sel = document.getElementById("shot-list");
+  sel.textContent = "";
+  shots.forEach(function (s, i) {
+    var o = document.createElement("option"); o.value = i; o.textContent = s.name; sel.appendChild(o);
+  });
+  sel.value = String(cur);
+}
+fillShots(); shotRender();
+document.getElementById("shot-list").addEventListener("change", function () {
+  cur = Number(this.value); shotRender();
+  showMsg("已选 " + shots[cur].name + "（参数只读展示）");
+});
+["shot-rename", "shot-relocate", "shot-add", "shot-remove", "shot-goto", "shot-render"].forEach(function (id) {
+  document.getElementById(id).addEventListener("click", function () {
+    var m = { "shot-rename": "重命名（内联输入行）", "shot-relocate": "重定位：全局相机参数（含裁剪）覆写 " + shots[cur].name,
+      "shot-add": "新增机位：记录当前全局相机（含裁剪近/远）", "shot-remove": "移除 " + shots[cur].name,
+      "shot-goto": "查看：跳到 " + shots[cur].name + "（应用其裁剪范围）", "shot-render": "渲染照片：从 " + shots[cur].name + " 出图（外包盒不拍入）" };
+    showMsg(m[id]);
+  });
+});
+
+/* ---- 步进移动：机身与看向点一起平移 ---- */
+document.querySelectorAll(".nudge-btn").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var s = shots[cur];
+    var step = Math.max(0.01, Number(document.getElementById("step").value) || 0.1);
+    var d = [s.tgt[0] - s.pos[0], s.tgt[1] - s.pos[1], s.tgt[2] - s.pos[2]];
+    var L = Math.hypot(d[0], d[1], d[2]) || 1;
+    var f = [d[0] / L, d[1] / L, d[2] / L];                       // 前
+    var r = [-f[2], 0, f[0]]; var rl = Math.hypot(r[0], r[2]) || 1; r = [r[0] / rl, 0, r[2] / rl]; // 右 = forward×up
+    var u = [0, 1, 0];
+    var m = { left: [-1, r], right: [1, r], up: [1, u], down: [-1, u], fwd: [1, f], back: [-1, f] }[b.dataset.axis];
+    for (var i = 0; i < 3; i++) { s.pos[i] += m[0] * m[1][i] * step; s.tgt[i] += m[0] * m[1][i] * step; }
+    shotRender();
+    showMsg(s.name + " " + { left: "左移", right: "右移", up: "上移", down: "下移", fwd: "前移", back: "后移" }[b.dataset.axis] +
+      " " + step + " 米（朝向不变）");
+  });
+});
+
+/* ---- 旋转：绕看点水平旋转机身朝向 ---- */
+document.getElementById("rot-ok").addEventListener("click", function () {
+  var s = shots[cur];
+  var want = Number(document.getElementById("rot-in").value);
+  if (!isFinite(want)) { showMsg("旋转角需为数字"); return; }
+  var r0 = shotRot(s);
+  var dYaw = (want - r0.yaw) * Math.PI / 180;
+  var d = [s.tgt[0] - s.pos[0], s.tgt[1] - s.pos[1], s.tgt[2] - s.pos[2]];
+  var nd = [d[0] * Math.cos(dYaw) + d[2] * Math.sin(dYaw), d[1], -d[0] * Math.sin(dYaw) + d[2] * Math.cos(dYaw)];
+  s.tgt = [s.pos[0] + nd[0], s.pos[1] + nd[1], s.pos[2] + nd[2]];
+  shotRender();
+  showMsg(s.name + " 水平朝向 → " + want + "°");
+});
+
+/* ---- CDP 测试钩子 ---- */
+window.__proto = {
+  state: function () { return { vp: vp, cur: cur, shot: shots[cur], msg: msgEl.textContent }; },
+  nudge: function (axis) { document.querySelector('.nudge-btn[data-axis="' + axis + '"]').click(); },
+  applyRot: function (v) { document.getElementById("rot-in").value = v; document.getElementById("rot-ok").click(); },
+  selectShot: function (i) { var s = document.getElementById("shot-list"); s.value = String(i); s.dispatchEvent(new Event("change")); },
+  restore: function () { document.getElementById("btn-restore").click(); }
+};
+</script>
+</body>
+</html>
