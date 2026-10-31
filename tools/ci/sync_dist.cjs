@@ -59,7 +59,7 @@ for (const f of PROTECTED) {
 
 // 引擎新符号是否真的进了产物
 const js = fs.readFileSync(path.join(DST, 'index.js'), 'utf8');
-const marks = ['gizmo.drag', 'setPropLocked', 'setPuppetLocked', 'renameShot', 'relocateShot'];
+const marks = ['gizmo.drag', 'setPropLocked', 'setPuppetLocked', 'renameShot', 'relocateShot', 'selection-box-marker'];
 console.log('\n--- engine marks in index.js ---');
 for (const m of marks) {
     console.log((js.includes(m) ? 'FOUND ' : 'MISS  ') + m);
