@@ -72,7 +72,7 @@ body canvas, #application-canvas { touch-action:none !important; }
 .sd-sub-wrap::-webkit-scrollbar { display:none; }
 
 /* 鏀跺吇杩涙潵鐨?SS 鑿滃崟闈㈡澘锛氶潤鎬佸竷灞€锛屽疄搴曡儗鏅紙榛樿鑹插お娣变笌鐢诲竷鍑犱箮鍚岃壊浼氱湅涓嶈锛?*/
-.sd-menu-panel { background:#262b32 !important; border:1px solid rgba(255,255,255,.08); }
+.sd-menu-panel { background:rgba(38,43,50,var(--sd-alpha,.6)) !important; border:1px solid rgba(255,255,255,.08); }
 .sd-menu-panel .menu-panel { position:static !important; box-shadow:none !important; background:transparent !important; }
 .sd-menu-panel .menu-row { min-width:150px; }
 
@@ -80,16 +80,16 @@ body canvas, #application-canvas { touch-action:none !important; }
 body.sd-scene-open #scene-panel { display:flex !important; flex-direction:column; position:fixed !important;
   inset:0 !important; width:100% !important; max-width:100% !important; height:100% !important; max-height:100% !important;
   z-index:1300 !important;
-  border-radius:0 !important; background:#181b1f; padding:0 !important; }
+  border-radius:0 !important; background:rgba(24,27,31,var(--sd-alpha,.6)) !important; padding:0 !important; }
 .sd-sheet-header { flex-shrink:0; display:flex; align-items:center; gap:0.6rem;
-  padding:0.55rem 0.8rem; background:#22262b; position:relative; z-index:5; }
+  padding:0.55rem 0.8rem; background:rgba(34,38,43,var(--sd-alpha,.75)); position:relative; z-index:5; }
 .sd-sheet-title { color:#eee; font-size:1rem; font-weight:600; flex:1; }
 .sd-back-btn { flex-shrink:0; display:flex; align-items:center; gap:0.25rem; padding:0.7rem 1rem; margin:-0.2rem -0.3rem;
   min-width:3.2rem; min-height:2.6rem; justify-content:center;
   border-radius:0.5rem; background:rgba(255,255,255,.1); color:#ddd; font-size:0.95rem; cursor:pointer; }
 .sd-back-btn:active { background:rgba(255,255,255,.28); }
 body.sd-scene-open #scene-panel > .panel-header { display:flex !important; flex-shrink:0; flex-wrap:wrap; gap:0.3rem;
-  position:static !important; height:auto !important; padding:0.4rem 0.8rem !important; background:#1d2126 !important; }
+  position:static !important; height:auto !important; padding:0.4rem 0.8rem !important; background:rgba(29,33,38,var(--sd-alpha,.6)) !important; }
 body.sd-scene-open #scene-panel > .panel-body, body.sd-scene-open #scene-panel > div:not(.panel-header):not(.sd-sheet-header) { flex:1; overflow-y:auto; min-height:0; }
 body.mobile-mode #scene-panel { display:none !important; }
 body.mobile-mode.sd-scene-open #scene-panel { display:flex !important; }
@@ -100,7 +100,7 @@ body.sd-scene-open .sd-dock { display:none !important; }
 body.sd-docks-ready #appearance-panel, body.sd-docks-ready #overlays-panel, body.sd-docks-ready #settings-panel {
   position:fixed !important; inset:0 !important; width:100% !important; max-width:100% !important;
   height:100% !important; max-height:100% !important; overflow-y:auto !important; overflow-x:hidden !important; z-index:1300 !important;
-  display:flex; flex-direction:column; background:#181b1f;
+  display:flex; flex-direction:column; background:rgba(24,27,31,var(--sd-alpha,.6));
 }
 body.sd-docks-ready #appearance-panel > *, body.sd-docks-ready #overlays-panel > *, body.sd-docks-ready #settings-panel > * { flex-shrink:0; }
 
@@ -122,7 +122,7 @@ body.sd-docks-ready #dialog, body.sd-docks-ready [id$="-dialog"] {
   position:fixed !important; left:0 !important; right:auto !important; top:0 !important;
   width:100vw !important; max-width:100vw !important; height:100vh !important; max-height:100vh !important;
   transform:none !important; border-radius:0 !important;
-  display:flex; flex-direction:column; overflow:hidden !important; background:#1b1e23;
+  display:flex; flex-direction:column; overflow:hidden !important; background:rgba(27,30,35,var(--sd-alpha,.6)) !important;
 }
 body.sd-docks-ready #dialog > [id="header"], body.sd-docks-ready [id$="-dialog"] > [id="header"] {
   flex-shrink:0; width:100% !important; height:3rem !important; padding-left:3rem !important;
@@ -238,22 +238,27 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
   margin-top:-8px; box-shadow:0 1px 4px rgba(0,0,0,.5); }
 .sd-clip-slider:active::-webkit-slider-thumb { border-color:#6eb4ff; }
 
-/* v31 移动模型组：两钮纯图标，固定宽，不再折行 */
-.sd-mv-panel { flex-direction:row !important; }
-.sd-mv-btn { flex:1 1 0; min-width:56px; justify-content:center; font-size:20px !important; padding:10px 0 !important; }
+/* v33 游标相关组：三钮图标+文字（设置游标/移动模型/复制模型） */
+.sd-cur-panel { flex-direction:row !important; }
+.sd-cur-btn { flex:1 1 0; min-width:96px; flex-direction:column; gap:6px; justify-content:center;
+  padding:14px 8px !important; }
+.sd-cur-btn .sd-ico { font-size:26px; }
+.sd-cur-btn .sd-txt { font-size:14px; color:#e2e8f0; white-space:nowrap; }
 .sd-shot-panel .sd-cam-modes { justify-content:flex-start; padding-top:2px;
   border-top:1px solid rgba(148,163,184,.18); margin-top:2px; }
 .sd-shot-panel .sd-cam-modes .sd-adopted { display:flex; }
 
 /* v32 相机面板重排：机位行（下拉+两小钮）、内联改名行、模式注释 */
 .sd-shot-pick-row { gap:6px; }
-.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; }
-.sd-shot-panel .sd-shot-btn.sd-shot-mini { flex:0 0 auto; width:2.5rem; height:2.5rem; padding:0 !important;
-  justify-content:center; font-size:16px !important; }
+.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; min-height:4.5rem; }
+/* v33 老板反馈：改名/重定位/确定/取消按钮太小，加大到 3 倍（2.5rem → 7.5rem）。
+ * width/height 必须 !important —— .sd-shot-btn 基础规则的 width:auto !important 会压掉普通声明 */
+.sd-shot-panel .sd-shot-btn.sd-shot-mini { flex:0 0 auto; width:7.5rem !important; height:7.5rem !important; padding:0 !important;
+  justify-content:center; font-size:40px !important; }
 .sd-shot-edit-row { gap:6px; }
 .sd-shot-edit-row[hidden] { display:none; }
-.sd-shot-edit { flex:1; min-width:0; min-height:40px; background:rgba(30,41,59,.92); color:#e2e8f0;
-  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 10px; font-size:13px; }
+.sd-shot-edit { flex:1; min-width:0; min-height:4.5rem; background:rgba(30,41,59,.92); color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 12px; font-size:16px; }
 .sd-mode-hint { flex:none; font-size:11px; color:#8b96a5; padding:0 2px; margin-top:2px; }
 
 /* v32 设置页透明度滑条 */

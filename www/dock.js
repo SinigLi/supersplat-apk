@@ -49,7 +49,6 @@ waitUI(function () {
     select: { ico:'🎯', name:'选择', ids:['bottom-toolbar-selection-mode','bottom-toolbar-selection-footprint','bottom-toolbar-picker','bottom-toolbar-brush','bottom-toolbar-polygon','bottom-toolbar-eyedropper','bottom-toolbar-sphere-brush'] },
     xform:  { ico:'🔢', name:'变换', ids:['bottom-toolbar-move','bottom-toolbar-rotate','bottom-toolbar-scale'] },
     shape:  { ico:'✂️', name:'裁剪', ids:['bottom-toolbar-sphere','bottom-toolbar-box'] },
-    measure:{ ico:'📐', name:'测量', ids:['bottom-toolbar-measure'] },
     file:   { ico:'📁', name:'文件', ids:[] },   // v1: 菜单按钮代理
     view:   { ico:'👁', name:'视图', ids:['right-toolbar-appearance','right-toolbar-overlays','right-toolbar-orbit-mode','right-toolbar-fly-mode','right-toolbar-frame-selection','right-toolbar-camera-origin','right-toolbar-settings'] },
   };
@@ -60,7 +59,7 @@ waitUI(function () {
     { id:'edit', label:'工具', pos:'bottom', groupIds:['xform'], dirBar:true,
       extra:[] },
     { id:'view', label:'视图', pos:'right',  groupIds:[], viewOptions:true,
-      extra:[ {id:'bottom-toolbar-measure', ico:'📐', name:'测量'} ] },
+      extra:[] },   // v33：测量移入「定位」分组面板
   ];
 
   // v10 分镜工具定位：泼溅专属菜单（文件/选择/帮助）先隐藏，保留编辑；
@@ -448,7 +447,7 @@ waitUI(function () {
         '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
       '</div>' +
       '<div class="sd-dir-row sd-cam-modes"></div>' +
-      '<div class="sd-dir-hint sd-mode-hint">轨道 = 绕目标转 · 飞行 = 第一人称</div>' +
+      '<div class="sd-dir-hint sd-mode-hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>' +
       '<div class="sd-dir-row sd-clip-row">' +
         '<span class="sd-clip-lab">近</span><input class="sd-clip-num" data-clip="near" type="number" min="0.01" step="0.1" title="近裁剪距离（比它近的不画）">' +
         '<span class="sd-clip-lab">远</span><input class="sd-clip-num" data-clip="far" type="number" min="0.1" step="1" title="远裁剪距离（比它远的不画）">' +
@@ -811,9 +810,10 @@ waitUI(function () {
     } else if (def.viewOptions) {
       // 右侧：三个一级分组——相机（机位管理）、设置（外观/浮层/设置）、定位（框选/回原点）
       [
-        ["相机", ["right-toolbar-orbit-mode", "right-toolbar-fly-mode"]],
+        // v33：框选/回原点移入相机组（轨道/飞行旁），定位组只留基准点三钮+测量
+        ["相机", ["right-toolbar-orbit-mode", "right-toolbar-fly-mode", "right-toolbar-frame-selection", "right-toolbar-camera-origin"]],
         ["设置", ["right-toolbar-appearance", "right-toolbar-overlays", "right-toolbar-settings"]],
-        ["定位", ["right-toolbar-frame-selection", "right-toolbar-camera-origin"]]
+        ["定位", []]
       ].forEach(function(pair){
         var name = pair[0], ids = pair[1];
         var ico = name === "相机" ? "🎥" : (name === "设置" ? "⚙️" : "🎯");
@@ -823,8 +823,8 @@ waitUI(function () {
         if (name === "相机") modes = buildShotPanel(wrap);   // v20 机位面板
         // 相机组把两个模式按钮塞进面板底部那行；其余组照旧平铺
         ids.forEach(function(id){ adopt(id, modes || wrap); });
-        // v25：定位组追加两个「重设基准点」按钮
-        if (name === "定位") buildAnchorButtons(wrap);
+        // v25：定位组追加三个「重设基准点」按钮；v33：测量按钮也收进定位组
+        if (name === "定位") { adopt('bottom-toolbar-measure', wrap); buildAnchorButtons(wrap); }
         document.body.appendChild(wrap);
         allPanels.set(name, wrap);
         g.onclick = function(){ toggleNamed(name, g, dock); };
@@ -843,8 +843,8 @@ waitUI(function () {
       allPanels.set(DIR_NAME, dwrap2);
       bindDirectorPanel(dwrap2);
       [
-        { act:'cursor',   ico:'🎯', name:'游标' },
-        { act:'movegroup', ico:'🧲', name:'移动' },
+        // v33：游标+移动合并为「游标相关」组（三钮：设置游标/移动模型/复制模型）
+        { act:'cursorgrp', ico:'🎯', name:'游标相关' },
         { act:'xform',    ico:'🔢', name:'变换' },
         { act:'director', ico:'🎬', name:DIR_NAME }
       ].forEach(b => {
@@ -856,37 +856,40 @@ waitUI(function () {
           btn.onclick = () => toggleGroup('xform', dock);
         }
 
-        else if (b.act === 'cursor') btn.onclick = () => { const d=window.__director; if(!d){showMsg('导演台模块未就绪');return;} const r=d.armPlaceCursor(); showMsg(r==='place-cursor'?'点击画布放置 3D 游标（再点取消）':'已取消放置'); };
-        else if (b.act === 'movegroup') {
-          // v30 #3 / v31 反馈：移动模型组——两钮纯图标（不带文字，老板反馈带字会折行布局乱）
-          const mwrap = makeShell(
-            '<button class="sd-dir-btn sd-mv-btn" data-mact="move" title="移动到游标">🧲</button>' +
-            '<button class="sd-dir-btn sd-mv-btn" data-mact="copy" title="复制到游标">📋</button>',
-            'sd-sub-wrap sd-dir-panel sd-mv-panel');
-          mwrap.dataset.grp = 'movegroup';
-          document.body.appendChild(mwrap);
-          allPanels.set('移动', mwrap);
-          mwrap.addEventListener('click', (e) => {
-            const mb = e.target.closest('[data-mact]');
-            if (!mb) return;
+        else if (b.act === 'cursorgrp') {
+          // v33：游标相关组——三钮带图标+文字（老板指定），替换原「游标」直按+「移动」纯图标组
+          const cwrap = makeShell(
+            '<button class="sd-dir-btn sd-cur-btn" data-cact="cursor" title="点击画布放置/取消 3D 游标"><span class="sd-ico">🎯</span><span class="sd-txt">设置游标</span></button>' +
+            '<button class="sd-dir-btn sd-cur-btn" data-cact="move" title="把选中对象移到 3D 游标"><span class="sd-ico">🧲</span><span class="sd-txt">移动模型</span></button>' +
+            '<button class="sd-dir-btn sd-cur-btn" data-cact="copy" title="复制选中对象到 3D 游标"><span class="sd-ico">📋</span><span class="sd-txt">复制模型</span></button>',
+            'sd-sub-wrap sd-dir-panel sd-cur-panel');
+          cwrap.dataset.grp = 'cursorgrp';
+          document.body.appendChild(cwrap);
+          allPanels.set('游标相关', cwrap);
+          cwrap.addEventListener('click', (e) => {
+            const cb = e.target.closest('[data-cact]');
+            if (!cb) return;
             e.stopPropagation();
             const dd = window.__director;
             if (!dd) { showMsg('导演台模块未就绪'); return; }
-            if (mb.dataset.mact === 'move') {
+            if (cb.dataset.cact === 'cursor') {
+              const r = dd.armPlaceCursor();
+              showMsg(r === 'place-cursor' ? '点击画布放置 3D 游标（再点取消）' : '已取消放置');
+            } else if (cb.dataset.cact === 'move') {
               const r = dd.moveSelectedToCursor();
-              showMsg(r==='ok' ? '已移到 3D 游标（可撤销）' :
-                      r==='no-selection' ? '先选中一个对象' :
-                      r==='no-cursor' ? '先点「游标」定个位置' : '已取消');
+              showMsg(r === 'ok' ? '已移到 3D 游标（可撤销）' :
+                      r === 'no-selection' ? '先选中一个对象' :
+                      r === 'no-cursor' ? '先点「设置游标」定个位置' : '已取消');
             } else {
               const r = dd.copySelectedToCursor ? dd.copySelectedToCursor() : 'no-api';
-              showMsg(r==='ok' ? '副本已生成在游标处（可撤销）' :
-                      r==='no-selection' ? '先选中一个对象' :
-                      r==='no-cursor' ? '先点「游标」定个位置' :
-                      r==='no-api' ? '引擎版本过旧，无复制接口' : '已取消');
+              showMsg(r === 'ok' ? '副本已生成在游标处（可撤销）' :
+                      r === 'no-selection' ? '先选中一个对象' :
+                      r === 'no-cursor' ? '先点「设置游标」定个位置' :
+                      r === 'no-api' ? '引擎版本过旧，无复制接口' : '已取消');
             }
             closeAll(docks.find(s => s.dock === dock) || { openPanels: new Set() });
           });
-          btn.onclick = () => toggleNamed('移动', btn, dock);
+          btn.onclick = () => toggleNamed('游标相关', btn, dock);
         }
         else btn.onclick = () => toggleNamed(DIR_NAME, btn, dock);
         dock.appendChild(btn);

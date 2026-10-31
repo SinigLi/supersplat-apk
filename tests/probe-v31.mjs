@@ -121,15 +121,17 @@ try {
     check('placing with char spawns puppet', await waitFor(
         'window.__director.puppets.length === 1', 120, 500));
 
-    // ---- 2) 移动模型组两钮纯图标 ----
+    // ---- 2) 游标相关组三钮带图标+文字（v33：游标+移动合并，老板指定图文并列） ----
     const mv = await evalJs(`(() => {
-        const w = document.querySelector('.sd-sub-wrap[data-grp="movegroup"]');
+        const w = document.querySelector('.sd-sub-wrap[data-grp="cursorgrp"]');
         if (!w) return null;
-        const btns = w.querySelectorAll('.sd-mv-btn');
-        return { n: btns.length,
-                 noText: Array.from(btns).every(b => !b.querySelector('.sd-name') && b.textContent.trim().length <= 2) };
+        const btns = w.querySelectorAll('.sd-cur-btn');
+        const txts = Array.from(btns).map(b => b.querySelector('.sd-txt')?.textContent || '');
+        return { n: btns.length, txts,
+                 withText: txts.every(t => t.length >= 2) };
     })()`);
-    check('movegroup two icon-only buttons', !!mv && mv.n === 2 && mv.noText === true, JSON.stringify(mv));
+    check('cursorgrp three buttons with icon+text', !!mv && mv.n === 3 && mv.withText === true,
+        JSON.stringify(mv));
 
     // ---- 3) 场景页打开时原生泼溅列表隐藏 ----
     const splatHidden = await evalJs(`(() => {

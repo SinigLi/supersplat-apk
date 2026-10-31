@@ -213,10 +213,10 @@ try {
     check('cursor hidden after reset', resetInfo?.cursorOn === false);
     check('manual clip cleared', resetInfo?.clip?.enabled === false);
 
-    // ---- 7) movegroup 面板存在于 dock.js ----
+    // ---- 7) 游标相关组面板存在于 dock.js（v33：游标+移动合并） ----
     const movegroup = await evalJs(
-        '!!document.querySelector(".sd-sub-wrap[data-grp=\\"movegroup\\"]")');
-    check('movegroup panel injected', movegroup === true);
+        '!!document.querySelector(".sd-sub-wrap[data-grp=\\"cursorgrp\\"]")');
+    check('cursorgrp panel injected', movegroup === true);
 
     // ---- 8) 无异常 ----
     const errs = logs.filter(l => /EXC|Uncaught|Cannot read|is not a function/.test(l));

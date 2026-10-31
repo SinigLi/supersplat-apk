@@ -86,8 +86,8 @@ try {
   // ---- 1) 底栏按钮 ----
   const bar = await evalJs(`(() => [...document.querySelectorAll('.sd-dir-act')].map(b => b.dataset.act))()`);
   check('bottom bar has no select button', Array.isArray(bar) && !bar.includes('select'), JSON.stringify(bar));
-  check('bottom bar keeps cursor/movegroup/xform/director',
-    ['cursor', 'movegroup', 'xform', 'director'].every(a => (bar || []).includes(a)), JSON.stringify(bar));
+  check('bottom bar keeps cursorgrp/xform/director',
+    ['cursorgrp', 'xform', 'director'].every(a => (bar || []).includes(a)), JSON.stringify(bar));
 
   // ---- 2) 生成人偶，默认单击选中 ----
   await evalJs(`window.__director.switchCharacter('woman')`);
