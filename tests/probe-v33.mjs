@@ -97,14 +97,14 @@ try {
         const pick = (sel) => { const b = document.querySelector(sel); return b ? getComputedStyle(b).width : null; };
         return {
             rename: pick('[data-shot="rename"]'),
-            relocate: pick('[data-shot="relocate"]'),
+            add: pick('[data-shot="add"]'),
             ok: pick('[data-shot="rename-ok"]'),
             no: pick('[data-shot="rename-no"]')
         };
     })()`);
     const px = v => v ? parseFloat(v) : 0;
-    check('rename/relocate/ok/no buttons halved (56-100px)',
-        [sizes.rename, sizes.relocate, sizes.ok, sizes.no].every(v => px(v) >= 56 && px(v) < 100), JSON.stringify(sizes));
+    check('rename/add/ok/no mini buttons halved (56-100px)',
+        [sizes.rename, sizes.add, sizes.ok, sizes.no].every(v => px(v) >= 56 && px(v) < 100), JSON.stringify(sizes));
 
     // ---- 2) 测量按钮在定位组面板里，视图栏没有 ----
     const measure = await evalJs(`(() => {
@@ -160,15 +160,17 @@ try {
     check('cursor arm toggles (place-cursor -> cancel)',
         cursorArm?.r1 === 'place-cursor' && cursorArm?.r2 !== 'place-cursor', JSON.stringify(cursorArm));
 
-    // ---- 5) 相机组四钮（轨道/飞行/框选/回原点）+ 注释 ----
+    // ---- 5) v38：四模式钮在视口组面板顶部（收养）+ 注释；机位面板不再有模式行 ----
     const cam = await evalJs(`(() => {
-        const modes = document.querySelector('.sd-shot-panel .sd-cam-modes');
-        const hint = document.querySelector('.sd-shot-panel .sd-mode-hint');
+        const modes = document.querySelector('.sd-vp-panel .sd-vp-modes');
+        const hint = document.querySelector('.sd-vp-panel .sd-dir-hint');
+        const shotModes = document.querySelector('.sd-shot-panel .sd-cam-modes');
         return { adopted: modes ? modes.querySelectorAll('.sd-adopted').length : -1,
-                 hint: hint ? hint.textContent : null };
+                 hint: hint ? hint.textContent : null,
+                 shotModesRetired: !shotModes };
     })()`);
-    check('camera panel: 4 adopted mode buttons + extended hint',
-        cam.adopted === 4 && /框选/.test(cam.hint || '') && /回原点/.test(cam.hint || ''), JSON.stringify(cam));
+    check('viewport panel: 4 adopted mode buttons + hint; shot modes retired',
+        cam.adopted === 4 && /框选/.test(cam.hint || '') && /回原点/.test(cam.hint || '') && cam.shotModesRetired === true, JSON.stringify(cam));
 
     // ---- 无异常 ----
     const errs = logs.filter(l => /EXC|Uncaught|Cannot read|is not a function/.test(l));

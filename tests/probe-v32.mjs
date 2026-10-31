@@ -93,32 +93,34 @@ try {
     await evalJs(`(() => { const d = window.__director;
         d.listShots().slice().forEach(s => d.removeShot(s.id)); return true; })()`);
 
-    // ---- 1) 相机面板结构：机位行（下拉+两小钮）+ 内联改名行默认隐藏 ----
+    // ---- 1) 机位面板结构：机位行（下拉+改名+新增）+ 内联改名行默认隐藏（v38：重定位降到底部行） ----
     const row = await evalJs(`(() => {
         const r = document.querySelector('.sd-shot-pick-row');
         if (!r) return null;
         return {
             sel: !!r.querySelector('.sd-shot-list'),
             ren: !!r.querySelector('[data-shot="rename"]'),
-            rel: !!r.querySelector('[data-shot="relocate"]'),
+            add: !!r.querySelector('[data-shot="add"]'),
+            relGone: !r.querySelector('[data-shot="relocate"]')
         };
     })()`);
-    check('pick row = dropdown + rename + relocate',
-        !!row && row.sel && row.ren && row.rel, JSON.stringify(row));
+    check('pick row = dropdown + rename + add (relocate moved out)',
+        !!row && row.sel && row.ren && row.add && row.relGone, JSON.stringify(row));
     check('edit row hidden initially', await evalJs(
         '(() => { const e = document.querySelector(".sd-shot-edit-row"); return !!e && e.hidden; })()'));
 
-    // ---- 2) 模式注释贴在模式按钮行旁边（紧随其后，不再悬在最底部）----
+    // ---- 2) v38：模式按钮+注释在视口组面板顶部，机位组不再有模式行 ----
     const hint = await evalJs(`(() => {
-        const modes = document.querySelector('.sd-shot-panel .sd-cam-modes');
-        const h = document.querySelector('.sd-shot-panel .sd-mode-hint');
+        const modes = document.querySelector('.sd-vp-panel .sd-vp-modes');
+        const h = document.querySelector('.sd-vp-panel .sd-dir-hint');
+        const shotModes = document.querySelector('.sd-shot-panel .sd-cam-modes');
         if (!modes || !h) return null;
         return { adjacent: h.previousElementSibling === modes,
-                 text: h.textContent,
-                 atEnd: h === h.parentNode.lastElementChild };
+                 adopted: modes.querySelectorAll('.sd-adopted').length,
+                 shotModesRetired: !shotModes };
     })()`);
-    check('mode hint sits right after cam-modes row',
-        !!hint && hint.adjacent === true, JSON.stringify(hint));
+    check('viewport panel: 4 mode buttons + hint; shot panel modes retired',
+        !!hint && hint.adjacent === true && hint.adopted === 4 && hint.shotModesRetired === true, JSON.stringify(hint));
 
     // ---- 3) 引擎 API：renameShot ----
     const ids = await evalJs(`(() => { const d = window.__director;

@@ -220,23 +220,9 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 
 /* v30 #5 显示范围控制（手动近/远裁剪） */
 .sd-shot-panel .sd-clip-row { gap:6px; }
-.sd-clip-lab { font-size:12px; color:#94a3b8; min-width:16px; text-align:center; }
-.sd-clip-num { flex:1; min-width:0; min-height:40px; background:#1e293b; color:#e2e8f0;
-  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 8px; font-size:13px; }
 .sd-shot-panel .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
 
 /* v31 双头滑轨（近/远裁剪主交互）：两条细轨叠一行，拖动按对数比例取值 */
-.sd-clip-slider-row { flex-direction:column; gap:8px; padding:4px 2px; }
-.sd-clip-slider { width:100%; height:32px; -webkit-appearance:none; appearance:none;
-  background:transparent; margin:0; }
-.sd-clip-slider::-webkit-slider-runnable-track { height:6px; border-radius:3px;
-  background:linear-gradient(90deg,#1f59e6 0%,#1f59e6 var(--fill,0%),#334155 var(--fill,0%),#334155 100%); }
-.sd-clip-slider[data-slider="far"]::-webkit-slider-runnable-track {
-  background:linear-gradient(90deg,#26b333 0%,#26b333 var(--fill,0%),#334155 var(--fill,0%),#334155 100%); }
-.sd-clip-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none;
-  width:22px; height:22px; border-radius:50%; background:#e2e8f0; border:3px solid #1e293b;
-  margin-top:-8px; box-shadow:0 1px 4px rgba(0,0,0,.5); }
-.sd-clip-slider:active::-webkit-slider-thumb { border-color:#6eb4ff; }
 
 /* v33 游标相关组：三钮图标+文字（设置游标/移动模型/复制模型） */
 .sd-cur-panel { flex-direction:row !important; }
@@ -324,3 +310,44 @@ body.sd-has-bar .sd-dock.sd-right {
     top: calc(var(--sd-bar-bottom, 46px) + (100vh - var(--sd-bar-bottom, 46px)) / 2);
     max-height: calc(100vh - var(--sd-bar-bottom, 46px) - 26px);
 }
+
+/* ===== v38 视口/机位面板：数值块（单击就地编辑 + 长按拖动粗调） ===== */
+.sd-vp-modes { justify-content:flex-start; gap:.5rem; flex-wrap:wrap; }
+.sd-vp-modes .sd-adopted { display:flex; }
+.sd-vp-cliprow { gap:.4rem; }
+.sd-dv-lab { flex:0 0 auto; font-size:1.1rem; color:#94a3b8; }
+.sd-dv { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center;
+  background:rgba(30,41,59,.92); border:1px solid rgba(148,163,184,.35); border-radius:.6rem;
+  padding:.5rem .4rem .4rem; text-align:center; touch-action:none; user-select:none; }
+.sd-dv-t { font-size:.9rem; letter-spacing:.12em; color:#94a3b8; }
+.sd-dv-v { font-size:1.3rem; color:#e2e8f0; font-weight:400; line-height:1.25; }
+.sd-dv-r { font-size:.8rem; color:#64748b; line-height:1.2; }
+.sd-dv-near { border-bottom:.2rem solid #4da3ff; }
+.sd-dv-far  { border-bottom:.2rem solid #26b333; }
+.sd-dv-foc  { border-bottom:.2rem solid #e8b661; }
+.sd-dv-drag { background:#243040; border-color:#4da3ff; }
+.sd-dv-edit { border-color:#4da3ff; background:#243040; }
+.sd-dv-in { display:none; width:100%; min-width:0; background:transparent; border:none; outline:none;
+  font:inherit; font-size:1.3rem; color:#fff; text-align:center; padding:0; margin:0; }
+.sd-dv-edit .sd-dv-v { display:none; }
+.sd-dv-edit .sd-dv-in { display:block; }
+.sd-pill { flex:0 0 auto; font-size:1rem; border-radius:999px; padding:.2rem .8rem;
+  border:1px solid rgba(148,163,184,.4); color:#94a3b8; }
+.sd-pill-manual { border-color:#e8c419; color:#e8c419; }
+.sd-kv { display:flex; gap:.5rem; align-items:center; padding:.2rem 0; }
+.sd-kv .sd-dv-lab { flex:0 0 5.5rem; text-align:left; }
+.sd-kv-v { flex:1; min-width:0; font-family:ui-monospace,Consolas,monospace; font-size:1.15rem; color:#cbd5e1;
+  background:rgba(15,23,42,.6); border:1px solid rgba(148,163,184,.25); border-radius:.5rem; padding:.6rem .8rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; }
+.sd-sect { font-size:1rem; color:#8a919c; letter-spacing:.05em; padding:.8rem 0 0; margin-top:.4rem;
+  border-top:1px dashed rgba(148,163,184,.25); }
+.sd-num { flex:1; min-width:0; min-height:4rem; background:#1e293b; color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.35); border-radius:.6rem; padding:.6rem .8rem;
+  font:1.2rem ui-monospace,Consolas,monospace; }
+.sd-nudge { display:grid; grid-template-columns:repeat(6,1fr); gap:.5rem; }
+.sd-nudge-btn { min-height:4.5rem; font-size:1.5rem; padding:0; background:rgba(30,41,59,.92);
+  border:1px solid rgba(148,163,184,.35); border-radius:.6rem; color:#e2e8f0; }
+.sd-nudge-btn:active { background:#2563eb; color:#fff; }
+/* v38：视口面板也用整行按钮/提示（v9c 的 2.25rem 紧凑规则只该管图标钮） */
+.sd-vp-panel .sd-dir-hint, .sd-shot-panel .sd-dir-hint { flex:none; font-size:1.05rem; color:#8b96a5; padding:.2rem 2px; line-height:1.5; }
+.sd-vp-panel .sd-dir-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px; min-height:4.4rem; justify-content:center; }

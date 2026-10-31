@@ -296,9 +296,8 @@ waitUI(function () {
     });
   }
 
-  /* v20 机位面板：列出机位 / 新增 / 移除 / 查看 / 渲染照片
+  /* v38 相机面板区：渲染结果预览层 + 视口组（全局相机实时参数）+ 机位组（每机位独立裁剪/焦距）。
    * 机位数据在导演台里（window.__director.shots），这里只做展示与调用。
-   * 相机分组原本的两个按钮是「轨道相机 / 飞行相机」操控模式，保留在底部一行。
    */
 
   /* 渲染结果预览层。
@@ -419,13 +418,193 @@ waitUI(function () {
     return layer;
   }
 
+/* v38 面板代码（干净版）：视口组（全局相机）+ 机位组重写（按 prototype/cam-panel-proto.html v5 定稿）
+ * 本文件整体替换 dock.js 里旧的 buildShotPanel 函数体，并配合 viewOptions 分组改动使用。
+ */
+
+  /* ----- v38 通用：数值块（单击就地编辑 + 长按拖动粗调） -----
+   * 与原型 v5 一致：短按原地松手 → 块内 <b> 换 <input>（回车/失焦生效，无弹窗）；
+   * 按住 ≥220ms 且移动 >10px → 拖动模式，松手生效；pointercancel 按松手处理
+   * （真机快速点按常被系统判成滚动而改发 cancel，v5 真机教训）。
+   */
+  function bindDragVal(el, cfg) {
+    var startX = 0, startV = 0, dragging = false, armed = false, pressT = 0, last = 0, moved = 0;
+    var inp = el.querySelector(".sd-dv-in");
+    el.addEventListener("pointerdown", function (e) {
+      if (el.__editing) return;
+      startX = e.clientX; startV = cfg.get();
+      dragging = true; armed = false; pressT = Date.now(); moved = 0;
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener("pointermove", function (e) {
+      if (!dragging || el.__editing) return;
+      var dx = e.clientX - startX;
+      moved = Math.max(moved, Math.abs(dx));
+      if (!armed) {
+        if (Math.abs(dx) < 10 || Date.now() - pressT < 220) return;
+        armed = true; el.classList.add("sd-dv-drag");
+      }
+      var v = cfg.map(dx, startV);
+      v = Math.max(cfg.min, Math.min(cfg.max, v));
+      cfg.set(v); last = v; cfg.render();
+      e.preventDefault();
+    });
+    var up = function () {
+      if (!dragging) return;
+      dragging = false; el.classList.remove("sd-dv-drag");
+      if (armed) cfg.commit(last);
+      else if (moved < 10) startEdit();
+      armed = false;
+    };
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    function startEdit() {
+      el.__editing = true; el.classList.add("sd-dv-edit");
+      inp.value = String(Math.round(cfg.get() * 100) / 100);
+      setTimeout(function () { inp.focus(); try { inp.select(); } catch (e) {} }, 40);
+    }
+    inp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+    });
+    inp.addEventListener("blur", function () {
+      if (!el.__editing) return;
+      el.__editing = false; el.classList.remove("sd-dv-edit");
+      var raw = inp.value.trim(), v = Number(raw);
+      if (raw === "" || !isFinite(v)) { showMsg("数值无效，已还原"); cfg.render(); return; }
+      v = Math.max(cfg.min, Math.min(cfg.max, v));
+      cfg.set(v); cfg.render(); cfg.commit(v);
+    });
+  }
+  const DV_CLIP_MAP = (dx, v) => v + (dx / 120) * (2 * v);   // ±2×按下值走满 120px
+  const DV_FOCAL_MAP = (dx, v) => v + dx * 2;                // 焦距 1px≈2mm（1–500mm）
+  const dvHtml = (id, label, en, cls, rng) =>
+    '<span class="sd-dv ' + cls + '" id="' + id + '">' +
+      '<span class="sd-dv-t">' + label + ' ' + en + '</span>' +
+      '<b class="sd-dv-v"></b>' +
+      '<input class="sd-dv-in" type="number" inputmode="decimal" step="any">' +
+      (rng ? '<span class="sd-dv-r">' + rng + '</span>' : '') +
+    '</span>';
+  const f2s = n => (Math.round(n * 100) / 100).toString();
+  const f1s = n => (Math.round(n * 10) / 10).toString();
+  const shotYawOf = (rec) => {
+    const dx = rec.target[0] - rec.pos[0], dz = rec.target[2] - rec.pos[2];
+    if (Math.hypot(dx, dz) < 1e-6) return 0;
+    return Math.atan2(dx, dz) * 180 / Math.PI;
+  };
+  const shotPitchOf = (rec) => {
+    const dx = rec.target[0] - rec.pos[0], dy = rec.target[1] - rec.pos[1], dz = rec.target[2] - rec.pos[2];
+    return Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI;
+  };
+  // 数值块正被拖动/编辑时，引擎轮询不得回写覆盖（否则拖动值闪烁）
+  const dvBusy = (els) => els.some(el => el && (el.__editing || el.classList.contains("sd-dv-drag")));
+
+  /* ----- v38 视口组：全局相机实时参数 + 模式按钮收养位 ----- */
+  function buildViewportPanel(wrap) {
+    wrap.classList.add("sd-dir-panel", "sd-vp-panel");
+    wrap.innerHTML =
+      '<div class="sd-dir-row sd-vp-modes"></div>' +
+      '<div class="sd-dir-hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>' +
+      '<div class="sd-dir-row sd-vp-cliprow">' +
+        '<span class="sd-dv-lab">裁剪</span>' +
+        '<span class="sd-pill" data-vp="state">自动</span>' +
+        dvHtml("vp-near", "近", "NEAR", "sd-dv-near") +
+        dvHtml("vp-far", "远", "FAR", "sd-dv-far") +
+      '</div>' +
+      '<div class="sd-dir-row sd-vp-cliprow">' +
+        '<span class="sd-dv-lab">焦距</span>' +
+        dvHtml("vp-foc", "焦距", "FOCAL", "sd-dv-foc", "1 – 500") +
+      '</div>' +
+      '<div class="sd-dir-hint">单击数值就地编辑（回车/点别处生效）；长按约 0.3 秒拖动粗调，松手生效</div>' +
+      '<div class="sd-dir-row">' +
+        '<button class="sd-dir-btn sd-shot-btn" data-vp="restore" title="裁剪回自动 + 焦距回 50mm">↺ 恢复默认</button>' +
+      '</div>' +
+      '<div class="sd-sect">参数信息（只读 · 实时）</div>' +
+      '<div class="sd-kv"><span class="sd-dv-lab">位置</span><span class="sd-kv-v" data-vp="pos"></span></div>' +
+      '<div class="sd-kv"><span class="sd-dv-lab">方向</span><span class="sd-kv-v" data-vp="tgt"></span></div>' +
+      '<div class="sd-kv"><span class="sd-dv-lab">旋转角</span><span class="sd-kv-v" data-vp="rot"></span></div>';
+
+    const q = s => wrap.querySelector(s);
+    const vp = { auto: true, near: 0.1, far: 1000, focal: 50 };
+    const elNear = q("#vp-near"), elFar = q("#vp-far"), elFoc = q("#vp-foc");
+
+    function vpRender() {
+      elNear.querySelector(".sd-dv-v").textContent = f2s(vp.near);
+      elFar.querySelector(".sd-dv-v").textContent = f1s(vp.far);
+      elFoc.querySelector(".sd-dv-v").textContent = Math.round(vp.focal) + " mm";
+      const st = q('[data-vp="state"]');
+      st.textContent = vp.auto ? "自动" : "手动";
+      st.className = "sd-pill" + (vp.auto ? "" : " sd-pill-manual");
+    }
+    function vpInfo() {
+      const d = window.__director;
+      if (!d || !d.getViewportInfo) return;
+      const vi = d.getViewportInfo();
+      q('[data-vp="pos"]').textContent = vi.pos.map(f2s).join(", ");
+      q('[data-vp="tgt"]').textContent = vi.target.map(f2s).join(", ");
+      q('[data-vp="rot"]').textContent = f1s(vi.yaw) + "° / " + (vi.pitch >= 0 ? "+" : "") + f1s(vi.pitch) + "°";
+      if (dvBusy([elNear, elFar, elFoc])) return;   // 拖动/编辑中不动数值
+      vp.focal = vi.focal;
+      const cr = vi.clip;
+      if (cr && cr.enabled) { vp.auto = false; vp.near = cr.near; vp.far = cr.far; }
+      else { vp.auto = true; vp.near = cr.near; vp.far = cr.far; }   // 自动时也同步显示当前自动值
+      vpRender();
+    }
+    // 拖动/编辑提交：手动裁剪即时下发引擎
+    const vpSetClip = () => {
+      const d = window.__director;
+      if (!d || !d.setClipRange) return;
+      const near = Math.max(0.01, vp.near);
+      const far = Math.max(near * 2, vp.far);
+      vp.near = near; vp.far = far;
+      d.setClipRange({ enabled: true, near: near, far: far });
+      vp.auto = false;
+    };
+    bindDragVal(elNear, {
+      get: () => vp.near, set: v => { vp.near = v; }, map: DV_CLIP_MAP, min: 0.01, max: 1e9, render: vpRender,
+      commit: v => { vpSetClip(); vpRender(); showMsg("已生效：近 = " + v.toFixed(2) + "（切换为手动）"); }
+    });
+    bindDragVal(elFar, {
+      get: () => vp.far, set: v => { vp.far = v; }, map: DV_CLIP_MAP, min: 0.1, max: 1e9, render: vpRender,
+      commit: () => { vpSetClip(); vpRender(); showMsg("已生效：远 = " + vp.far.toFixed(1) + "（切换为手动）"); }
+    });
+    bindDragVal(elFoc, {
+      get: () => vp.focal, set: v => { vp.focal = v; }, map: DV_FOCAL_MAP, min: 1, max: 500, render: vpRender,
+      commit: v => {
+        const d = window.__director;
+        if (d && d.setViewportFocal) d.setViewportFocal(v);
+        showMsg("已生效：焦距 = " + Math.round(v) + " mm");
+      }
+    });
+    const bRestore = q('[data-vp="restore"]');
+    if (bRestore) bRestore.onclick = (e) => {
+      e.stopPropagation();
+      const d = window.__director;
+      if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
+      d.setClipRange({ enabled: false });
+      if (d.setViewportFocal) d.setViewportFocal(50);
+      vp.auto = true; vp.focal = 50;
+      vpInfo(); vpRender();
+      showMsg("已恢复默认视口：自动裁剪 + 焦距 50mm");
+    };
+    // 实时读数：面板展开时 300ms 一拍（拖动/编辑中暂停回写数值）
+    setInterval(() => { if (wrap.classList.contains("sd-open")) vpInfo(); }, 300);
+    wrap.__sdRefresh = () => { vpInfo(); };
+    vpInfo();
+    return wrap.querySelector(".sd-vp-modes");   // SS 模式按钮收养位
+  }
+
+  /* ----- v38 机位组：每机位独立裁剪/焦距 + 步进移动 + 旋转 -----
+   * 旧 v20–v34 的双头滑轨/启用范围按钮退役：裁剪改为数值块（拖动+就地编辑），
+   * 范围语义 = 该机位自己的显示范围（全局手动裁剪由视口组承担）。
+   * 本机位块拖动/编辑中只改本地预览，提交时才 updateShot 落引擎。
+   */
   function buildShotPanel(wrap) {
     wrap.classList.add("sd-dir-panel", "sd-shot-panel");
     wrap.innerHTML =
       '<div class="sd-dir-row sd-shot-pick-row">' +
         '<select class="sd-shot-list" title="机位列表"></select>' +
         '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="rename" title="重命名选中的机位">✏️</button>' +
-        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="relocate" title="重定位：把选中的机位移到当前视角">📍</button>' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="add" title="新增机位：记录当前视角（含裁剪/焦距）">＋</button>' +
       '</div>' +
       '<div class="sd-dir-row sd-shot-edit-row" hidden>' +
         '<input class="sd-shot-edit" type="text" maxlength="50" placeholder="机位名称">' +
@@ -433,31 +612,59 @@ waitUI(function () {
         '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="rename-no" title="取消">✕</button>' +
       '</div>' +
       '<div class="sd-dir-row">' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="add" title="新增机位：记录当前视角">＋ 新增</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="relocate" title="重定位：把选中的机位移到当前视角（含裁剪/焦距）">📍 重定位</button>' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="remove" title="移除选中的机位">－ 移除</button>' +
       '</div>' +
       '<div class="sd-dir-row">' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="goto" title="查看机位：跳到选中机位">👁 查看</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="goto" title="查看机位：跳到选中机位（应用其裁剪/焦距）">👁 查看</button>' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
       '</div>' +
-      '<div class="sd-dir-row sd-cam-modes"></div>' +
-      '<div class="sd-dir-hint sd-mode-hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>' +
-      '<div class="sd-dir-row sd-clip-row">' +
-        '<span class="sd-clip-lab">近</span><input class="sd-clip-num" data-clip="near" type="number" min="0.01" step="0.1" title="近裁剪距离（比它近的不画）">' +
-        '<span class="sd-clip-lab">远</span><input class="sd-clip-num" data-clip="far" type="number" min="0.1" step="1" title="远裁剪距离（比它远的不画）">' +
+      '<div class="sd-dir-row sd-vp-cliprow">' +
+        '<span class="sd-dv-lab">裁剪</span>' +
+        dvHtml("sv-near", "近", "NEAR", "sd-dv-near") +
+        dvHtml("sv-far", "远", "FAR", "sd-dv-far") +
+      '</div>' +
+      '<div class="sd-dir-row sd-vp-cliprow">' +
+        '<span class="sd-dv-lab">焦距</span>' +
+        dvHtml("sv-foc", "焦距", "FOCAL", "sd-dv-foc", "1 – 500") +
+      '</div>' +
+      '<div class="sd-dir-hint">本机位自己的参数（自动裁剪的机位显示当前自动值，一改就固定下来）</div>' +
+      '<div class="sd-dir-row">' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="reset" title="裁剪/焦距回到保存该机位时的值">↺ 恢复默认</button>' +
+      '</div>' +
+      '<div class="sd-sect">步进移动（机身与看向点一起动，朝向不变）</div>' +
+      '<div class="sd-dir-row">' +
+        '<span class="sd-dv-lab">步进</span>' +
+        '<input class="sd-num" data-shot="step" type="number" step="0.01" min="0.001" value="0.1" title="每次点按的移动距离（米）">' +
+        '<span class="sd-dv-lab">米/次</span>' +
+      '</div>' +
+      '<div class="sd-nudge">' +
+        '<button class="sd-nudge-btn" data-nudge="left" title="左移">←</button>' +
+        '<button class="sd-nudge-btn" data-nudge="right" title="右移">→</button>' +
+        '<button class="sd-nudge-btn" data-nudge="up" title="上移">↑</button>' +
+        '<button class="sd-nudge-btn" data-nudge="down" title="下移">↓</button>' +
+        '<button class="sd-nudge-btn" data-nudge="fwd" title="前移（朝看向方向）">前</button>' +
+        '<button class="sd-nudge-btn" data-nudge="back" title="后移">后</button>' +
       '</div>' +
       '<div class="sd-dir-row">' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="clip-on" title="启用显示范围：只渲染近/远之间的内容（Blender 式）">📏 启用范围</button>' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="clip-off" title="关闭手动范围，恢复自动裁剪">✕ 自动</button>' +
+        '<span class="sd-dv-lab">旋转</span>' +
+        '<input class="sd-num" data-shot="yaw" type="number" step="1" title="机位水平朝向角">' +
+        '<span class="sd-dv-lab">°</span>' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="yaw-ok">应用</button>' +
       '</div>' +
-      '<div class="sd-dir-row sd-clip-slider-row">' +
-        '<input class="sd-clip-slider" data-slider="near" type="range" min="0" max="1000" step="1" title="近裁剪（拖动按比例取值）">' +
-        '<input class="sd-clip-slider" data-slider="far" type="range" min="0" max="1000" step="1" title="远裁剪（拖动按比例取值）">' +
-      '</div>';
+      '<div class="sd-sect">参数信息（只读 · 不常用）</div>' +
+      '<div class="sd-kv"><span class="sd-dv-lab">位置</span><span class="sd-kv-v" data-sv="pos"></span></div>' +
+      '<div class="sd-kv"><span class="sd-dv-lab">方向</span><span class="sd-kv-v" data-sv="tgt"></span></div>' +
+      '<div class="sd-kv"><span class="sd-dv-lab">旋转角</span><span class="sd-kv-v" data-sv="rot"></span></div>';
 
-    const list = wrap.querySelector(".sd-shot-list");
-    const modes = wrap.querySelector(".sd-cam-modes");
-    const btn = act => wrap.querySelector('.sd-shot-btn[data-shot="' + act + '"]');
+    const q = s => wrap.querySelector(s);
+    const list = q(".sd-shot-list");
+    const editRow = q(".sd-shot-edit-row");
+    const editInput = q(".sd-shot-edit");
+    const btn = act => q('[data-shot="' + act + '"]');
+    const elSNear = q("#sv-near"), elSFar = q("#sv-far"), elSFoc = q("#sv-foc");
+    // 拖动/编辑期间的本地预览值（提交才落引擎）
+    const svPreview = { near: null, far: null, foc: null };
 
     function fill() {
       const d = window.__director;
@@ -478,10 +685,37 @@ waitUI(function () {
         list.value = keep;
       }
       const has = !!list.value;
-      ["remove", "goto", "render"].forEach(a => { const b = btn(a); if (b) b.disabled = !has; });
+      ["remove", "goto", "render", "relocate", "reset"].forEach(a => { const b = btn(a); if (b) b.disabled = !has; });
+      svFill();
+    }
+    const curId = () => { const v = list && list.value; return v ? Number(v) : 0; };
+    const curShot = () => (window.__director ? (window.__director.listShots() || []).find(s => s.id === curId()) : null);
+
+    // 本机位参数块（裁剪/焦距显示机位自己的值；自动裁剪显示当前自动值）
+    function svFill() {
+      const d = window.__director;
+      const rec = curShot();
+      if (!d || !rec) {
+        [elSNear, elSFar, elSFoc].forEach(el => { el.querySelector(".sd-dv-v").textContent = "–"; });
+        ["pos", "tgt", "rot"].forEach(k => { q('[data-sv="' + k + '"]').textContent = "–"; });
+        return;
+      }
+      q('[data-sv="pos"]').textContent = rec.pos.map(f2s).join(", ");
+      q('[data-sv="tgt"]').textContent = rec.target.map(f2s).join(", ");
+      q('[data-sv="rot"]').textContent = f1s(shotYawOf(rec)) + "° / " + (shotPitchOf(rec) >= 0 ? "+" : "") + f1s(shotPitchOf(rec)) + "°";
+      const yawIn = q('[data-shot="yaw"]');
+      if (yawIn && document.activeElement !== yawIn) yawIn.value = Math.round(shotYawOf(rec));
+      if (dvBusy([elSNear, elSFar, elSFoc])) return;   // 拖动/编辑中不动数值
+      const cr = d.getClipRange ? d.getClipRange() : null;
+      const near = svPreview.near != null ? svPreview.near : (rec.clip ? rec.clip.near : (cr ? cr.near : 0.1));
+      const far = svPreview.far != null ? svPreview.far : (rec.clip ? rec.clip.far : (cr ? cr.far : 1000));
+      const foc = svPreview.foc != null ? svPreview.foc : rec.focal;
+      elSNear.querySelector(".sd-dv-v").textContent = f2s(near);
+      elSFar.querySelector(".sd-dv-v").textContent = f1s(far);
+      elSFoc.querySelector(".sd-dv-v").textContent = Math.round(foc) + " mm";
     }
 
-    const curId = () => { const v = list && list.value; return v ? Number(v) : 0; };
+    if (list) list.onchange = () => { svFill(); showMsg("已选 " + (curShot() ? curShot().name : "")); };
 
     const bAdd = btn("add");
     if (bAdd) bAdd.onclick = (e) => {
@@ -491,7 +725,7 @@ waitUI(function () {
       const shot = d.addShot();
       fill();
       if (shot && list) list.value = String(shot.id);
-      showMsg("已记录机位：" + (shot ? shot.name : ""));
+      showMsg("已记录机位：" + (shot ? shot.name : "") + "（含裁剪/焦距）");
     };
 
     const bDel = btn("remove");
@@ -504,17 +738,13 @@ waitUI(function () {
       showMsg(r === "ok" ? "机位已移除" : "没有这个机位");
     };
 
-    // v32：改名 + 重定位（下拉右侧两个小图标钮）。
-    // 改名用内联输入行，不用 window.prompt —— Android WebView 的 prompt 弹窗
-    // 行为不可控（v31 教训：桌面过的真机未必过）。
-    const editRow = wrap.querySelector(".sd-shot-edit-row");
-    const editInput = wrap.querySelector(".sd-shot-edit");
+    // v32：改名用内联输入行（Android WebView 的 prompt 不可控，v31 教训）
     const bRename = btn("rename");
     if (bRename) bRename.onclick = (e) => {
       e.stopPropagation();
       const d = window.__director; const id = curId();
       if (!d || !id) { showMsg("先选一个机位"); return; }
-      const shot = (d.listShots() || []).find(s => s.id === id);
+      const shot = curShot();
       if (editInput) editInput.value = shot ? shot.name : "";
       if (editRow) { editRow.hidden = false; if (editInput) editInput.focus(); }
     };
@@ -543,7 +773,7 @@ waitUI(function () {
       const r = d.relocateShot(id);
       fill();
       if (list) list.value = String(id);
-      showMsg(r === "ok" ? "已把该机位重定位到当前视角" : "没有这个机位");
+      showMsg(r === "ok" ? "已把该机位重定位到当前视角（含裁剪/焦距）" : "没有这个机位");
     };
 
     const bGo = btn("goto");
@@ -552,7 +782,8 @@ waitUI(function () {
       const d = window.__director; const id = curId();
       if (!d || !id) { showMsg("先选一个机位"); return; }
       const r = d.gotoShot(id);
-      showMsg(r === "ok" ? "已切换到该机位" : "没有这个机位");
+      svFill();
+      showMsg(r === "ok" ? "已切换到该机位（裁剪/焦距一并应用）" : "没有这个机位");
     };
 
     const bRender = btn("render");
@@ -570,121 +801,111 @@ waitUI(function () {
       }
     };
 
-    // v30 #5 / v31 反馈：显示范围控制（手动近/远裁剪，像 Blender）
-    // v31：数字输入保留为精确设置，双头滑轨为主交互——拖动按对数比例
-    // 取真实值（近端密度高，远端跨度大），松手即生效。
-    // 滑轨语义：min/max 是用户设的「范围两端」，拖到 0 = 取最小值，1000 = 取最大值
-    const CLIP_MIN_DEFAULT = 0.05;
-    const CLIP_MAX_DEFAULT = 2000;
-    const clipState = { min: CLIP_MIN_DEFAULT, max: CLIP_MAX_DEFAULT, enabled: false, near: 0.1, far: 1000 };
-
-    // 对数映射：slider [0..1000] ↔ 值域 [min..max]（两端都可为 0 时退化线性）
-    const sliderToVal = (t, min, max) => {
-        if (max <= min) return min;
-        if (min > 0) return min * Math.pow(max / min, t / 1000);
-        return min + (max - min) * (t / 1000);
-    };
-    const valToSlider = (v, min, max) => {
-        if (max <= min) return 0;
-        if (min > 0 && v > 0) return Math.round(1000 * Math.log(v / min) / Math.log(max / min));
-        return Math.round(1000 * (v - min) / (max - min));
-    };
-
-    const clipFill = () => {
-      const d = window.__director;
-      if (!d || !d.getClipRange) return;
-      const cr = d.getClipRange();
-      const nEl = wrap.querySelector('[data-clip="near"]');
-      const fEl = wrap.querySelector('[data-clip="far"]');
-      const nSl = wrap.querySelector('[data-slider="near"]');
-      const fSl = wrap.querySelector('[data-slider="far"]');
-      if (cr.enabled) { clipState.near = cr.near; clipState.far = cr.far; }
-      if (nEl && document.activeElement !== nEl) nEl.value = (+clipState.near).toFixed(2);
-      if (fEl && document.activeElement !== fEl) fEl.value = Math.round(clipState.far);
-      if (nSl) nSl.value = valToSlider(clipState.near, clipState.min, clipState.far);
-      if (fSl) fSl.value = valToSlider(clipState.far, clipState.near, clipState.max);
-      const on = wrap.querySelector('[data-shot="clip-on"]');
-      if (on) on.classList.toggle('sd-on', !!cr.enabled);
-    };
-
-    // 应用当前值（滑轨拖动实时调；数字输入变更也走这里）
-    const clipApply = (live) => {
-      const d = window.__director;
-      if (!d || !d.setClipRange) return;
-      if (!clipState.enabled) return;
-      const near = Math.max(0.01, +clipState.near);
-      let far = Math.max(near * 2, +clipState.far);
-      clipState.far = far;
-      d.setClipRange({ enabled: true, near: near, far: far });
-      if (!live) clipFill();
-    };
-
-    ['near', 'far'].forEach((key) => {
-      const sl = wrap.querySelector('[data-slider="' + key + '"]');
-      if (!sl) return;
-      sl.addEventListener('input', () => {
-        const t = +sl.value;
-        const lo = key === 'near' ? clipState.min : clipState.near;
-        const hi = key === 'far' ? clipState.max : clipState.far;
-        const v = sliderToVal(t, lo, hi);
-        if (key === 'near') clipState.near = Math.min(v, clipState.far / 2);
-        else clipState.far = Math.max(v, clipState.near * 2);
-        clipApply(true);
-        const nEl = wrap.querySelector('[data-clip="near"]');
-        const fEl = wrap.querySelector('[data-clip="far"]');
-        if (nEl) nEl.value = (+clipState.near).toFixed(2);
-        if (fEl) fEl.value = Math.round(clipState.far);
-      });
-      sl.addEventListener('change', () => clipApply(false));
-    });
-
-    const bClipOn = btn("clip-on");
-    if (bClipOn) bClipOn.onclick = (e) => {
+    const bReset = btn("reset");
+    if (bReset) bReset.onclick = (e) => {
       e.stopPropagation();
-      const d = window.__director;
-      if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
-      clipState.enabled = true;
-      // 首次启用：若还没设过值，用当前自动裁剪值作起点（拖滑轨调的就是它）
-      const cr = d.getClipRange ? d.getClipRange() : null;
-      if (cr && !cr.enabled) {
-        if (!clipState.touched) { clipState.near = Math.max(0.05, cr.near); clipState.far = Math.max(clipState.near * 2, cr.far); }
+      const d = window.__director; const id = curId();
+      if (!d || !id) { showMsg("先选一个机位"); return; }
+      const r = d.resetShot ? d.resetShot(id) : "no-api";
+      svPreview.near = svPreview.far = svPreview.foc = null;
+      fill();
+      if (list) list.value = String(id);
+      if (r === "ok") {
+        const rec = curShot();
+        showMsg("已恢复保存值（" + (rec && rec.clip ? "近 " + f2s(rec.clip.near) + " / 远 " + f1s(rec.clip.far) : "自动裁剪") + " / " + (rec ? Math.round(rec.focal) : 50) + "mm）");
+      } else showMsg(r === "no-api" ? "引擎版本过旧，无恢复接口" : "没有这个机位");
+    };
+
+    // 本机位裁剪/焦距：拖动=本地预览，提交才 updateShot（只改机位数据，不动当前视口）
+    const svCommitClip = (near, far) => {
+      const d = window.__director; const id = curId();
+      if (!d || !id || !d.updateShot) { showMsg("导演台模块未就绪"); return; }
+      const n = Math.max(0.01, near);
+      const f = Math.max(n * 2, far);
+      d.updateShot(id, { clip: { near: n, far: f } });
+      svPreview.near = svPreview.far = null;
+      fill();
+      if (list) list.value = String(id);
+    };
+    bindDragVal(elSNear, {
+      get: () => {
+        const rec = curShot();
+        if (svPreview.near != null) return svPreview.near;
+        const cr = window.__director && window.__director.getClipRange ? window.__director.getClipRange() : null;
+        return rec ? (rec.clip ? rec.clip.near : (cr ? cr.near : 0.1)) : 0.1;
+      },
+      set: v => { svPreview.near = v; elSNear.querySelector(".sd-dv-v").textContent = f2s(v); },
+      map: DV_CLIP_MAP, min: 0.01, max: 1e9, render: () => {},
+      commit: v => {
+        const rec = curShot();
+        const farNow = (svPreview.far != null ? svPreview.far : (rec && rec.clip ? rec.clip.far : (window.__director && window.__director.getClipRange ? window.__director.getClipRange().far : 1000)));
+        svCommitClip(v, Math.max(v * 2, farNow));
+        showMsg((rec ? rec.name : "机位") + " 近 = " + v.toFixed(2) + "（生效）");
       }
-      clipApply(false);
-      showMsg('已启用显示范围（近 ' + (+clipState.near).toFixed(2) + ' / 远 ' + Math.round(clipState.far) + '），拖滑轨微调');
-    };
-    const bClipOff = btn("clip-off");
-    if (bClipOff) bClipOff.onclick = (e) => {
+    });
+    bindDragVal(elSFar, {
+      get: () => {
+        const rec = curShot();
+        if (svPreview.far != null) return svPreview.far;
+        const cr = window.__director && window.__director.getClipRange ? window.__director.getClipRange() : null;
+        return rec ? (rec.clip ? rec.clip.far : (cr ? cr.far : 1000)) : 1000;
+      },
+      set: v => { svPreview.far = v; elSFar.querySelector(".sd-dv-v").textContent = f1s(v); },
+      map: DV_CLIP_MAP, min: 0.1, max: 1e9, render: () => {},
+      commit: v => {
+        const rec = curShot();
+        const nearNow = (svPreview.near != null ? svPreview.near : (rec && rec.clip ? rec.clip.near : 0.05));
+        svCommitClip(nearNow, v);
+        showMsg((rec ? rec.name : "机位") + " 远 = " + Math.max(nearNow * 2, v).toFixed(1) + "（生效）");
+      }
+    });
+    bindDragVal(elSFoc, {
+      get: () => (svPreview.foc != null ? svPreview.foc : (curShot() ? curShot().focal : 50)),
+      set: v => { svPreview.foc = v; elSFoc.querySelector(".sd-dv-v").textContent = Math.round(v) + " mm"; },
+      map: DV_FOCAL_MAP, min: 1, max: 500, render: () => {},
+      commit: v => {
+        const d = window.__director; const id = curId();
+        if (!d || !id || !d.updateShot) { showMsg("导演台模块未就绪"); return; }
+        d.updateShot(id, { focal: v });
+        svPreview.foc = null;
+        fill();
+        if (list) list.value = String(id);
+        showMsg((curShot() ? curShot().name : "机位") + " 焦距 = " + Math.round(v) + " mm（生效）");
+      }
+    });
+
+    // 步进移动：引擎 nudgeShot（机身+看向点一起动，朝向不变）
+    wrap.querySelectorAll(".sd-nudge-btn").forEach(b => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const d = window.__director; const id = curId();
+        if (!d || !id || !d.nudgeShot) { showMsg("导演台模块未就绪"); return; }
+        const step = Math.max(0.001, parseFloat(q('[data-shot="step"]').value) || 0.1);
+        const r = d.nudgeShot(id, b.dataset.nudge, step);
+        svFill();
+        const name = curShot() ? curShot().name : "机位";
+        const cn = { left: "左移", right: "右移", up: "上移", down: "下移", fwd: "前移", back: "后移" }[b.dataset.nudge];
+        showMsg(r === "ok" ? name + " " + cn + " " + step + " 米（朝向不变）" : "没有这个机位");
+      });
+    });
+
+    // 旋转：引擎 rotateShot（水平朝向，俯仰/距离保持）
+    const yawOk = btn("yaw-ok");
+    if (yawOk) yawOk.onclick = (e) => {
       e.stopPropagation();
-      const d = window.__director;
-      if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
-      clipState.enabled = false;
-      d.setClipRange({ enabled: false });
-      showMsg('已恢复自动裁剪');
-      clipFill();
+      const d = window.__director; const id = curId();
+      if (!d || !id || !d.rotateShot) { showMsg("导演台模块未就绪"); return; }
+      const v = parseFloat(q('[data-shot="yaw"]').value);
+      if (!isFinite(v)) { showMsg("旋转角需为数字"); return; }
+      const r = d.rotateShot(id, v);
+      svFill();
+      showMsg(r === "ok" ? (curShot() ? curShot().name : "机位") + " 水平朝向 → " + v + "°" : (r === "no-angle" ? "该机位视线垂直，无法转水平朝向" : "没有这个机位"));
     };
-    // 数字输入仍可精确设置（回车/失焦生效）
-    ['near', 'far'].forEach((key) => {
-      const numEl = wrap.querySelector('[data-clip="' + key + '"]');
-      if (!numEl) return;
-      const applyNum = () => {
-        const v = parseFloat(numEl.value);
-        if (!(v > 0)) return;
-        if (key === 'near') clipState.near = Math.min(v, clipState.far / 2);
-        else clipState.far = Math.max(v, clipState.near * 2);
-        clipState.touched = true;
-        clipApply(false);
-      };
-      numEl.addEventListener('change', applyNum);
-    });
-    wrap.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.sd-clip-slider')) clipState.touched = true;
-    });
 
     // 每次展开都刷新（新增/删除后外部也可能变化）
-    wrap.__sdRefresh = () => { fill(); clipFill(); };
+    wrap.__sdRefresh = () => { fill(); };
     fill();
-    clipFill();
-    return modes;
+    return null;   // 机位组没有要收养的 SS 按钮
   }
 
 
@@ -805,18 +1026,20 @@ waitUI(function () {
     } else if (def.viewOptions) {
       // 右侧：三个一级分组——相机（机位管理）、设置（外观/浮层/设置）、定位（框选/回原点）
       [
-        // v33：框选/回原点移入相机组（轨道/飞行旁），定位组只留基准点三钮+测量
-        ["相机", ["right-toolbar-orbit-mode", "right-toolbar-fly-mode", "right-toolbar-frame-selection", "right-toolbar-camera-origin"]],
+        // v38：视口组（全局相机参数，收养四个模式按钮）→ 机位组（每机位独立裁剪/焦距）→ 设置 → 定位
+        ["视口", ["right-toolbar-orbit-mode", "right-toolbar-fly-mode", "right-toolbar-frame-selection", "right-toolbar-camera-origin"]],
+        ["机位", []],
         ["设置", ["right-toolbar-appearance", "right-toolbar-overlays", "right-toolbar-settings"]],
         ["定位", []]
       ].forEach(function(pair){
         var name = pair[0], ids = pair[1];
-        var ico = name === "相机" ? "🎥" : (name === "设置" ? "⚙️" : "🎯");
+        var ico = name === "视口" ? "👁" : (name === "机位" ? "🎥" : (name === "设置" ? "⚙️" : "🎯"));
         var g = makeShell('<span class="sd-ico">' + ico + '</span><span class="sd-name">' + name + '</span><span class="sd-dot"></span>', "sd-grp-btn");
         var wrap = makeShell("", "sd-sub-wrap");
         var modes = null;
-        if (name === "相机") modes = buildShotPanel(wrap);   // v20 机位面板
-        // 相机组把两个模式按钮塞进面板底部那行；其余组照旧平铺
+        if (name === "视口") modes = buildViewportPanel(wrap);   // v38 全局相机面板（模式按钮收养位在面板顶部）
+        else if (name === "机位") buildShotPanel(wrap);          // v38 机位面板（无收养位）
+        // 视口组把四个模式按钮收养进面板顶部那行；其余组照旧平铺
         ids.forEach(function(id){ adopt(id, modes || wrap); });
         // v25：定位组追加三个「重设基准点」按钮；v33：测量按钮也收进定位组
         if (name === "定位") { adopt('bottom-toolbar-measure', wrap); buildAnchorButtons(wrap); }

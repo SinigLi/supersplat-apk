@@ -155,35 +155,35 @@ try {
         return true;
     })()`);
 
-    // ---- 4) 双头滑轨存在 + 拖动逻辑生效 ----
-    check('clip sliders exist', await evalJs(`(() => {
-        const n = document.querySelector('[data-slider="near"]');
-        const f = document.querySelector('[data-slider="far"]');
+    // ---- 4) v38 数值块存在 + 拖动逻辑生效（旧双头滑轨已退役） ----
+    check('clip drag blocks exist', await evalJs(`(() => {
+        const n = document.querySelector('#vp-near');
+        const f = document.querySelector('#vp-far');
         return !!(n && f);
     })()`));
     const sliderWork = await evalJs(`(async () => {
-        // 打开相机面板（滑轨在 shot panel 里）
-        const cams = document.querySelector('.sd-grp-btn');
-        // 直接找启用按钮和滑轨（面板可能要打开，先强制可见性检查 DOM 逻辑）
-        const on = document.querySelector('[data-shot="clip-on"]');
-        const nSl = document.querySelector('[data-slider="near"]');
-        if (!on || !nSl) return { ok: false, why: 'no-dom' };
-        on.click();
-        await new Promise(r => setTimeout(r, 200));
+        // v38：先展开视口组面板（同步自动值），再拖 vp-near 走 ±2× 按下值映射
+        const dock = document.querySelector('.sd-dock[data-dock="view"]');
+        const g = Array.from(dock.querySelectorAll('.sd-grp-btn')).find(b => (b.querySelector('.sd-name') || {}).textContent === '视口');
+        if (g) g.click();
+        await new Promise(r => setTimeout(r, 700));
+        const el = document.querySelector('#vp-near');
+        if (!el) return { ok: false, why: 'no-dom' };
         const cr1 = window.__director.getClipRange();
-        if (!cr1.enabled) return { ok: false, why: 'not-enabled' };
-        // 模拟拖动 near 滑轨到 500/1000（对数中点）
-        nSl.value = 500;
-        nSl.dispatchEvent(new Event('input', { bubbles: true }));
-        nSl.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
-        await new Promise(r => setTimeout(r, 150));
+        const r = el.getBoundingClientRect();
+        const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
+        el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: cx, clientY: cy, bubbles: true }));
+        await new Promise(r2 => setTimeout(r2, 300));
+        el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + 60, clientY: cy, bubbles: true }));
+        await new Promise(r2 => setTimeout(r2, 40));
+        el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: cx + 60, clientY: cy, bubbles: true }));
+        await new Promise(r2 => setTimeout(r2, 150));
         const cr2 = window.__director.getClipRange();
         return { ok: true, before: [cr1.near, cr1.far], after: [cr2.near, cr2.far] };
     })()`);
-    check('slider drag changes clip range',
+    check('drag changes clip range (manual mode on)',
         sliderWork?.ok === true &&
-        Math.abs((sliderWork.after[0] || 0) - (sliderWork.before[0] || 0)) > 0.001,
+        !!sliderWork.after && sliderWork.after[0] !== sliderWork.before[0],
         JSON.stringify(sliderWork));
 
     // ---- 无异常 ----
