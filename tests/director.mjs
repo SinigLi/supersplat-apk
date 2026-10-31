@@ -163,7 +163,7 @@ try {
       panelAdd: !!p.querySelector('.sd-dir-btn[data-act="add"]')
     };
   })()`);
-  check('character dropdown pre-filled (4 chars + 方块)', panel?.charOpts === 5, `opts=${panel?.charOpts}`);
+  check('character dropdown pre-filled (5 characters incl 方块)', panel?.charOpts === 5, `opts=${panel?.charOpts}`);
   check('tint dropdown pre-filled', panel?.tintOpts === 8, `opts=${panel?.tintOpts}`);
   check('clip dropdown pre-filled', (panel?.clipOpts || 0) > 0, `opts=${panel?.clipOpts}`);
   check('move buttons live in cursorgrp sub-panel (bar has none)', panel?.hasMoveBtn === true && panel?.hasAddInBar === false,

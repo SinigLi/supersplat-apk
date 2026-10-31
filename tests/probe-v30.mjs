@@ -1,7 +1,7 @@
 /* tests/probe-v30.mjs - v30 批次端到端探针（Edge + CDP，390x844）
  *
  * 覆盖老板 2026-10-30 「其他的需求你也搞一下」的引擎侧闭环：
- *   #6 方块：生成（程序几何/默认灰）→ 换色 → 快照 kind:box → 删除后 restore 还原
+ *   #6 方块（v35 重构）：box.glb 第五内置角色 → 人偶管线染色 → 快照按 charId → 删除后 restore 还原
  *   #4 泼溅行：listSplats → 显隐 → 直接删除（无确认框）
  *   #5 显示范围：setClipRange 生效（near/far 钉住）→ 关闭恢复自动
  *   #3 移动模型：复制到游标（人偶副本继承位姿）+ movegroup 面板在 dock.js
@@ -101,42 +101,41 @@ try {
     check('editor ready', await waitFor('!!window.scene', 60, 500));
     check('director ready', await waitFor('!!window.__director', 60, 500));
     check('v30 apis present', await evalJs(
-        '["copySelectedToCursor","spawnBox","setBoxColor","listSplats","deleteSplatByIndex","setClipRange","resetViewport"].every(k => typeof window.__director[k] === "function")'));
+        '["copySelectedToCursor","listSplats","deleteSplatByIndex","setClipRange","resetViewport"].every(k => typeof window.__director[k] === "function")'));
 
-    // ---- 1) #6 方块：生成 + 换色 ----
-    await evalJs('window.__director.addBoxAtCursor()');
-    check('box spawned (async op)', await waitFor(
-        'window.__director.listProps().some(p => p.kind === "box")', 40, 300));
-    const boxColor0 = await evalJs(
-        'window.__director.listProps().find(p => p.kind === "box").boxColor');
-    check('box default color gray', boxColor0 === '#808080', boxColor0);
-    const boxId = await evalJs('window.__director.listProps().find(p => p.kind === "box").id');
-    await evalJs(`window.__director.setBoxColor(${boxId}, '#0000ff')`);
-    const boxColor1 = await evalJs(
-        'window.__director.listProps().find(p => p.kind === "box").boxColor');
-    check('box recolored blue', boxColor1 === '#0000ff', boxColor1);
+    // ---- 1) #6 方块（v35 重构）：方块是第五个内置角色（box.glb），走人偶管线 ----
+    await evalJs('window.__director.switchCharacter("box")');
+    check('box character loads', await waitFor(
+        'window.__director.info().chars.some(c => c.id === "box" && c.loaded)', 60, 500));
+    await evalJs('window.__director.addPuppet()');
+    check('box spawned as puppet', await waitFor(
+        'window.__director.puppets.some(p => p.charId === "box")', 40, 300));
+    const boxId = await evalJs('window.__director.puppets.find(p => p.charId === "box").id');
+    await evalJs(`window.__director.setTintById(${boxId}, 'BLUE')`);
+    check('box tinted blue (puppet pipeline)', await evalJs(
+        'window.__director.puppets.find(p => p.charId === "box").tint === "BLUE"'));
 
-    // ---- 2) #6 方块：快照 + 删除后 restore 还原（无 files 依赖）----
+    // ---- 2) #6 方块：快照 + 删除后 restore 还原（人偶按 charId 存档）----
     const snapInfo = await evalJs(`(() => {
         const snap = window.__director.projectSnapshot();
-        const b = (snap.props || []).find(p => p.kind === 'box');
-        return b ? { kind: b.kind, color: b.boxColor, n: snap.props.length } : null;
+        const b = (snap.puppets || []).find(p => p.charId === 'box');
+        return b ? { charId: b.charId, tint: b.tint, n: snap.puppets.length } : null;
     })()`);
-    check('snapshot records kind:box', !!snapInfo && snapInfo.kind === 'box' && snapInfo.color === '#0000ff',
+    check('snapshot records box puppet with tint', !!snapInfo && snapInfo.charId === 'box' && snapInfo.tint === 'BLUE',
         JSON.stringify(snapInfo));
     const restored = await evalJs(`(async () => {
         const d = window.__director;
         const snap = d.projectSnapshot();
-        d.listProps().slice().forEach(p => d.deletePropById(p.id));
+        d.puppets.slice().forEach(p => d.destroyPuppet(p, true));
         await new Promise(r => setTimeout(r, 400));
-        const afterDel = d.listProps().length;
+        const afterDel = d.puppets.length;
         await d.restoreProject(snap, {});
         await new Promise(r => setTimeout(r, 600));
-        return { afterDel, afterRestore: d.listProps().length,
-                 color: (d.listProps().find(p => p.kind === 'box') || {}).boxColor };
+        const b = d.puppets.find(p => p.charId === 'box');
+        return { afterDel, afterRestore: d.puppets.length, tint: b ? b.tint : null };
     })()`);
-    check('box restored from snapshot without files',
-        restored?.afterDel === 0 && restored?.afterRestore >= 1 && restored?.color === '#0000ff',
+    check('box puppet restored from snapshot without files',
+        restored?.afterDel === 0 && restored?.afterRestore >= 1 && restored?.tint === 'BLUE',
         JSON.stringify(restored));
 
     // ---- 3) #4 泼溅行：导入 → 列表 → 显隐 → 直接删 ----
@@ -178,7 +177,13 @@ try {
     check('manual clip disabled restores auto', clipOff?.enabled === false, JSON.stringify(clipOff));
 
     // ---- 5) #3 移动模型：复制到游标（人偶副本继承位姿）----
-    await evalJs('window.__director.addPuppet()');
+    // v35：第二段还原后场上已有方块人偶，先清场再生成，断言才稳定
+    await evalJs(`(async () => {
+        const d = window.__director;
+        d.puppets.slice().forEach(p => d.destroyPuppet(p, true));
+        await new Promise(r => setTimeout(r, 300));
+        d.addPuppet();
+    })()`);
     check('puppet spawned', await waitFor('window.__director.puppets.length === 1', 120, 500));
     await evalJs(`(() => {
         const V3 = window.scene.app.root.getLocalPosition().constructor;

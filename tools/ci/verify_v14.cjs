@@ -46,7 +46,7 @@ for (const [name, ok] of checks) {
   console.log(name.padEnd(40), ok ? 'OK' : 'PROBLEM');
 }
 
-for (const g of ['woman.glb', 'male.glb', 'shiba.glb', 'tuxedo.glb']) {
+for (const g of ['woman.glb', 'male.glb', 'shiba.glb', 'tuxedo.glb', 'box.glb']) {
   const p = path.join(tmp, 'assets', 'public', 'static', 'director', g);
   console.log(g.padEnd(12), fs.statSync(p).size, 'bytes');
 }

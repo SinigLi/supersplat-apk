@@ -176,10 +176,6 @@ waitUI(function () {
         o.textContent = c.name;
         charSel.appendChild(o);
       });
-      const bo = document.createElement('option');
-      bo.value = '__box';
-      bo.textContent = '方块';
-      charSel.appendChild(bo);
       charSel.value = d.currentCharId || 'woman';
     }
 
@@ -191,10 +187,6 @@ waitUI(function () {
       o.value = v; o.textContent = n;
       tintSel.appendChild(o);
     });
-
-    // v30 #6：方块固定色板（拍板沿用固定色板，不吃 multiply 染色，直接换 diffuse）
-    const BOX_HEX = { NONE:'#808080', RED:'#bf1414', ORANGE:'#e56b14', YELLOW:'#f2d41f',
-                      GREEN:'#26b333', BLUE:'#1f59e6', GRAY:'#808080', PURPLE:'#8026cc' };
 
     function fillClips() {
       const d = window.__director;
@@ -242,18 +234,9 @@ waitUI(function () {
       if (!d) { showMsg('导演台模块未就绪'); return; }
       const act = b.dataset.act;
       if (act === 'add') {
-        // v31：选「方块」时摆放的是方块模型（同一人偶入口）
-        if (charSel.value === '__box') {
-          if (d.addBoxAtCursor) {
-            d.addBoxAtCursor(BOX_HEX[tintSel.value] || BOX_HEX.GRAY);
-            showMsg('方块已生成（可撤销），选中后点颜色下拉换色');
-          } else {
-            showMsg('引擎无方块接口');
-          }
-        } else {
-          const r = d.addPuppet();
-          showMsg(r === 'loading' ? '人偶资源加载中…' : '人偶已在游标处生成');
-        }
+        // v35：方块也是角色（box.glb，第五个内置角色），统一走人偶摆放入口
+        const r = d.addPuppet();
+        showMsg(r === 'loading' ? '模型资源加载中…' : (charSel.value === 'box' ? '方块已在游标处生成' : '人偶已在游标处生成'));
       } else if (act === 'move') {
         const r = d.armPlacePuppet();
         showMsg(r === 'loading' ? '人偶资源加载中…' : (r === 'place-puppet' ? '点击画布放置人偶（再点取消）' : '已取消放置'));
@@ -287,17 +270,9 @@ waitUI(function () {
     tintSel.addEventListener('change', () => {
       const d = window.__director;
       if (!d) return;
-      // v30 #6：选中的是方块时走 setBoxColor（方块不吃 multiply 染色）
-      const props = (d.listProps && d.listProps()) || [];
-      const box = props.find(function (p) { return p.selected && p.kind === 'box'; });
-      if (box) {
-        const hex = BOX_HEX[tintSel.value] || BOX_HEX.GRAY;
-        const r = d.setBoxColor(box.id, hex);
-        showMsg(r === 'ok' ? '方块已换色' : '换色失败');
-        return;
-      }
+      // v35：方块已是人偶管线，乘法染色直接生效（黄点/导演台联动同理）
       const r = d.setTint(tintSel.value);
-      showMsg(r === 'ok' ? '已换色' : '先选中一个人偶或方块');
+      showMsg(r === 'ok' ? '已换色' : '先选中一个人偶');
     });
 
     document.addEventListener('director-state', (ev) => {

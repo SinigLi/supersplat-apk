@@ -72,28 +72,21 @@ Director 实例 ── 人偶 / 道具 / 游标 / 机位 / 灯光
 | `playClip(i, target?)` | 切动作并播放 |
 | `setTint(tint)` / `setTintById(id, tint)` | 八色 multiply 染色；`tint` 见 `info().tints` |
 
-### 2.4 道具（GLB 导入 / 程序方块）
+### 2.4 道具（GLB 导入）
 
 | 方法 | 说明 |
 |---|---|
 | `importModel(file)` | `File` → PlayCanvas container，落在 3D 游标，走 undo；**导入后自动选中**（v24） |
-| `listProps()` | 道具列表（含 `kind:'glb'\|'box'`、`boxColor`，v30） |
+| `listProps()` | 道具列表（v35 起纯 GLB，方块也是人偶不再走道具） |
 | `selectProp(p)` / `selectPropById(id)` | 选中；`id` 传 null 表示取消选中（v24） |
 | `setPropLocked(id, v)` | **v24**：禁止选中（同人偶） |
 | `deletePropById(id)` | 删除（走 undo） |
 
-### 2.4a 方块原语（v30/v31，拍板 2026-10-29）
+### 2.4a 方块（v35 重构：第五内置角色 box.glb）
 
-程序生成的占位几何：`Entity` + box render + StandardMaterial，反相外壳描边（front-cull 放大 6%）。**入口在角色下拉的「方块」选项**（v31 老板反馈：方块是和人偶同级的模型数据，不设独立按钮）；选中后颜色下拉换色（固定 8 色板 → diffuse 直改，不吃 multiply 染色）。
+**老板拍板 2026-10-31：废弃程序几何，方块改为真 GLB 模型**（`static/director/box.glb`，白底 PBR 立方体，随包内置）。注册为 `CHARACTERS` 第五个内置角色（id `box`，scale 0.4 ≈ 礼服猫体型），**走和人偶完全相同的管线**：PuppetAdapter（黄点选中标记、gizmo、进 SS 变换/撤销）、`setTintById` 八色 multiply 染色、`info()` 选中联动、存档按 `charId` 记录还原、`copySelectedToCursor` 继承位姿/颜色。入口即角色下拉的「方块」选项（选角色→摆放）。
 
-| 方法 | 说明 |
-|---|---|
-| `addBoxAtCursor(colorHex?)` | 在游标处生成方块（走 undo）；默认灰 `#808080`、尺寸≈礼服猫（0.4） |
-| `spawnBox(pos, {size,color})` | 内部/恢复工程用 |
-| `setBoxColor(id, hex)` | 换 diffuse 色 |
-| `copySelectedToCursor()` | **v30 #3**：复制选中对象到游标（人偶继承姿态/动作/颜色，方块继承尺寸/颜色/变换，GLB 复用常驻 template+源字节） |
-
-存盘：`kind:'box'` 只记 size/color/transform，零字节开销（`docs/PROJECTS.md` §3）；快照 version 仍为 1。
+旧版程序方块的兼容：旧工程存档里 `kind:'box'` 的道具记录（无 `file` 字段）在打开时自动按 box 角色重建为方块人偶（位姿/缩放保留；颜色因染色机制不同不迁移）。程序方块三个 API（`spawnBox`/`addBoxAtCursor`/`setBoxColor`）已删除。
 
 ### 2.4b 基准点（v25–v27）
 
@@ -274,6 +267,7 @@ node tests/probe-empty-project.mjs  # 9 项：空工程闭环
 node tests/probe-v29-migrate.mjs    # 13 项：legacy zip 流式迁移/去重/重开（v29b）
 node tests/probe-v30.mjs     # 24 项：方块/泼溅行/手动裁剪/复制到游标/视口重置
 node tests/probe-v31.mjs     # 13 项：方块入下拉/纯图标/原生列表隐藏/滑轨拖动
+node tests/probe-v35.mjs     # 16 项：方块 GLB 化（第五角色/人偶管线染色/选中联动/删除）
 node tests/probe-v32.mjs     # 13 项：面板重排/改名重定位/透明度滑条
 node tests/probe-v33.mjs     # 12 项：按钮加大/测量挪组/二级页半透明/游标相关组/相机组四钮
 node tests/probe-v34.mjs     # 10 项：保存返回入菜单栏/顶栏左上/小钮减半/组名游标
@@ -323,7 +317,8 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v31 | 8cd29dc（同上） | 02bfdbd | 真机反馈四条：方块入角色下拉（`__box`）、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射实时生效） |
 | v32 | 02b2b7e | PENDING | 相机面板重排（注释贴模式按钮旁）、机位改名/重定位（`renameShot`/`relocateShot`）、悬浮窗半透明 `--sd-alpha` + 设置页滑条（默认 0.6） |
 | v33 | —（纯 UI） | bc8a0ac | 反馈五条：四钮加大 3 倍（135px 见方）、测量入定位组、二级页面/弹窗半透明（--sd-alpha）、底栏合并「游标相关」三钮（图文）、框选/回原点入相机组+注释补全 |
-| v34 | —（纯 UI） | fd3450c | 反馈四条：保存/返回入顶部菜单停靠栏（sd-pjbtn）、顶栏默认左上角、机位小钮减半（3.75rem）、组名「游标相关」→「游标」。**当前** |
+| v34 | —（纯 UI） | fd3450c | 反馈四条：保存/返回入顶部菜单停靠栏（sd-pjbtn）、顶栏默认左上角、机位小钮减半（3.75rem）、组名「游标相关」→「游标」 |
+| v35 | b603b7a | PENDING | 方块 GLB 化：`box.glb` 第五内置角色，人偶管线全量继承（染色/黄点/选中联动/存档还原/复制）；删除程序方块三 API；旧存档 `kind:'box'` 自动转为方块人偶。**当前** |
 
 ## 9. 已知边界 / 待办
 

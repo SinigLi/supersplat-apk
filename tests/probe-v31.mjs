@@ -91,27 +91,27 @@ try {
     check('director ready', await waitFor('!!window.__director', 60, 500));
     check('dock ready', await waitFor('document.body.classList.contains("sd-docks-ready")', 60, 500));
 
-    // ---- 1) 方块进角色下拉 ----
+    // ---- 1) 方块进角色下拉（v35：box 是第五个内置角色，走人偶管线） ----
     const charSel = await evalJs(`(() => {
         const sel = document.querySelector('.sd-dir-chars');
         if (!sel) return null;
         // 打开导演台面板让 fillChars 跑过：dock 已就绪时面板在 DOM 里
-        return { hasBox: Array.from(sel.options).some(o => o.value === '__box'),
+        return { hasBox: Array.from(sel.options).some(o => o.value === 'box'),
                  n: sel.options.length };
     })()`);
     check('char dropdown has 方块 option', !!charSel && charSel.hasBox === true, JSON.stringify(charSel));
     check('no standalone box button', await evalJs(
         '!document.querySelector(\'.sd-dir-btn[data-act="box"]\')'));
-    // 选方块 → 点摆放 → 生成的是 box prop
+    // 选方块 → 点摆放 → 生成的是 box 人偶（puppet 管线）
     await evalJs(`(() => {
         const sel = document.querySelector('.sd-dir-chars');
-        sel.value = '__box';
+        sel.value = 'box';
         sel.dispatchEvent(new Event('change'));
         document.querySelector('.sd-dir-btn[data-act="add"]').click();
     })()`);
-    check('placing with __box spawns box', await waitFor(
-        'window.__director.listProps().some(p => p.kind === "box")', 40, 300));
-    // 选回人偶 → 点摆放 → 生成的是 puppet（不是 box）
+    check('placing with box spawns box puppet', await waitFor(
+        'window.__director.puppets.some(p => p.charId === "box")', 40, 300));
+    // 选回人偶 → 点摆放 → 生成的是女人偶
     await evalJs(`(() => {
         const sel = document.querySelector('.sd-dir-chars');
         sel.value = 'woman';
@@ -119,7 +119,7 @@ try {
         document.querySelector('.sd-dir-btn[data-act="add"]').click();
     })()`);
     check('placing with char spawns puppet', await waitFor(
-        'window.__director.puppets.length === 1', 120, 500));
+        'window.__director.puppets.some(p => p.charId === "woman")', 120, 500));
 
     // ---- 2) 游标相关组三钮带图标+文字（v33：游标+移动合并，老板指定图文并列） ----
     const mv = await evalJs(`(() => {
