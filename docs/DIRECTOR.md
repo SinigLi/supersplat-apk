@@ -268,7 +268,7 @@ node tests/probe-v29-migrate.mjs    # 13 项：legacy zip 流式迁移/去重/�
 node tests/probe-v30.mjs     # 24 项：方块/泼溅行/手动裁剪/复制到游标/视口重置
 node tests/probe-v31.mjs     # 13 项：方块入下拉/纯图标/原生列表隐藏/滑轨拖动
 node tests/probe-v35.mjs     # 16 项：方块 GLB 化（第五角色/人偶管线染色/选中联动/删除）
-node tests/probe-v36.mjs     # 18 项：白色外包盒（人偶/道具/泼溅显示、跟随、取消隐藏、截图豁免）
+node tests/probe-v36.mjs     # 19 项：白色外包盒（人偶/道具/泼溅显示、跟随、取消隐藏、截图豁免、v37 可遮拁）
 node tests/probe-v32.mjs     # 13 项：面板重排/改名重定位/透明度滑条
 node tests/probe-v33.mjs     # 12 项：按钮加大/测量挪组/二级页半透明/游标相关组/相机组四钮
 node tests/probe-v34.mjs     # 10 项：保存返回入菜单栏/顶栏左上/小钮减半/组名游标
@@ -316,12 +316,12 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v29b | — | 5cc3efe | 真机 `Missing parent directory` 修复：appendFile 带 recursive、迁移先建档截断残尾 |
 | v30 | 8cd29dc | 4ac2df9 | 全局等待进度条；#1 新建重置视口；#3 移动模型分组+`copySelectedToCursor`；#4 泼溅行统一+直接删除；#5 手动裁剪；#6 方块原语（`spawnBox`/`BoxAddOp`） |
 | v31 | 8cd29dc（同上） | 02bfdbd | 真机反馈四条：方块入角色下拉（`__box`）、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射实时生效） |
-| v32 | 02b2b7e | PENDING | 相机面板重排（注释贴模式按钮旁）、机位改名/重定位（`renameShot`/`relocateShot`）、悬浮窗半透明 `--sd-alpha` + 设置页滑条（默认 0.6） |
+| v32 | 02b2b7e | a669d71 | 相机面板重排（注释贴模式按钮旁）、机位改名/重定位（`renameShot`/`relocateShot`）、悬浮窗半透明 `--sd-alpha` + 设置页滑条（默认 0.6） |
 | v33 | —（纯 UI） | bc8a0ac | 反馈五条：四钮加大 3 倍（135px 见方）、测量入定位组、二级页面/弹窗半透明（--sd-alpha）、底栏合并「游标相关」三钮（图文）、框选/回原点入相机组+注释补全 |
 | v34 | —（纯 UI） | fd3450c | 反馈四条：保存/返回入顶部菜单停靠栏（sd-pjbtn）、顶栏默认左上角、机位小钮减半（3.75rem）、组名「游标相关」→「游标」 |
 | v35 | b603b7a | 21e844e | 方块 GLB 化：`box.glb` 第五内置角色，人偶管线全量继承（染色/黄点/选中联动/存档还原/复制）；删除程序方块三 API；旧存档 `kind:'box'` 自动转为方块人偶 |
 | v36 | 68f1287 | ba56d16 | 选中对象白色外包盒边线（12 棱线框）：人偶/道具/泼溅都显示，逐帧跟随移动/动画，取消选中隐藏，机位截图不拍摄（capturing 链路）；命名 `selection-box-marker` 避开吸附/测量射线 |
-| v37 | PENDING-V | PENDING-A | 真机反馈：外包盒改为**可被模型遮挡**（depthTest 开、深度只读不写）——不透明 GLB 网格挡住身后的盒线，泼溅不写深度不遮挡；修复「盒线穿透所有模型」的悬浮感。**当前** |
+| v37 | fbe75ce | 44e1f69 | 真机反馈：外包盒改为**可被模型遮挡**（depthTest 开、深度只读不写）——不透明 GLB 网格挡住身后的盒线，泼溅不写深度不遮挡；修复「盒线穿透所有模型」的悬浮感。**当前** |
 
 ## 9. 已知边界 / 待办
 
