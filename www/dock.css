@@ -218,11 +218,7 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
   font-size:13px !important; white-space:nowrap; }
 .sd-shot-panel .sd-shot-btn:disabled { opacity:.42; }
 
-/* v30 #5 显示范围控制（手动近/远裁剪） */
-.sd-shot-panel .sd-clip-row { gap:6px; }
 .sd-shot-panel .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
-
-/* v31 双头滑轨（近/远裁剪主交互）：两条细轨叠一行，拖动按对数比例取值 */
 
 /* v33 游标相关组：三钮图标+文字（设置游标/移动模型/复制模型） */
 .sd-cur-panel { flex-direction:row !important; }
@@ -230,11 +226,7 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
   padding:14px 8px !important; }
 .sd-cur-btn .sd-ico { font-size:26px; }
 .sd-cur-btn .sd-txt { font-size:14px; color:#e2e8f0; white-space:nowrap; }
-.sd-shot-panel .sd-cam-modes { justify-content:flex-start; padding-top:2px;
-  border-top:1px solid rgba(148,163,184,.18); margin-top:2px; }
-.sd-shot-panel .sd-cam-modes .sd-adopted { display:flex; }
-
-/* v32 相机面板重排：机位行（下拉+两小钮）、内联改名行、模式注释 */
+/* v32 机位面板：机位行（下拉+改名/新增小钮）、内联改名行（模式行已并入 v38 视口组） */
 .sd-shot-pick-row { gap:6px; }
 .sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; min-height:4.5rem; }
 /* v33 老板反馈加大到 3 倍后 v34 实机反馈太大：缩回一半（7.5rem → 3.75rem，约 67px）。
@@ -245,7 +237,6 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-shot-edit-row[hidden] { display:none; }
 .sd-shot-edit { flex:1; min-width:0; min-height:4.5rem; background:rgba(30,41,59,.92); color:#e2e8f0;
   border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 12px; font-size:16px; }
-.sd-mode-hint { flex:none; font-size:11px; color:#8b96a5; padding:0 2px; margin-top:2px; }
 
 /* v32 设置页透明度滑条 */
 .sd-alpha-row { display:flex; align-items:center; gap:10px; margin:0 0 8px 0; padding:12px 14px;
