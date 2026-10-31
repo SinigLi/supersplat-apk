@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>v38 相机面板重排原型 v2</title>
+<title>v38 相机面板重排原型 v3</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { width: 100%; height: 100%; overflow: hidden; }
@@ -14,7 +14,7 @@
     touch-action: pan-y;
     user-select: none;
   }
-  /* 伪 3D 画布背景：预览半透明面板叠在场景上的观感 */
+  /* 伪 3D 画布背景 */
   #stage { position: fixed; inset: 0; }
   #stage .blob { position: absolute; border-radius: 50%; filter: blur(2px); }
   #stage .b1 { width: 180px; height: 220px; left: 40px; bottom: 180px; background: radial-gradient(circle at 35% 30%, #7d8b99, #3a434d 70%); }
@@ -29,7 +29,6 @@
   header.top { font-size: 12px; color: #9aa4ae; padding: 2px 4px 8px; }
   header.top b { color: #cfd6dc; font-size: 13px; }
 
-  /* ===== 导演台面板风格 ===== */
   .grp {
     background: rgba(24, 27, 31, .78); border: 1px solid #2c3238; border-radius: 14px;
     margin-bottom: 12px; overflow: hidden; backdrop-filter: blur(6px);
@@ -59,7 +58,6 @@
   .modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 4px 0; }
   .modes button { min-height: 44px; }
 
-  /* 裁剪 / 焦距 行 */
   .cliprow { display: flex; align-items: center; gap: 8px; padding: 6px 0; flex-wrap: wrap; }
   .pill { font-size: 11px; border-radius: 999px; padding: 3px 10px; border: 1px solid #3a424a; color: #9aa4ae; }
   .pill.manual { border-color: #f2d41f; color: #f2d41f; }
@@ -75,10 +73,8 @@
   .clipval.foc  { border-bottom: 2px solid #e8b661; }
   .clipval.drag { background: #243040; border-color: #4da3ff; color: #fff; }
 
-  /* 机位 nudge */
   .nudge { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 4px 0; }
   .nudge button { min-height: 44px; font-size: 15px; padding: 0; }
-  .steprow { display: flex; align-items: center; gap: 8px; padding: 4px 0 2px; }
   .steprow label, .rotrow label { font-size: 12px; color: #9aa4ae; flex: 0 0 52px; }
   .steprow .unit, .rotrow .unit { font-size: 11px; color: #7e8892; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   input[type=number], select {
@@ -86,11 +82,24 @@
     background: #1d2126; border: 1px solid #3a424a; border-radius: 9px; padding: 9px 10px; min-width: 0;
   }
   select { flex: 1; }
-  .rotrow { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .steprow, .rotrow { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+
+  /* 单击输值弹层 */
+  #editor { position: fixed; inset: 0; background: rgba(8,10,13,.6); z-index: 20;
+    display: none; align-items: center; justify-content: center; }
+  #editor.show { display: flex; }
+  #editor .card { background: #1c2127; border: 1px solid #3a424a; border-radius: 14px;
+    padding: 16px 16px 14px; width: 270px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  #editor .et { font-size: 14px; font-weight: 600; color: #eef1f4; margin-bottom: 4px; }
+  #editor .er { font-size: 11px; color: #7e8892; margin-bottom: 10px; }
+  #editor input { width: 100%; font-size: 16px; padding: 10px 12px; text-align: center; }
+  #editor .ebtns { display: flex; gap: 8px; margin-top: 12px; }
+  #editor .ebtns button { flex: 1; min-height: 42px; }
+  #editor .ok { border-color: #2f5f96; background: #1f3a5c; color: #cfe4ff; }
 
   #msg { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
     background: #0f1317ee; border: 1px solid #3a424a; color: #dfe4e9; font-size: 12px;
-    border-radius: 10px; padding: 8px 14px; max-width: 86%; text-align: center; z-index: 9;
+    border-radius: 10px; padding: 8px 14px; max-width: 86%; text-align: center; z-index: 30;
     opacity: 0; transition: opacity .18s; pointer-events: none; }
   #msg.show { opacity: 1; }
 </style>
@@ -102,15 +111,19 @@
 </div>
 
 <div id="wrap">
-  <header class="top"><b>v38 相机面板重排原型 v2</b> · 按反馈调整：机位裁剪可拖+恢复默认 · 新增焦距控制（1–500mm）· 新增/重定位换位 · 参数信息下移</header>
+  <header class="top"><b>v38 相机面板重排原型 v3</b> · 单击数值可输入精确值 · 长按拖动粗调</header>
 
   <!-- ============ 视口组：全局相机 ============ -->
   <section class="grp" id="grp-viewport">
     <div class="grp-h">👁 视口 <span class="sub">全局相机 · 实时参数</span></div>
     <div class="grp-body">
-      <div class="kv"><span class="lab">位置</span><span class="val" id="vp-pos">2.50, 1.80, 4.20</span></div>
-      <div class="kv"><span class="lab">方向</span><span class="val" id="vp-tgt">0.00, 0.80, 0.00</span></div>
-      <div class="kv"><span class="lab">旋转角</span><span class="val" id="vp-rot">-30.2° / +12.5°</span></div>
+      <div class="modes">
+        <button class="mode-btn" data-mode="orbit">轨道</button>
+        <button class="mode-btn" data-mode="fly">飞行</button>
+        <button class="mode-btn" data-mode="frame">框选</button>
+        <button class="mode-btn" data-mode="home">回原点</button>
+      </div>
+      <div class="hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>
 
       <div class="cliprow">
         <span class="lab" style="font-size:12px;color:#9aa4ae;flex:0 0 52px;">裁剪</span>
@@ -122,16 +135,13 @@
         <span class="lab" style="font-size:12px;color:#9aa4ae;flex:0 0 52px;">焦距</span>
         <span class="clipval foc" id="cv-foc"><span class="t">焦距 FOCAL</span><b id="cv-foc-v">50 mm</b><span class="r">1 – 500</span></span>
       </div>
-      <div class="hint">长按数值左右拖动修改，松手生效。裁剪范围 ±2×按下值（近端不为 0）；焦距固定 1–500mm。「恢复默认」= 裁剪回自动 + 焦距回 50mm</div>
+      <div class="hint">单击数值输入精确值；长按（约 0.3 秒）左右拖动粗调，松手生效。裁剪拖动范围 ±2×按下值（近端不为 0）</div>
       <div class="btnrow"><button id="btn-restore">↺ 恢复默认（自动裁剪 + 焦距 50mm）</button></div>
 
-      <div class="modes">
-        <button class="mode-btn" data-mode="orbit">轨道</button>
-        <button class="mode-btn" data-mode="fly">飞行</button>
-        <button class="mode-btn" data-mode="frame">框选</button>
-        <button class="mode-btn" data-mode="home">回原点</button>
-      </div>
-      <div class="hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>
+      <div class="sect">参数信息（只读 · 实时）</div>
+      <div class="kv"><span class="lab">位置</span><span class="val" id="vp-pos">2.50, 1.80, 4.20</span></div>
+      <div class="kv"><span class="lab">方向</span><span class="val" id="vp-tgt">0.00, 0.80, 0.00</span></div>
+      <div class="kv"><span class="lab">旋转角</span><span class="val" id="vp-rot">-30.2° / +12.5°</span></div>
     </div>
   </section>
 
@@ -158,8 +168,12 @@
         <span class="clipval near" id="sv-near"><span class="t">近 NEAR</span><b id="sv-near-v">0.50</b></span>
         <span class="clipval far" id="sv-far"><span class="t">远 FAR</span><b id="sv-far-v">50.0</b></span>
       </div>
-      <div class="hint">长按拖动改本机位裁剪（范围 ±2×按下值，近端不为 0），松手生效</div>
-      <div class="btnrow"><button id="shot-clip-restore">↺ 恢复默认（回到本机位保存的裁剪值）</button></div>
+      <div class="cliprow">
+        <span class="lab" style="font-size:12px;color:#9aa4ae;flex:0 0 52px;">焦距</span>
+        <span class="clipval foc" id="sv-foc"><span class="t">焦距 FOCAL</span><b id="sv-foc-v">50 mm</b><span class="r">1 – 500</span></span>
+      </div>
+      <div class="hint">单击输入精确值；长按拖动粗调（±2×按下值），松手生效</div>
+      <div class="btnrow"><button id="shot-clip-restore">↺ 恢复默认（回到本机位保存的裁剪/焦距）</button></div>
 
       <div class="steprow">
         <label>步进</label>
@@ -176,19 +190,31 @@
       </div>
       <div class="hint">移动 = 机身与看向点一起平移（朝向不变）；「前/后」沿当前视线方向</div>
 
-      <div class="rotrow">
+      <div class="sect">参数信息（只读 · 不常用放底部）</div>
+      <div class="kv"><span class="lab">位置</span><span class="val" id="sh-pos">2.50, 1.80, 4.20</span></div>
+      <div class="kv"><span class="lab">方向</span><span class="val" id="sh-tgt">0.00, 0.80, 0.00</span></div>
+      <div class="kv"><span class="lab">旋转角</span><span class="val" id="sh-rot">-30.2° / +12.5°</span></div>
+      <div class="rotrow" style="margin-top:6px;">
         <label>旋转</label>
         <input type="number" id="rot-in" step="1" value="-30" style="flex:0 0 84px;">
         <span class="unit">° 水平朝向</span>
         <button class="mini" id="rot-ok" style="flex:0 0 52px;">应用</button>
       </div>
-
-      <div class="sect">参数信息（只读 · 不常用放底部）</div>
-      <div class="kv"><span class="lab">位置</span><span class="val" id="sh-pos">2.50, 1.80, 4.20</span></div>
-      <div class="kv"><span class="lab">方向</span><span class="val" id="sh-tgt">0.00, 0.80, 0.00</span></div>
-      <div class="kv"><span class="lab">旋转角</span><span class="val" id="sh-rot">-30.2° / +12.5°</span></div>
     </div>
   </section>
+</div>
+
+<!-- 单击输值弹层 -->
+<div id="editor">
+  <div class="card">
+    <div class="et" id="ed-title">设置数值</div>
+    <div class="er" id="ed-range"></div>
+    <input type="number" id="ed-in" step="any">
+    <div class="ebtns">
+      <button id="ed-cancel">✕ 取消</button>
+      <button id="ed-apply" class="ok">✓ 应用</button>
+    </div>
+  </div>
 </div>
 
 <div id="msg"></div>
@@ -224,11 +250,36 @@ function vpRender() {
 }
 vpRender();
 
-/* ---- 通用长按拖值：按住 ≥220ms 且移动 >10px 后进入拖动，松手生效 ---- */
-function bindDrag(el, opts) {
+/* ---- 单击输值弹层 ---- */
+var ed = { target: null, min: 0, max: 1e9, name: "", after: null };
+function openEditor(cfg) {
+  ed = cfg;
+  document.getElementById("ed-title").textContent = "设置" + cfg.name;
+  document.getElementById("ed-range").textContent = "范围 " + cfg.rangeText;
+  var inp = document.getElementById("ed-in");
+  inp.value = String(Math.round(cfg.get() * 100) / 100);
+  document.getElementById("editor").classList.add("show");
+  inp.focus(); inp.select();
+}
+function closeEditor() { document.getElementById("editor").classList.remove("show"); }
+document.getElementById("ed-cancel").addEventListener("click", closeEditor);
+document.getElementById("editor").addEventListener("click", function (e) { if (e.target === this) closeEditor(); });
+document.getElementById("ed-apply").addEventListener("click", function () {
+  var v = Number(document.getElementById("ed-in").value);
+  if (!isFinite(v)) { showMsg("数值无效"); return; }
+  if (v < ed.min || v > ed.max) { showMsg("超出范围 " + ed.rangeText); return; }
+  ed.set(v);
+  if (ed.after) ed.after(v);
+  closeEditor();
+});
+document.getElementById("ed-in").addEventListener("keydown", function (e) { if (e.key === "Enter") document.getElementById("ed-apply").click(); });
+
+/* ---- 通用长按拖值 + 单击输值 ----
+ * 按住 ≥220ms 且移动 >10px 进入拖动；否则松手视为单击 → 打开输值弹层 */
+function bindDrag(el, cfg) {
   var startX = 0, startV = 0, dragging = false, armed = false, pressT = 0, last = 0;
   el.addEventListener("pointerdown", function (e) {
-    startX = e.clientX; startV = opts.get(); dragging = true; armed = false; pressT = Date.now();
+    startX = e.clientX; startV = cfg.get(); dragging = true; armed = false; pressT = Date.now();
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
   });
   el.addEventListener("pointermove", function (e) {
@@ -238,41 +289,52 @@ function bindDrag(el, opts) {
       if (Math.abs(dx) < 10 || Date.now() - pressT < 220) return;
       armed = true; el.classList.add("drag");
     }
-    var v = opts.map(dx, startV);
-    v = Math.max(opts.min, Math.min(opts.max, v));
-    vp_or_shot(opts.scope)[opts.key] = v; last = v;
-    if (opts.afterArm) opts.afterArm();
-    opts.render(); e.preventDefault();
+    var v = cfg.map(dx, startV);
+    v = Math.max(cfg.min, Math.min(cfg.max, v));
+    cfg.set(v); last = v;
+    cfg.render(); e.preventDefault();
   });
   function up() {
     if (!dragging) return;
     dragging = false; el.classList.remove("drag");
-    if (armed) opts.commit(last);
+    if (armed) cfg.commit(last);
+    else openEditor(cfg.editor);
     armed = false;
   }
   el.addEventListener("pointerup", up);
-  el.addEventListener("pointercancel", up);
+  el.addEventListener("pointercancel", function () { dragging = false; el.classList.remove("drag"); armed = false; });
 }
-function vp_or_shot(scope) { return scope === "vp" ? vp : shots[cur]; }
-
-/* 视口裁剪：±2×按下值 */
 function clipMap(dx, v) { return v + (dx / 120) * (2 * v); }
+
+/* 视口裁剪 */
 bindDrag(document.getElementById("cv-near"), {
-  scope: "vp", key: "near", min: 0.01, max: 1e9, map: clipMap, render: vpRender,
-  get: function () { return vp.near; },
-  commit: function (v) { vp.auto = false; vpRender(); showMsg("已生效：近 = " + v.toFixed(2) + "（切换为手动）"); }
+  get: function () { return vp.near; }, set: function (v) { vp.near = v; }, render: vpRender,
+  min: 0.01, max: 1e9, map: clipMap,
+  commit: function (v) { vp.auto = false; vpRender(); showMsg("已生效：近 = " + v.toFixed(2) + "（切换为手动）"); },
+  editor: { name: "近裁剪", rangeText: "≥ 0.01", min: 0.01, max: 1e9,
+    get: function () { return vp.near; },
+    set: function (v) { vp.near = v; vp.auto = false; vpRender(); },
+    after: function (v) { showMsg("近裁剪 = " + v.toFixed(2) + "（切换为手动）"); } }
 });
 bindDrag(document.getElementById("cv-far"), {
-  scope: "vp", key: "far", min: 0.1, max: 1e9, map: clipMap, render: vpRender,
   get: function () { return vp.far; },
-  commit: function (v) { vp.auto = false; vp.far = Math.max(vp.near + 0.05, vp.far); vpRender(); showMsg("已生效：远 = " + vp.far.toFixed(1) + "（切换为手动）"); }
+  set: function (v) { vp.far = v; }, render: vpRender,
+  min: 0.1, max: 1e9, map: clipMap,
+  commit: function () { vp.auto = false; vp.far = Math.max(vp.near + 0.05, vp.far); vpRender(); showMsg("已生效：远 = " + vp.far.toFixed(1) + "（切换为手动）"); },
+  editor: { name: "远裁剪", rangeText: "> 近裁剪", min: 0.1, max: 1e9,
+    get: function () { return vp.far; },
+    set: function (v) { vp.far = Math.max(vp.near + 0.05, v); vp.auto = false; vpRender(); },
+    after: function (v) { showMsg("远裁剪 = " + vp.far.toFixed(1) + "（切换为手动）"); } }
 });
 /* 视口焦距：固定 1–500mm，1px ≈ 2mm */
 bindDrag(document.getElementById("cv-foc"), {
-  scope: "vp", key: "focal", min: 1, max: 500,
-  map: function (dx, v) { return v + dx * 2; }, render: vpRender,
-  get: function () { return vp.focal; },
-  commit: function (v) { showMsg("已生效：焦距 = " + Math.round(v) + " mm"); }
+  get: function () { return vp.focal; }, set: function (v) { vp.focal = v; }, render: vpRender,
+  min: 1, max: 500, map: function (dx, v) { return v + dx * 2; },
+  commit: function (v) { showMsg("已生效：焦距 = " + Math.round(v) + " mm"); },
+  editor: { name: "焦距", rangeText: "1 – 500 mm", min: 1, max: 500,
+    get: function () { return vp.focal; },
+    set: function (v) { vp.focal = v; vpRender(); },
+    after: function (v) { showMsg("焦距 = " + Math.round(v) + " mm"); } }
 });
 
 /* ---- 视口模式按钮 / 恢复默认 ---- */
@@ -290,9 +352,9 @@ document.getElementById("btn-restore").addEventListener("click", function () {
 
 /* ---- 机位（模拟数据；真实实现由引擎 addShot 时把全局相机含裁剪/焦距一并存入） ---- */
 var shots = [
-  { name: "机位1", near: 0.5, far: 50,  pos: [2.50, 1.80, 4.20], tgt: [0.00, 0.80, 0.00], base: { near: 0.5, far: 50 } },
-  { name: "机位2", near: 0.2, far: 120, pos: [-3.10, 2.20, 5.00], tgt: [1.00, 0.50, -2.00], base: { near: 0.2, far: 120 } },
-  { name: "机位3", near: 1.0, far: 30,  pos: [0.00, 3.50, 0.01], tgt: [0.00, 0.00, 0.00], base: { near: 1.0, far: 30 } }
+  { name: "机位1", near: 0.5, far: 50,  focal: 50, pos: [2.50, 1.80, 4.20], tgt: [0.00, 0.80, 0.00], base: { near: 0.5, far: 50, focal: 50 } },
+  { name: "机位2", near: 0.2, far: 120, focal: 70, pos: [-3.10, 2.20, 5.00], tgt: [1.00, 0.50, -2.00], base: { near: 0.2, far: 120, focal: 70 } },
+  { name: "机位3", near: 1.0, far: 30,  focal: 35, pos: [0.00, 3.50, 0.01], tgt: [0.00, 0.00, 0.00], base: { near: 1.0, far: 30, focal: 35 } }
 ];
 var cur = 0;
 function shotRot(s) {
@@ -303,6 +365,7 @@ function shotRender() {
   var s = shots[cur];
   document.getElementById("sv-near-v").textContent = s.near.toFixed(2);
   document.getElementById("sv-far-v").textContent = s.far.toFixed(1);
+  document.getElementById("sv-foc-v").textContent = Math.round(s.focal) + " mm";
   document.getElementById("sh-pos").textContent = s.pos.map(fmt).join(", ");
   document.getElementById("sh-tgt").textContent = s.tgt.map(fmt).join(", ");
   var r = shotRot(s);
@@ -326,25 +389,42 @@ document.getElementById("shot-list").addEventListener("change", function () {
   document.getElementById(id).addEventListener("click", function () {
     var m = { "shot-rename": "重命名（内联输入行）", "shot-relocate": "重定位：全局相机参数（含裁剪/焦距）覆写 " + shots[cur].name,
       "shot-add": "新增机位：记录当前全局相机（含裁剪/焦距）", "shot-remove": "移除 " + shots[cur].name,
-      "shot-goto": "查看：跳到 " + shots[cur].name + "（应用其裁剪范围）", "shot-render": "渲染照片：从 " + shots[cur].name + " 出图（外包盒不拍入）" };
+      "shot-goto": "查看：跳到 " + shots[cur].name + "（应用其裁剪/焦距）", "shot-render": "渲染照片：从 " + shots[cur].name + " 出图（外包盒不拍入）" };
     showMsg(m[id]);
   });
 });
-/* 机位裁剪拖动（±2×按下值）+ 恢复默认（回到本机位保存值） */
+/* 机位裁剪/焦距拖动 + 单击输值 */
 bindDrag(document.getElementById("sv-near"), {
-  scope: "shot", key: "near", min: 0.01, max: 1e9, map: clipMap, render: shotRender,
-  get: function () { return shots[cur].near; },
-  commit: function (v) { showMsg(shots[cur].name + " 近 = " + v.toFixed(2) + "（生效）"); }
+  get: function () { return shots[cur].near; }, set: function (v) { shots[cur].near = v; }, render: shotRender,
+  min: 0.01, max: 1e9, map: clipMap,
+  commit: function (v) { showMsg(shots[cur].name + " 近 = " + v.toFixed(2) + "（生效）"); },
+  editor: { name: shots[cur].name + " 近裁剪", rangeText: "≥ 0.01", min: 0.01, max: 1e9,
+    get: function () { return shots[cur].near; },
+    set: function (v) { shots[cur].near = v; shotRender(); },
+    after: function (v) { showMsg(shots[cur].name + " 近裁剪 = " + v.toFixed(2)); } }
 });
 bindDrag(document.getElementById("sv-far"), {
-  scope: "shot", key: "far", min: 0.1, max: 1e9, map: clipMap, render: shotRender,
-  get: function () { return shots[cur].far; },
-  commit: function (v) { shots[cur].far = Math.max(shots[cur].near + 0.05, shots[cur].far); shotRender(); showMsg(shots[cur].name + " 远 = " + shots[cur].far.toFixed(1) + "（生效）"); }
+  get: function () { return shots[cur].far; }, set: function (v) { shots[cur].far = v; }, render: shotRender,
+  min: 0.1, max: 1e9, map: clipMap,
+  commit: function () { shots[cur].far = Math.max(shots[cur].near + 0.05, shots[cur].far); shotRender(); showMsg(shots[cur].name + " 远 = " + shots[cur].far.toFixed(1) + "（生效）"); },
+  editor: { name: shots[cur].name + " 远裁剪", rangeText: "> 近裁剪", min: 0.1, max: 1e9,
+    get: function () { return shots[cur].far; },
+    set: function (v) { shots[cur].far = Math.max(shots[cur].near + 0.05, v); shotRender(); },
+    after: function () { showMsg(shots[cur].name + " 远裁剪 = " + shots[cur].far.toFixed(1)); } }
+});
+bindDrag(document.getElementById("sv-foc"), {
+  get: function () { return shots[cur].focal; }, set: function (v) { shots[cur].focal = v; }, render: shotRender,
+  min: 1, max: 500, map: function (dx, v) { return v + dx * 2; },
+  commit: function (v) { showMsg(shots[cur].name + " 焦距 = " + Math.round(v) + " mm（生效）"); },
+  editor: { name: shots[cur].name + " 焦距", rangeText: "1 – 500 mm", min: 1, max: 500,
+    get: function () { return shots[cur].focal; },
+    set: function (v) { shots[cur].focal = v; shotRender(); },
+    after: function (v) { showMsg(shots[cur].name + " 焦距 = " + Math.round(v) + " mm"); } }
 });
 document.getElementById("shot-clip-restore").addEventListener("click", function () {
   var s = shots[cur];
-  s.near = s.base.near; s.far = s.base.far; shotRender();
-  showMsg(s.name + " 裁剪已恢复保存值（近 " + s.near.toFixed(2) + " / 远 " + s.far.toFixed(1) + "）");
+  s.near = s.base.near; s.far = s.base.far; s.focal = s.base.focal; shotRender();
+  showMsg(s.name + " 已恢复保存值（近 " + s.near.toFixed(2) + " / 远 " + s.far.toFixed(1) + " / " + Math.round(s.focal) + "mm）");
 });
 
 /* ---- 步进移动：机身与看向点一起平移 ---- */
@@ -381,12 +461,13 @@ document.getElementById("rot-ok").addEventListener("click", function () {
 
 /* ---- CDP 测试钩子 ---- */
 window.__proto = {
-  state: function () { return { vp: vp, cur: cur, shot: shots[cur], msg: msgEl.textContent }; },
+  state: function () { return { vp: vp, cur: cur, shot: shots[cur], msg: msgEl.textContent, editorOpen: document.getElementById("editor").classList.contains("show") }; },
   nudge: function (axis) { document.querySelector('.nudge-btn[data-axis="' + axis + '"]').click(); },
   applyRot: function (v) { document.getElementById("rot-in").value = v; document.getElementById("rot-ok").click(); },
   selectShot: function (i) { var s = document.getElementById("shot-list"); s.value = String(i); s.dispatchEvent(new Event("change")); },
   restore: function () { document.getElementById("btn-restore").click(); },
-  restoreShotClip: function () { document.getElementById("shot-clip-restore").click(); }
+  restoreShotClip: function () { document.getElementById("shot-clip-restore").click(); },
+  editorSet: function (v) { document.getElementById("ed-in").value = v; document.getElementById("ed-apply").click(); }
 };
 </script>
 </body>
