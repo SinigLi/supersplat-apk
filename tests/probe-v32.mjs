@@ -109,18 +109,19 @@ try {
     check('edit row hidden initially', await evalJs(
         '(() => { const e = document.querySelector(".sd-shot-edit-row"); return !!e && e.hidden; })()'));
 
-    // ---- 2) v38：模式按钮+注释在视口组面板顶部，机位组不再有模式行 ----
+    // ---- 2) v39：视口组注释在最顶部、模式四钮紧随其下；机位组不再有模式行 ----
     const hint = await evalJs(`(() => {
         const modes = document.querySelector('.sd-vp-panel .sd-vp-modes');
         const h = document.querySelector('.sd-vp-panel .sd-dir-hint');
         const shotModes = document.querySelector('.sd-shot-panel .sd-cam-modes');
         if (!modes || !h) return null;
-        return { adjacent: h.previousElementSibling === modes,
+        return { hintFirst: h === h.parentNode.firstElementChild,
+                 modesAfterHint: modes.previousElementSibling === h,
                  adopted: modes.querySelectorAll('.sd-adopted').length,
                  shotModesRetired: !shotModes };
     })()`);
-    check('viewport panel: 4 mode buttons + hint; shot panel modes retired',
-        !!hint && hint.adjacent === true && hint.adopted === 4 && hint.shotModesRetired === true, JSON.stringify(hint));
+    check('viewport panel: hint on top, 4 mode btns below; shot modes retired',
+        !!hint && hint.hintFirst === true && hint.modesAfterHint === true && hint.adopted === 4 && hint.shotModesRetired === true, JSON.stringify(hint));
 
     // ---- 3) 引擎 API：renameShot ----
     const ids = await evalJs(`(() => { const d = window.__director;
