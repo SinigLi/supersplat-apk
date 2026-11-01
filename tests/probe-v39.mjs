@@ -219,6 +219,7 @@ try {
         d.updateShot(s.id, { focal: 120 });
         await new Promise(r2 => setTimeout(r2, 200));
         const fovLive = window.scene.camera.fov;
+        const viLive = d.getViewportInfo();
         const recLive = d.listShots().find(x => x.id === s.id);
         // 手势锁：pointerdown 被吞 + 提醒事件
         let blocked = false;
@@ -238,15 +239,16 @@ try {
         const exitR = d.exitShotView(true);
         await new Promise(r2 => setTimeout(r2, 200));
         const recExit = d.listShots().find(x => x.id === s.id);
-        return { r1, pinned, viewId, fovLive: Math.round(fovLive), recLiveFocal: Math.round(recLive.focal),
+        return { r1, pinned, viewId, fovLive: Math.round(fovLive), displayFov: Math.round(viLive.displayFov), recLiveFocal: Math.round(recLive.focal),
                  blocked, resetFocal: Math.round(recReset.focal), resetRoll: recReset.roll,
                  exitR, exitFocal: Math.round(recExit.focal), exitViewId: d.getShotViewId() };
     })()`);
     check('#5 enter pins camera to shot pose',
         view.r1 === 'ok' && view.pinned === true && view.viewId > 0, JSON.stringify(view));
-    check('#5 live edit: focal 120 applies to pinned camera fov',
-        Math.abs(view.fovLive - 2 * Math.atan((50 * Math.tan(85 * Math.PI / 360)) / 120) * 180 / Math.PI) < 1.5,
-        `fovLive=${view.fovLive}`);
+    const realFov = Math.round(2 * Math.atan((50 * Math.tan(85 * Math.PI / 360)) / 120) * 180 / Math.PI);
+    check('#5 live edit: focal 120 drives shot fov; camera shows zoomed-out display fov',
+        view.fovLive === view.displayFov && view.fovLive > realFov,
+        `fovLive=${view.fovLive} display=${view.displayFov} real=${realFov}`);
     check('#5 free-camera gesture swallowed + reminder fired',
         view.blocked === true, JSON.stringify(view.blocked));
     check('#5 resetShot returns to enter-time params (focal 80, roll 0)',

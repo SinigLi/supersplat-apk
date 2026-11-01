@@ -645,7 +645,19 @@ waitUI(function () {
       '</div>' +
       '<div class="sd-dir-row">' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="goto" title="进入该机位视角（再点退出并保存）">👁 查看</button>' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：按所选画幅从机位出 PNG">📷 渲染</button>' +
+      '</div>' +
+      '<div class="sd-dir-row sd-vp-cliprow">' +
+        '<span class="sd-dv-lab">画幅</span>' +
+        '<select class="sd-aspect-list" data-shot="aspect" title="照片画幅：视角里的白框即照片范围，白框外不会进照片">' +
+          '<option value="21:9">21:9 超宽</option>' +
+          '<option value="16:9">16:9 宽屏</option>' +
+          '<option value="4:3">4:3</option>' +
+          '<option value="1:1">1:1 方形</option>' +
+          '<option value="3:4">3:4 竖版</option>' +
+          '<option value="9:16">9:16 竖屏</option>' +
+          '<option value="9:21">9:21 超竖</option>' +
+        '</select>' +
       '</div>' +
       '<div class="sd-dir-row sd-vp-cliprow">' +
         '<span class="sd-dv-lab">裁剪</span>' +
@@ -697,6 +709,7 @@ waitUI(function () {
     const editInput = q(".sd-shot-edit");
     const btn = act => q('[data-shot="' + act + '"]');
     const elSNear = q("#sv-near"), elSFar = q("#sv-far"), elSFoc = q("#sv-foc");
+    const elAspect = q('[data-shot="aspect"]');
     const banner = q('[data-shot="viewbanner"]'), bannerName = q('[data-shot="viewname"]');
     const bGo = btn("goto"), bReset = btn("reset"), stepIn = q('[data-shot="step"]');
     const nudgeGrid = q(".sd-nudge"), rotGrid = q(".sd-rot-grid"), editHint = q('[data-shot="edithint"]');
@@ -746,6 +759,8 @@ waitUI(function () {
       }
       // 编辑门控：只有「正在查看的机位」可编辑
       [elSNear, elSFar, elSFoc].forEach(el => el.classList.toggle("sd-off", !active));
+      // v42：画幅只需选中机位即可改（不强制先进视角；渲染按机位画幅出图）
+      if (elAspect) { elAspect.disabled = !has(); elAspect.classList.toggle("sd-off", !has()); }
       [bReset, nudgeGrid, rotGrid].forEach(el => el.classList.toggle("sd-off", !active));
       if (stepIn) stepIn.disabled = !active;
       if (editHint) editHint.textContent = active
@@ -774,9 +789,18 @@ waitUI(function () {
       elSNear.querySelector(".sd-dv-v").textContent = f2s(near);
       elSFar.querySelector(".sd-dv-v").textContent = f1s(far);
       elSFoc.querySelector(".sd-dv-v").textContent = Math.round(foc) + " mm";
+      if (elAspect) elAspect.value = rec.aspect || "16:9";
     }
 
     if (list) list.onchange = () => { svFill(); syncViewUI(); showMsg("已选 " + (curShot() ? curShot().name : "")); };
+
+    // v42：画幅切换（机位独立参数，可撤销）；视角模式内即时生效（引擎每帧刷新安全框与显示焦距）
+    if (elAspect) elAspect.onchange = () => {
+      const d = window.__director; const id = curId();
+      if (!d || !id) return;
+      const r = d.updateShot(id, { aspect: elAspect.value });
+      if (r === "ok") showMsg("画幅已改为 " + elAspect.value + "（视角白框即照片范围，可撤销）");
+    };
 
     // 视角模式内引擎每次变更都广播：面板开着就跟随刷新（所见即所得）
     document.addEventListener("director-state", (ev) => {
@@ -879,10 +903,10 @@ waitUI(function () {
       const d = window.__director; const id = curId();
       if (!d || !id) { showMsg("先选一个机位"); return; }
       showMsg("正在渲染照片…");
-      const r = await d.renderShot(id, 1280, 720);
+      const r = await d.renderShot(id);   // v42：尺寸按机位画幅（长边 1280）
       if (r && r.ok) {
         showShotPreview(r);
-        showMsg("已渲染 " + r.name + "，可保存到相册 / 另存为 / 分享");
+        showMsg("已渲染 " + r.name + "（" + r.width + "×" + r.height + "），可保存到相册 / 另存为 / 分享");
       } else {
         showMsg("渲染失败：" + ((r && (r.detail || r.reason)) || "未知"));
       }

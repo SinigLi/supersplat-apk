@@ -214,6 +214,10 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-shot-panel { min-width:250px; }
 .sd-shot-panel .sd-shot-list { width:100%; min-height:28px; padding:6px 8px; border-radius:10px;
   background:rgba(30,41,59,.92); color:#e2e8f0; border:1px solid rgba(148,163,184,.28); font-size:13px; }
+/* v42：画幅下拉（机位独立参数；视角白框即照片范围） */
+.sd-aspect-list { flex:1; min-width:0; min-height:2.4rem; padding:0 8px; border-radius:.6rem;
+  background:rgba(30,41,59,.92); color:#e2e8f0; border:1px solid rgba(148,163,184,.28); font-size:1.05rem; }
+.sd-aspect-list:disabled { opacity:.45; }
 .sd-shot-panel .sd-shot-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px;
   font-size:13px !important; white-space:nowrap; }
 .sd-shot-panel .sd-shot-btn:disabled { opacity:.42; }
