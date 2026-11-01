@@ -54,7 +54,7 @@ waitUI(function () {
   };
 
   const DOCKS = [
-    { id:'file', label:'菜单', pos:'top',    groupIds:[], menuOptions:true,
+    { id:'file', label:'菜单', pos:'left',   groupIds:[], menuOptions:true,   // v39 #4: 菜单栏默认停靠左上角
       extra:[ {id:'bottom-toolbar-undo', ico:'↶', name:'撤销'}, {id:'bottom-toolbar-redo', ico:'↷', name:'重做'} ] },
     { id:'edit', label:'工具', pos:'bottom', groupIds:['xform'], dirBar:true,
       extra:[] },
@@ -418,47 +418,60 @@ waitUI(function () {
     return layer;
   }
 
-/* v38 面板代码（干净版）：视口组（全局相机）+ 机位组重写（按 prototype/cam-panel-proto.html v5 定稿）
- * 本文件整体替换 dock.js 里旧的 buildShotPanel 函数体，并配合 viewOptions 分组改动使用。
+/* v39 面板代码：按老板 2026-11-01 八条反馈重写（整文件重写规矩）
+ * #2 注释置顶/模式钮其下 #3 双击编辑+按住拖动 #5 机位视角模式 #7 三轴步进旋转
  */
 
-  /* ----- v38 通用：数值块（单击就地编辑 + 长按拖动粗调） -----
-   * 与原型 v5 一致：短按原地松手 → 块内 <b> 换 <input>（回车/失焦生效，无弹窗）；
-   * 按住 ≥220ms 且移动 >10px → 拖动模式，松手生效；pointercancel 按松手处理
-   * （真机快速点按常被系统判成滚动而改发 cancel，v5 真机教训）。
+  /* ----- v39 通用：数值块（双击就地编辑 + 按住拖动粗调） -----
+   * #3 防误触：单击不再触发。双击（两击 <320ms）→ 块内 <b> 换 <input>（回车/失焦生效）；
+   * 按住 ≥260ms 进入拖动模式（起算点重锚，避免跳值），松手生效；
+   * pointercancel 按松手处理（真机快速点按常被系统判成滚动而改发 cancel，v5 教训）。
    */
   function bindDragVal(el, cfg) {
-    var startX = 0, startV = 0, dragging = false, armed = false, pressT = 0, last = 0, moved = 0;
+    var startX = 0, startV = 0, dragging = false, armed = false, last = 0, moved = 0;
+    var holdTimer = 0, lastTap = 0, lastX = 0;
     var inp = el.querySelector(".sd-dv-in");
     el.addEventListener("pointerdown", function (e) {
       if (el.__editing) return;
-      startX = e.clientX; startV = cfg.get();
-      dragging = true; armed = false; pressT = Date.now(); moved = 0;
+      startX = e.clientX; startV = cfg.get(); lastX = e.clientX;
+      dragging = true; armed = false; moved = 0;
       try { el.setPointerCapture(e.pointerId); } catch (err) {}
+      if (Date.now() - lastTap < 320) { startEdit(); return; }   // 双击第二按 → 编辑
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(function () {
+        if (!dragging || el.__editing) return;
+        armed = true;
+        startX = lastX; startV = cfg.get();          // 从按住点起算，避免跳值
+        el.classList.add("sd-dv-drag");
+        try { if (navigator.vibrate) navigator.vibrate(20); } catch (err) {}
+      }, 260);
     });
     el.addEventListener("pointermove", function (e) {
       if (!dragging || el.__editing) return;
-      var dx = e.clientX - startX;
-      moved = Math.max(moved, Math.abs(dx));
-      if (!armed) {
-        if (Math.abs(dx) < 10 || Date.now() - pressT < 220) return;
-        armed = true; el.classList.add("sd-dv-drag");
-      }
-      var v = cfg.map(dx, startV);
+      moved = Math.max(moved, Math.abs(e.clientX - startX));
+      lastX = e.clientX;
+      if (!armed) return;
+      var v = cfg.map(e.clientX - startX, startV);
       v = Math.max(cfg.min, Math.min(cfg.max, v));
       cfg.set(v); last = v; cfg.render();
       e.preventDefault();
     });
     var up = function () {
       if (!dragging) return;
+      clearTimeout(holdTimer);
       dragging = false; el.classList.remove("sd-dv-drag");
-      if (armed) cfg.commit(last);
-      else if (moved < 10) startEdit();
+      if (armed) {
+        if (moved > 2) cfg.commit(last);             // 拖过才提交；原地按住不动 = 无变化
+      } else {
+        lastTap = Date.now();                        // 快速点按只记时，等第二击
+      }
       armed = false;
     };
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
     function startEdit() {
+      clearTimeout(holdTimer);
+      dragging = false; armed = false; el.classList.remove("sd-dv-drag");
       el.__editing = true; el.classList.add("sd-dv-edit");
       inp.value = String(Math.round(cfg.get() * 100) / 100);
       setTimeout(function () { inp.focus(); try { inp.select(); } catch (e) {} }, 40);
@@ -495,15 +508,14 @@ waitUI(function () {
     const dx = rec.target[0] - rec.pos[0], dy = rec.target[1] - rec.pos[1], dz = rec.target[2] - rec.pos[2];
     return Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI;
   };
-  // 数值块正被拖动/编辑时，引擎轮询不得回写覆盖（否则拖动值闪烁）
   const dvBusy = (els) => els.some(el => el && (el.__editing || el.classList.contains("sd-dv-drag")));
 
-  /* ----- v38 视口组：全局相机实时参数 + 模式按钮收养位 ----- */
+  /* ----- v39 视口组：#2 注释置顶，模式四钮在其下 ----- */
   function buildViewportPanel(wrap) {
     wrap.classList.add("sd-dir-panel", "sd-vp-panel");
     wrap.innerHTML =
-      '<div class="sd-dir-row sd-vp-modes"></div>' +
       '<div class="sd-dir-hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>' +
+      '<div class="sd-dir-row sd-vp-modes"></div>' +
       '<div class="sd-dir-row sd-vp-cliprow">' +
         '<span class="sd-dv-lab">裁剪</span>' +
         '<span class="sd-pill" data-vp="state">自动</span>' +
@@ -514,7 +526,7 @@ waitUI(function () {
         '<span class="sd-dv-lab">焦距</span>' +
         dvHtml("vp-foc", "焦距", "FOCAL", "sd-dv-foc", "1 – 500") +
       '</div>' +
-      '<div class="sd-dir-hint">单击数值就地编辑（回车/点别处生效）；长按约 0.3 秒拖动粗调，松手生效</div>' +
+      '<div class="sd-dir-hint">双击数值输入精确值；按住约 0.3 秒拖动粗调，松手生效（改动可撤销）</div>' +
       '<div class="sd-dir-row">' +
         '<button class="sd-dir-btn sd-shot-btn" data-vp="restore" title="裁剪回自动 + 焦距回 50mm">↺ 恢复默认</button>' +
       '</div>' +
@@ -541,15 +553,15 @@ waitUI(function () {
       const vi = d.getViewportInfo();
       q('[data-vp="pos"]').textContent = vi.pos.map(f2s).join(", ");
       q('[data-vp="tgt"]').textContent = vi.target.map(f2s).join(", ");
-      q('[data-vp="rot"]').textContent = f1s(vi.yaw) + "° / " + (vi.pitch >= 0 ? "+" : "") + f1s(vi.pitch) + "°";
+      const roll = vi.roll || 0;
+      q('[data-vp="rot"]').textContent = f1s(vi.yaw) + "° / " + (vi.pitch >= 0 ? "+" : "") + f1s(vi.pitch) + "° / " + (roll >= 0 ? "+" : "") + f1s(roll) + "°";
       if (dvBusy([elNear, elFar, elFoc])) return;   // 拖动/编辑中不动数值
       vp.focal = vi.focal;
       const cr = vi.clip;
       if (cr && cr.enabled) { vp.auto = false; vp.near = cr.near; vp.far = cr.far; }
-      else { vp.auto = true; vp.near = cr.near; vp.far = cr.far; }   // 自动时也同步显示当前自动值
+      else { vp.auto = true; vp.near = cr.near; vp.far = cr.far; }
       vpRender();
     }
-    // 拖动/编辑提交：手动裁剪即时下发引擎
     const vpSetClip = () => {
       const d = window.__director;
       if (!d || !d.setClipRange) return;
@@ -561,18 +573,18 @@ waitUI(function () {
     };
     bindDragVal(elNear, {
       get: () => vp.near, set: v => { vp.near = v; }, map: DV_CLIP_MAP, min: 0.01, max: 1e9, render: vpRender,
-      commit: v => { vpSetClip(); vpRender(); showMsg("已生效：近 = " + v.toFixed(2) + "（切换为手动）"); }
+      commit: v => { vpSetClip(); vpRender(); showMsg("已生效：近 = " + v.toFixed(2) + "（可撤销）"); }
     });
     bindDragVal(elFar, {
       get: () => vp.far, set: v => { vp.far = v; }, map: DV_CLIP_MAP, min: 0.1, max: 1e9, render: vpRender,
-      commit: () => { vpSetClip(); vpRender(); showMsg("已生效：远 = " + vp.far.toFixed(1) + "（切换为手动）"); }
+      commit: () => { vpSetClip(); vpRender(); showMsg("已生效：远 = " + vp.far.toFixed(1) + "（可撤销）"); }
     });
     bindDragVal(elFoc, {
       get: () => vp.focal, set: v => { vp.focal = v; }, map: DV_FOCAL_MAP, min: 1, max: 500, render: vpRender,
       commit: v => {
         const d = window.__director;
         if (d && d.setViewportFocal) d.setViewportFocal(v);
-        showMsg("已生效：焦距 = " + Math.round(v) + " mm");
+        showMsg("已生效：焦距 = " + Math.round(v) + " mm（可撤销）");
       }
     });
     const bRestore = q('[data-vp="restore"]');
@@ -580,27 +592,25 @@ waitUI(function () {
       e.stopPropagation();
       const d = window.__director;
       if (!d || !d.setClipRange) { showMsg("导演台模块未就绪"); return; }
+      if (d.getShotViewId && d.getShotViewId()) { showMsg("机位视角模式中：机位参数用机位组的「恢复默认」"); return; }
       d.setClipRange({ enabled: false });
       if (d.setViewportFocal) d.setViewportFocal(50);
       vp.auto = true; vp.focal = 50;
       vpInfo(); vpRender();
       showMsg("已恢复默认视口：自动裁剪 + 焦距 50mm");
     };
-    // 实时读数：面板展开时 300ms 一拍（拖动/编辑中暂停回写数值）
     setInterval(() => { if (wrap.classList.contains("sd-open")) vpInfo(); }, 300);
     wrap.__sdRefresh = () => { vpInfo(); };
     vpInfo();
     return wrap.querySelector(".sd-vp-modes");   // SS 模式按钮收养位
   }
 
-  /* ----- v38 机位组：每机位独立裁剪/焦距 + 步进移动 + 旋转 -----
-   * 旧 v20–v34 的双头滑轨/启用范围按钮退役：裁剪改为数值块（拖动+就地编辑），
-   * 范围语义 = 该机位自己的显示范围（全局手动裁剪由视口组承担）。
-   * 本机位块拖动/编辑中只改本地预览，提交时才 updateShot 落引擎。
-   */
+  /* ----- v39 机位组：#5 机位视角模式（查看↔退出、实时生效、恢复默认=进入时参数、
+   * 退出保存+还原视口）+ #7 三轴步进旋转（水平/俯仰/倾斜 ±，默认 3°）----- */
   function buildShotPanel(wrap) {
     wrap.classList.add("sd-dir-panel", "sd-shot-panel");
     wrap.innerHTML =
+      '<div class="sd-view-banner" data-shot="viewbanner" hidden>🎬 机位模式：<b data-shot="viewname"></b> · 调整即时生效</div>' +
       '<div class="sd-dir-row sd-shot-pick-row">' +
         '<select class="sd-shot-list" title="机位列表"></select>' +
         '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="rename" title="重命名选中的机位">✏️</button>' +
@@ -616,7 +626,7 @@ waitUI(function () {
         '<button class="sd-dir-btn sd-shot-btn" data-shot="remove" title="移除选中的机位">－ 移除</button>' +
       '</div>' +
       '<div class="sd-dir-row">' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="goto" title="查看机位：跳到选中机位（应用其裁剪/焦距）">👁 查看</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="goto" title="进入该机位视角（再点退出并保存）">👁 查看</button>' +
         '<button class="sd-dir-btn sd-shot-btn" data-shot="render" title="渲染照片：从选中机位出 PNG">📷 渲染</button>' +
       '</div>' +
       '<div class="sd-dir-row sd-vp-cliprow">' +
@@ -628,9 +638,9 @@ waitUI(function () {
         '<span class="sd-dv-lab">焦距</span>' +
         dvHtml("sv-foc", "焦距", "FOCAL", "sd-dv-foc", "1 – 500") +
       '</div>' +
-      '<div class="sd-dir-hint">本机位自己的参数（自动裁剪的机位显示当前自动值，一改就固定下来）</div>' +
+      '<div class="sd-dir-hint" data-shot="edithint">进入视角后才能编辑该机位参数（画面即机位视角）</div>' +
       '<div class="sd-dir-row">' +
-        '<button class="sd-dir-btn sd-shot-btn" data-shot="reset" title="裁剪/焦距回到保存该机位时的值">↺ 恢复默认</button>' +
+        '<button class="sd-dir-btn sd-shot-btn" data-shot="reset" title="回到进入视角时机位的样子">↺ 恢复默认</button>' +
       '</div>' +
       '<div class="sd-sect">步进移动（机身与看向点一起动，朝向不变）</div>' +
       '<div class="sd-dir-row">' +
@@ -646,11 +656,17 @@ waitUI(function () {
         '<button class="sd-nudge-btn" data-nudge="fwd" title="前移（朝看向方向）">前</button>' +
         '<button class="sd-nudge-btn" data-nudge="back" title="后移">后</button>' +
       '</div>' +
-      '<div class="sd-dir-row">' +
-        '<span class="sd-dv-lab">旋转</span>' +
-        '<input class="sd-num" data-shot="yaw" type="number" step="1" title="机位水平朝向角">' +
-        '<span class="sd-dv-lab">°</span>' +
-        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-shot="yaw-ok">应用</button>' +
+      '<div class="sd-sect">旋转（<input class="sd-num sd-num-mini" data-shot="astep" type="number" step="1" min="0.5" value="3" title="每次点按的旋转角度"> 度/次）</div>' +
+      '<div class="sd-rot-grid">' +
+        '<span class="sd-dv-lab">水平</span>' +
+        '<button class="sd-rot-btn" data-rot="yaw+" title="水平角 +">＋</button>' +
+        '<button class="sd-rot-btn" data-rot="yaw-" title="水平角 −">－</button>' +
+        '<span class="sd-dv-lab">俯仰</span>' +
+        '<button class="sd-rot-btn" data-rot="pitch+" title="俯仰角 +（抬头）">＋</button>' +
+        '<button class="sd-rot-btn" data-rot="pitch-" title="俯仰角 −（低头）">－</button>' +
+        '<span class="sd-dv-lab">倾斜</span>' +
+        '<button class="sd-rot-btn" data-rot="roll+" title="倾斜角 +（画面顺歪）">＋</button>' +
+        '<button class="sd-rot-btn" data-rot="roll-" title="倾斜角 −（画面逆歪）">－</button>' +
       '</div>' +
       '<div class="sd-sect">参数信息（只读 · 不常用）</div>' +
       '<div class="sd-kv"><span class="sd-dv-lab">位置</span><span class="sd-kv-v" data-sv="pos"></span></div>' +
@@ -663,7 +679,9 @@ waitUI(function () {
     const editInput = q(".sd-shot-edit");
     const btn = act => q('[data-shot="' + act + '"]');
     const elSNear = q("#sv-near"), elSFar = q("#sv-far"), elSFoc = q("#sv-foc");
-    // 拖动/编辑期间的本地预览值（提交才落引擎）
+    const banner = q('[data-shot="viewbanner"]'), bannerName = q('[data-shot="viewname"]');
+    const bGo = btn("goto"), bReset = btn("reset"), stepIn = q('[data-shot="step"]');
+    const nudgeGrid = q(".sd-nudge"), rotGrid = q(".sd-rot-grid"), editHint = q('[data-shot="edithint"]');
     const svPreview = { near: null, far: null, foc: null };
 
     function fill() {
@@ -685,13 +703,39 @@ waitUI(function () {
         list.value = keep;
       }
       const has = !!list.value;
-      ["remove", "goto", "render", "relocate", "reset"].forEach(a => { const b = btn(a); if (b) b.disabled = !has; });
+      ["remove", "render", "relocate"].forEach(a => { const b = btn(a); if (b) b.disabled = !has; });
       svFill();
+      syncViewUI();
     }
     const curId = () => { const v = list && list.value; return v ? Number(v) : 0; };
     const curShot = () => (window.__director ? (window.__director.listShots() || []).find(s => s.id === curId()) : null);
 
-    // 本机位参数块（裁剪/焦距显示机位自己的值；自动裁剪显示当前自动值）
+    // #5 机位视角模式的 UI 状态：横幅、查看↔退出按钮、编辑门控
+    function syncViewUI() {
+      const d = window.__director;
+      const viewId = d && d.getShotViewId ? d.getShotViewId() : 0;
+      const inView = !!viewId;
+      const active = inView && viewId === curId();
+      banner.hidden = !inView;
+      if (inView) {
+        const vs = (d.listShots() || []).find(s => s.id === viewId);
+        bannerName.textContent = vs ? vs.name : ("机位" + viewId);
+      }
+      if (bGo) {
+        bGo.textContent = active ? "⏹ 退出视角" : "👁 查看";
+        bGo.title = active ? "退出机位视角（保存调整并还原视口）" : "进入该机位视角";
+        bGo.disabled = !has() && !active;
+      }
+      // 编辑门控：只有「正在查看的机位」可编辑
+      [elSNear, elSFar, elSFoc].forEach(el => el.classList.toggle("sd-off", !active));
+      [bReset, nudgeGrid, rotGrid].forEach(el => el.classList.toggle("sd-off", !active));
+      if (stepIn) stepIn.disabled = !active;
+      if (editHint) editHint.textContent = active
+        ? "调整立即生效；「恢复默认」回到进入视角时的参数，退出时自动保存"
+        : (inView ? "当前查看的是其他机位，选中它再编辑" : "进入视角后才能编辑该机位参数（画面即机位视角）");
+    }
+    const has = () => !!list.value;
+
     function svFill() {
       const d = window.__director;
       const rec = curShot();
@@ -702,10 +746,9 @@ waitUI(function () {
       }
       q('[data-sv="pos"]').textContent = rec.pos.map(f2s).join(", ");
       q('[data-sv="tgt"]').textContent = rec.target.map(f2s).join(", ");
-      q('[data-sv="rot"]').textContent = f1s(shotYawOf(rec)) + "° / " + (shotPitchOf(rec) >= 0 ? "+" : "") + f1s(shotPitchOf(rec)) + "°";
-      const yawIn = q('[data-shot="yaw"]');
-      if (yawIn && document.activeElement !== yawIn) yawIn.value = Math.round(shotYawOf(rec));
-      if (dvBusy([elSNear, elSFar, elSFoc])) return;   // 拖动/编辑中不动数值
+      const roll = rec.roll || 0;
+      q('[data-sv="rot"]').textContent = f1s(shotYawOf(rec)) + "° / " + (shotPitchOf(rec) >= 0 ? "+" : "") + f1s(shotPitchOf(rec)) + "° / " + (roll >= 0 ? "+" : "") + f1s(roll) + "°";
+      if (dvBusy([elSNear, elSFar, elSFoc])) return;
       const cr = d.getClipRange ? d.getClipRange() : null;
       const near = svPreview.near != null ? svPreview.near : (rec.clip ? rec.clip.near : (cr ? cr.near : 0.1));
       const far = svPreview.far != null ? svPreview.far : (rec.clip ? rec.clip.far : (cr ? cr.far : 1000));
@@ -715,7 +758,19 @@ waitUI(function () {
       elSFoc.querySelector(".sd-dv-v").textContent = Math.round(foc) + " mm";
     }
 
-    if (list) list.onchange = () => { svFill(); showMsg("已选 " + (curShot() ? curShot().name : "")); };
+    if (list) list.onchange = () => { svFill(); syncViewUI(); showMsg("已选 " + (curShot() ? curShot().name : "")); };
+
+    // 视角模式内引擎每次变更都广播：面板开着就跟随刷新（所见即所得）
+    document.addEventListener("director-state", (ev) => {
+      if (ev.detail && ev.detail.what === "shot" && wrap.classList.contains("sd-open")) {
+        svPreview.near = svPreview.far = svPreview.foc = null;
+        fill();
+      }
+    });
+    // #5 手势锁提醒：模式内尝试自由移动视口 → 文字提醒先退出
+    document.addEventListener("director-shotview-blocked", () => {
+      showMsg("机位视角模式中：先点「⏹ 退出视角」再操作视口");
+    });
 
     const bAdd = btn("add");
     if (bAdd) bAdd.onclick = (e) => {
@@ -723,6 +778,7 @@ waitUI(function () {
       const d = window.__director;
       if (!d) { showMsg("导演台模块未就绪"); return; }
       const shot = d.addShot();
+      if (shot === "in-view") { showMsg("机位视角模式中：先退出视角再新增"); return; }
       fill();
       if (shot && list) list.value = String(shot.id);
       showMsg("已记录机位：" + (shot ? shot.name : "") + "（含裁剪/焦距）");
@@ -771,19 +827,32 @@ waitUI(function () {
       const d = window.__director; const id = curId();
       if (!d || !id) { showMsg("先选一个机位"); return; }
       const r = d.relocateShot(id);
+      if (r === "in-view") { showMsg("机位视角模式中：先退出视角再重定位"); return; }
       fill();
       if (list) list.value = String(id);
       showMsg(r === "ok" ? "已把该机位重定位到当前视角（含裁剪/焦距）" : "没有这个机位");
     };
 
-    const bGo = btn("goto");
+    // #5：查看 = 进入机位视角；正在查看时 = 退出并保存
     if (bGo) bGo.onclick = (e) => {
       e.stopPropagation();
       const d = window.__director; const id = curId();
-      if (!d || !id) { showMsg("先选一个机位"); return; }
-      const r = d.gotoShot(id);
-      svFill();
-      showMsg(r === "ok" ? "已切换到该机位（裁剪/焦距一并应用）" : "没有这个机位");
+      if (!d) { showMsg("导演台模块未就绪"); return; }
+      if (d.getShotViewId && d.getShotViewId()) {
+        if (d.getShotViewId() !== id) { showMsg("先选中正在查看的机位"); return; }
+        const r = d.exitShotView(true);
+        fill();
+        if (list) list.value = String(id);
+        showMsg(r === "ok" ? "已退出机位视角（调整已保存，可撤销）" : "已退出机位视角");
+        return;
+      }
+      if (!id) { showMsg("先选一个机位"); return; }
+      const r = d.enterShotView(id);
+      if (r === "ok") {
+        fill();
+        if (list) list.value = String(id);
+        showMsg("已进入机位视角：调整即时生效，移动视口会被提醒");
+      } else showMsg("没有这个机位");
     };
 
     const bRender = btn("render");
@@ -801,7 +870,6 @@ waitUI(function () {
       }
     };
 
-    const bReset = btn("reset");
     if (bReset) bReset.onclick = (e) => {
       e.stopPropagation();
       const d = window.__director; const id = curId();
@@ -810,13 +878,11 @@ waitUI(function () {
       svPreview.near = svPreview.far = svPreview.foc = null;
       fill();
       if (list) list.value = String(id);
-      if (r === "ok") {
-        const rec = curShot();
-        showMsg("已恢复保存值（" + (rec && rec.clip ? "近 " + f2s(rec.clip.near) + " / 远 " + f1s(rec.clip.far) : "自动裁剪") + " / " + (rec ? Math.round(rec.focal) : 50) + "mm）");
-      } else showMsg(r === "no-api" ? "引擎版本过旧，无恢复接口" : "没有这个机位");
+      if (r === "ok") showMsg("已恢复进入视角时的参数（可撤销）");
+      else showMsg(r === "no-api" ? "引擎版本过旧，无恢复接口" : "没有这个机位");
     };
 
-    // 本机位裁剪/焦距：拖动=本地预览，提交才 updateShot（只改机位数据，不动当前视口）
+    // 本机位裁剪/焦距：拖动=本地预览，提交才 updateShot（可撤销；视角模式内画面即时跟随）
     const svCommitClip = (near, far) => {
       const d = window.__director; const id = curId();
       if (!d || !id || !d.updateShot) { showMsg("导演台模块未就绪"); return; }
@@ -840,7 +906,7 @@ waitUI(function () {
         const rec = curShot();
         const farNow = (svPreview.far != null ? svPreview.far : (rec && rec.clip ? rec.clip.far : (window.__director && window.__director.getClipRange ? window.__director.getClipRange().far : 1000)));
         svCommitClip(v, Math.max(v * 2, farNow));
-        showMsg((rec ? rec.name : "机位") + " 近 = " + v.toFixed(2) + "（生效）");
+        showMsg((rec ? rec.name : "机位") + " 近 = " + v.toFixed(2) + "（可撤销）");
       }
     });
     bindDragVal(elSFar, {
@@ -856,7 +922,7 @@ waitUI(function () {
         const rec = curShot();
         const nearNow = (svPreview.near != null ? svPreview.near : (rec && rec.clip ? rec.clip.near : 0.05));
         svCommitClip(nearNow, v);
-        showMsg((rec ? rec.name : "机位") + " 远 = " + Math.max(nearNow * 2, v).toFixed(1) + "（生效）");
+        showMsg((rec ? rec.name : "机位") + " 远 = " + Math.max(nearNow * 2, v).toFixed(1) + "（可撤销）");
       }
     });
     bindDragVal(elSFoc, {
@@ -870,7 +936,7 @@ waitUI(function () {
         svPreview.foc = null;
         fill();
         if (list) list.value = String(id);
-        showMsg((curShot() ? curShot().name : "机位") + " 焦距 = " + Math.round(v) + " mm（生效）");
+        showMsg((curShot() ? curShot().name : "机位") + " 焦距 = " + Math.round(v) + " mm（可撤销）");
       }
     });
 
@@ -880,29 +946,30 @@ waitUI(function () {
         e.stopPropagation();
         const d = window.__director; const id = curId();
         if (!d || !id || !d.nudgeShot) { showMsg("导演台模块未就绪"); return; }
-        const step = Math.max(0.001, parseFloat(q('[data-shot="step"]').value) || 0.1);
+        const step = Math.max(0.001, parseFloat(stepIn.value) || 0.1);
         const r = d.nudgeShot(id, b.dataset.nudge, step);
-        svFill();
         const name = curShot() ? curShot().name : "机位";
         const cn = { left: "左移", right: "右移", up: "上移", down: "下移", fwd: "前移", back: "后移" }[b.dataset.nudge];
-        showMsg(r === "ok" ? name + " " + cn + " " + step + " 米（朝向不变）" : "没有这个机位");
+        showMsg(r === "ok" ? name + " " + cn + " " + step + " 米（可撤销）" : "没有这个机位");
       });
     });
 
-    // 旋转：引擎 rotateShot（水平朝向，俯仰/距离保持）
-    const yawOk = btn("yaw-ok");
-    if (yawOk) yawOk.onclick = (e) => {
-      e.stopPropagation();
-      const d = window.__director; const id = curId();
-      if (!d || !id || !d.rotateShot) { showMsg("导演台模块未就绪"); return; }
-      const v = parseFloat(q('[data-shot="yaw"]').value);
-      if (!isFinite(v)) { showMsg("旋转角需为数字"); return; }
-      const r = d.rotateShot(id, v);
-      svFill();
-      showMsg(r === "ok" ? (curShot() ? curShot().name : "机位") + " 水平朝向 → " + v + "°" : (r === "no-angle" ? "该机位视线垂直，无法转水平朝向" : "没有这个机位"));
-    };
+    // #7 三轴步进旋转：水平/俯仰/倾斜 ±（角度步进默认 3°可改）
+    wrap.querySelectorAll(".sd-rot-btn").forEach(b => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const d = window.__director; const id = curId();
+        if (!d || !id || !d.rotateShotAxis) { showMsg("导演台模块未就绪"); return; }
+        const astep = Math.max(0.5, parseFloat(q('[data-shot="astep"]').value) || 3);
+        const axis = b.dataset.rot.slice(0, -1);
+        const sign = b.dataset.rot.slice(-1) === "+" ? 1 : -1;
+        const r = d.rotateShotAxis(id, axis, sign * astep);
+        const name = curShot() ? curShot().name : "机位";
+        const cn = { yaw: "水平", pitch: "俯仰", roll: "倾斜" }[axis];
+        showMsg(r === "ok" ? name + " " + cn + "角 " + (sign > 0 ? "+" : "−") + astep + "°（可撤销）" : "没有这个机位");
+      });
+    });
 
-    // 每次展开都刷新（新增/删除后外部也可能变化）
     wrap.__sdRefresh = () => { fill(); };
     fill();
     return null;   // 机位组没有要收养的 SS 按钮
@@ -1221,6 +1288,20 @@ waitUI(function () {
     st.openPanels.clear();
   }
 
+  // v39 #1: system status-bar height for clamp floors. env() only resolves at
+  // used-value time, so measure a probe element instead of reading the var
+  // (custom properties return the raw token, parseFloat gives NaN).
+  let safeProbe = null;
+  function safeTopPx() {
+    if (!safeProbe) {
+      safeProbe = document.createElement('div');
+      safeProbe.style.cssText = 'position:fixed;top:env(safe-area-inset-top,0px);left:0;width:0;height:0;visibility:hidden;pointer-events:none;';
+      document.body.appendChild(safeProbe);
+    }
+    const v = parseFloat(getComputedStyle(safeProbe).top);
+    return isFinite(v) && v > 0 ? v : 0;
+  }
+
   function applyDockPos(st) {
     const { dock } = st;
     dock.className = 'sd-dock sd-' + st.pos + (st.collapsed ? ' sd-collapsed' : '');
@@ -1235,7 +1316,7 @@ waitUI(function () {
       // v28b: 行内 top 会盖过 dock.css 的避让规则，所以这里也要夹一次：
       // 拖动后的左右停靠区同样不能顶到工程页的保存/返回条。
       const barBottom = parseFloat(getComputedStyle(document.body).getPropertyValue('--sd-bar-bottom')) || 0;
-      const minTop = barBottom ? barBottom + 6 : 8;
+      const minTop = Math.max(barBottom ? barBottom + 6 : 8, safeTopPx());   // v39 #1 避让系统栏
       dock.style.top = Math.max(minTop, st.freePos.top) + 'px';
     }
   }
@@ -1298,7 +1379,7 @@ waitUI(function () {
       dock.style.right = 'auto'; dock.style.bottom = 'auto';
       const r = dock.getBoundingClientRect();
       const nl = Math.max(6, Math.min(e.clientX - r.width/2,  innerWidth  - r.width  - 6));
-      const nt = Math.max(6, Math.min(e.clientY - r.height/2, innerHeight - r.height - 6));
+      const nt = Math.max(Math.max(6, safeTopPx()), Math.min(e.clientY - r.height/2, innerHeight - r.height - 6));   // v39 #1
       dock.style.transform = 'none';
       dock.style.left = nl + 'px';
       dock.style.top  = nt + 'px';
@@ -1315,7 +1396,7 @@ waitUI(function () {
       const r = dock.getBoundingClientRect();
       const m = 8;
       if (st.pos==='bottom' || st.pos==='top') st.freePos = { left: Math.max(m, Math.min(free.left, innerWidth - r.width - m)) };
-      else st.freePos = { top: Math.max(m, Math.min(free.top, innerHeight - r.height - m)) };
+      else st.freePos = { top: Math.max(Math.max(m, safeTopPx()), Math.min(free.top, innerHeight - r.height - m)) };   // v39 #1
       closeAll(st);
       applyDockPos(st);
       dock.offsetHeight;

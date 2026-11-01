@@ -262,11 +262,16 @@ try {
         const g = Array.from(dock.querySelectorAll('.sd-grp-btn')).find(b => (b.querySelector('.sd-name') || {}).textContent === '机位');
         if (g) g.click();
         await new Promise(r => setTimeout(r, 400));
+        // v39：机位参数编辑门控在视角模式内，先进入再拖
+        window.__director.enterShotView(window.__director.listShots()[0].id);
+        await new Promise(r => setTimeout(r, 200));
         const w = document.querySelector('.sd-shot-panel');
         const nudgeN = w.querySelectorAll('.sd-nudge-btn').length;
         const has = {
-            step: !!w.querySelector('[data-shot="step"]'), yaw: !!w.querySelector('[data-shot="yaw"]'),
-            yawOk: !!w.querySelector('[data-shot="yaw-ok"]'), reset: !!w.querySelector('[data-shot="reset"]'),
+            step: !!w.querySelector('[data-shot="step"]'),
+            rotGrid: w.querySelectorAll('.sd-rot-btn').length === 6,   // v39：三轴旋转取代旧 yaw 文本框
+            astep: !!w.querySelector('[data-shot="astep"]'),
+            reset: !!w.querySelector('[data-shot="reset"]'),
             near: !!w.querySelector('#sv-near'), foc: !!w.querySelector('#sv-foc'),
             pos: !!w.querySelector('[data-sv="pos"]'),
             relocateRow: !!w.querySelector('[data-shot="relocate"]')
@@ -285,10 +290,12 @@ try {
         el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8, clientX: cx + 25, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 200));
         const f1 = d.listShots().find(x => x.id === id).focal;
+        d.exitShotView(true);   // v39：退出并保存，还原视口供后续套件
+        await new Promise(r => setTimeout(r, 200));
         return { nudgeN, has, focalChanged: Math.abs(f1 - f0) > 10, f0: Math.round(f0), f1: Math.round(f1) };
     })()`);
-    check('shot panel UI complete + sv focal drag updates shot',
-        ui && ui.nudgeN === 6 && ui.has.step && ui.has.yaw && ui.has.yawOk && ui.has.reset &&
+    check('shot panel UI complete (v39 rot grid) + sv focal drag updates shot',
+        ui && ui.nudgeN === 6 && ui.has.step && ui.has.rotGrid && ui.has.astep && ui.has.reset &&
         ui.has.near && ui.has.foc && ui.has.pos && ui.has.relocateRow && ui.focalChanged,
         JSON.stringify(ui));
 
