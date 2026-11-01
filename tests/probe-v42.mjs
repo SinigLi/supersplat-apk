@@ -90,8 +90,8 @@ try {
     check('director ready', await waitFor('!!window.__director', 60, 500));
     check('dock ready', await waitFor('document.body.classList.contains("sd-docks-ready")', 60, 500));
     const ver = await evalJs('window.__directorVer || "none"');
-    check('engine version gate', ver === 'v42b-frame-bars', 'got=' + ver);
-    if (ver !== 'v42b-frame-bars') throw new Error('stale page: ' + ver);
+    check('engine version gate', ver === 'v43-moyutai', 'got=' + ver);
+    if (ver !== 'v43-moyutai') throw new Error('stale page: ' + ver);
 
     // 清场
     await evalJs(`(() => { const d = window.__director;

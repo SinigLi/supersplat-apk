@@ -44,6 +44,16 @@ for (const e of fs.readdirSync(SRC, { withFileTypes: true })) {
         continue;
     }
     fs.copyFileSync(s, d);
+    // v43 品牌：依赖包里的导出查看器启动页标题（源在 node_modules，改了会丢）——同步时替换
+    if (e.name === 'index.js') {
+        let body = fs.readFileSync(d, 'utf8');
+        const n = (body.match(/SuperSplat Viewer/g) || []).length;
+        if (n) {
+            body = body.split('SuperSplat Viewer').join('摸鱼台 Viewer');
+            fs.writeFileSync(d, body);
+            log.push('brand ' + n + 'x SuperSplat Viewer → 摸鱼台 Viewer');
+        }
+    }
     log.push('file ' + e.name + ' (' + fs.statSync(s).size + ' B)');
 }
 

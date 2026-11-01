@@ -1,4 +1,4 @@
-// SuperSplat Mobile Override Layer (v0.1)
+// 摸鱼台（SuperSplat fork）Mobile Override Layer (v0.1)
 // 断点检测挂 body.mobile-mode + hover 菜单转点击 (rule: hover-vs-tap)
 (function () {
     'use strict';

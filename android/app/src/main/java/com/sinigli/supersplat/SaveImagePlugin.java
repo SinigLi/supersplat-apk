@@ -94,7 +94,7 @@ public class SaveImagePlugin extends Plugin {
                 values.put(MediaStore.Images.Media.DISPLAY_NAME, displayName);
                 values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
                 values.put(MediaStore.Images.Media.RELATIVE_PATH,
-                        Environment.DIRECTORY_PICTURES + "/SuperSplat");
+                        Environment.DIRECTORY_PICTURES + "/摸鱼台");
                 values.put(MediaStore.Images.Media.IS_PENDING, 1);
 
                 uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
@@ -118,9 +118,9 @@ public class SaveImagePlugin extends Plugin {
             } else {
                 File dir = new File(
                         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                        "SuperSplat");
+                        "摸鱼台");
                 if (!dir.exists() && !dir.mkdirs()) {
-                    call.reject("could not create Pictures/SuperSplat");
+                    call.reject("could not create Pictures/Moyutai");
                     return;
                 }
                 File file = new File(dir, displayName);

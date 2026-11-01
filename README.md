@@ -1,4 +1,9 @@
-# SuperSplat APK — 导演台分支（移动端编辑器）
+# 摸鱼台（Moyutai）
+
+> 3D 高斯泼溅的移动端导演台。基于 PlayCanvas SuperSplat 深度改造：机位系统、人偶动画、
+> 画幅取景、原生相册保存等均为自研扩展；上游引擎能力（泼溅编辑/渲染管线）持续同步。
+> Android 包名保持 `com.sinigli.supersplat`（覆盖安装兼容），应用显示名：摸鱼台。
+
 
 SuperSplat 3.5.2 fork 的 Capacitor 7 Android 壳 + 移动端 UI 改造层 + 内置「导演台」（人偶 / 动作 / 3D 游标 / 染色 / 机位）。
 

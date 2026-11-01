@@ -1,4 +1,4 @@
-/* SuperSplat Dock Overhaul — 移动端分组工具栏
+/* 摸鱼台（SuperSplat fork）Dock Overhaul — 移动端分组工具栏
  * 当前版本：v11（2026-10-17 交互重构：撤销/重做上顶栏，测量入右栏，底栏五连=选择/游标/删除/变换/导演台，场景入口移入导演台面板）
  *
  * 架构总览（详见仓库 DOCK.md）：
@@ -303,7 +303,7 @@ waitUI(function () {
   /* 渲染结果预览层。
    * 三个动作都走原生：WebView 会静默忽略 <a download>，长按我们自己的浮层
    * 也不会弹系统保存菜单。
-   *   保存到相册 → SaveImage.save   （直接进 Pictures/SuperSplat）
+   *   保存到相册 → SaveImage.save   （直接进 Pictures/摸鱼台）
    *   另存为     → SaveImage.saveAs （系统文件选择器，用户挑目录）
    *   分享       → SaveImage.share  （系统分享面板）
    */
@@ -384,7 +384,7 @@ waitUI(function () {
     btnSave.onclick = function(ev){
       ev.stopPropagation();
       guard(btnSave, "保存中…", "✓ 已存相册", "保存失败", "save", function(out){
-        showMsg("已保存到相册：Pictures/SuperSplat/" + out.name);
+        showMsg("已保存到相册：Pictures/摸鱼台/" + out.name);
       });
     };
 

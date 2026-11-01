@@ -1,4 +1,4 @@
-/* SuperSplat APK —— 工程管理界面层（双页 UI）
+/* 摸鱼台（SuperSplat fork）APK —— 工程管理界面层（双页 UI）
  *
  *   工程页（全屏）↔ 编辑器页（原 SuperSplat 场景，不动其布局）
  *

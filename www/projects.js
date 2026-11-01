@@ -1,4 +1,4 @@
-/* SuperSplat APK —— 工程管理（pure logic + 存储适配）
+/* 摸鱼台（SuperSplat fork）APK —— 工程管理（pure logic + 存储适配）
  *
  * 存储布局 v29（App 私有目录 Directory.Data，免权限）：
  *   projects/<名>/project.json          ← 纯状态（几 KB），保存/打开都只动它
