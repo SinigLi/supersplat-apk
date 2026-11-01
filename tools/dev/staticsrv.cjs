@@ -23,6 +23,8 @@ const MIME = {
 };
 
 http.createServer((req, res) => {
+  req.on('error', () => { try { res.destroy(); } catch {} });   // 浏览器中断连接时不崩进程
+  res.on('error', () => {});
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p === '/') p = '/index.html';
   const file = path.join(ROOT, p);
@@ -38,3 +40,4 @@ http.createServer((req, res) => {
     res.end(data);
   });
 }).listen(PORT, '127.0.0.1', () => console.log(`serving ${ROOT} on http://127.0.0.1:${PORT}`));
+process.on('uncaughtException', e => console.error('srv swallowed:', e.message));   // ECONNRESET 兜底

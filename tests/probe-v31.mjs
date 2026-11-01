@@ -176,7 +176,7 @@ try {
         const upE = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
         dn(cx); await new Promise(r2 => setTimeout(r2, 40)); upE(cx);   // v40：第一击轻点只记时
         await new Promise(r2 => setTimeout(r2, 60));
-        dn(cx); await new Promise(r2 => setTimeout(r2, 400));           // 第二击按住 ≥260ms → 拖动模式
+        dn(cx); await new Promise(r2 => setTimeout(r2, 500));           // 第二击按住 ≥260ms → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + 60, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
         upE(cx + 60);

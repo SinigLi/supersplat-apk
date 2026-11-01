@@ -82,7 +82,7 @@ async function dragBlock(sel, dx) {
         const up = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
         dn(cx); await new Promise(r2 => setTimeout(r2, 40)); up(cx);   // 第一击：只记时
         await new Promise(r2 => setTimeout(r2, 60));
-        dn(cx); await new Promise(r2 => setTimeout(r2, 400));          // 第二击按住 ≥260ms → 拖动模式
+        dn(cx); await new Promise(r2 => setTimeout(r2, 500));          // 第二击按住 ≥260ms → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + ${dx}, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
         up(cx + ${dx});
@@ -211,7 +211,7 @@ try {
         const rec = d.listShots().find(x => x.id === s.id);
         // 进入视角
         const r1 = d.enterShotView(s.id);
-        await new Promise(r2 => setTimeout(r2, 400));   // 等一帧应用 poseOverride
+        await new Promise(r2 => setTimeout(r2, 500));   // 等一帧应用 poseOverride
         const cam = window.scene.camera.mainCamera.getPosition();
         const pinned = Math.hypot(cam.x - rec.pos[0], cam.y - rec.pos[1], cam.z - rec.pos[2]) < 0.05;
         const viewId = d.getShotViewId();

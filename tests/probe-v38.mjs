@@ -84,7 +84,7 @@ async function dragBlock(sel, dx) {
         const up = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
         dn(cx); await new Promise(r2 => setTimeout(r2, 40)); up(cx);   // 第一击：只记时
         await new Promise(r2 => setTimeout(r2, 60));
-        dn(cx); await new Promise(r2 => setTimeout(r2, 400));          // 第二击按住 ≥260ms → 拖动模式
+        dn(cx); await new Promise(r2 => setTimeout(r2, 500));          // 第二击按住 ≥260ms → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + ${dx}, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
         up(cx + ${dx});
@@ -291,7 +291,7 @@ try {
         const upE = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8, clientX: x, clientY: cy, bubbles: true }));
         dn(cx); await new Promise(r2 => setTimeout(r2, 40)); upE(cx);   // 第一击
         await new Promise(r2 => setTimeout(r2, 60));
-        dn(cx); await new Promise(r2 => setTimeout(r2, 400));           // 第二击按住 → 拖动模式
+        dn(cx); await new Promise(r2 => setTimeout(r2, 500));           // 第二击按住 → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 8, clientX: cx + 25, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
         upE(cx + 25);
