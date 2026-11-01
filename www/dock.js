@@ -427,23 +427,26 @@ waitUI(function () {
    * 第二击按住 ≥260ms → 拖动模式（起算点重锚，避免跳值），松手生效。
    * 单击长按不再触发拖动（老板 v40 反馈：必须双击长按才起效）。
    * pointercancel 按松手处理（真机快速点按常被系统判成滚动而改发 cancel，v5 教训）。
+   * v41：touch-action 改 pan-y，上下滑动放行给面板（老板 v41 反馈：数值框不能挡滚动）——
+   * 指针捕获推迟到拖动武装时才加；武装后 touchmove preventDefault 锁滚动；
+   * 纵向位移 >10px 的取消视为滚动面板，不算第二击。
    */
   function bindDragVal(el, cfg) {
-    var startX = 0, startV = 0, dragging = false, armed = false, last = 0, moved = 0;
+    var startX = 0, startY = 0, startV = 0, dragging = false, armed = false, last = 0, moved = 0, movedY = 0;
     var holdTimer = 0, lastTap = 0, lastX = 0;
     var inp = el.querySelector(".sd-dv-in");
     el.addEventListener("pointerdown", function (e) {
       if (el.__editing) return;
-      startX = e.clientX; startV = cfg.get(); lastX = e.clientX;
-      dragging = true; armed = false; moved = 0;
-      try { el.setPointerCapture(e.pointerId); } catch (err) {}
-      // v40：第一击只记时；只有双击的第二击按住才可能进入拖动
+      startX = e.clientX; startY = e.clientY; startV = cfg.get(); lastX = e.clientX;
+      dragging = true; armed = false; moved = 0; movedY = 0;
+      // v41：down 不再捕获指针（否则整块吃掉面板滚动）；武装时才捕获
       if (Date.now() - lastTap >= 320) return;
       clearTimeout(holdTimer);
       holdTimer = setTimeout(function () {
         if (!dragging || el.__editing) return;
         armed = true;
         startX = lastX; startV = cfg.get();          // 从按住点起算，避免跳值
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
         el.classList.add("sd-dv-drag");
         try { if (navigator.vibrate) navigator.vibrate(20); } catch (err) {}
       }, 260);
@@ -451,6 +454,7 @@ waitUI(function () {
     el.addEventListener("pointermove", function (e) {
       if (!dragging || el.__editing) return;
       moved = Math.max(moved, Math.abs(e.clientX - startX));
+      movedY = Math.max(movedY, Math.abs(e.clientY - startY));
       lastX = e.clientX;
       if (!armed) return;
       var v = cfg.map(e.clientX - startX, startV);
@@ -458,12 +462,18 @@ waitUI(function () {
       cfg.set(v); last = v; cfg.render();
       e.preventDefault();
     });
+    // v41：武装后锁滚动（touch-action 在手势开始时已定，中途只能 preventDefault）
+    el.addEventListener("touchmove", function (e) {
+      if (dragging && armed) e.preventDefault();
+    }, { passive: false });
     var up = function () {
       if (!dragging) return;
       clearTimeout(holdTimer);
       dragging = false; el.classList.remove("sd-dv-drag");
       if (armed) {
         if (moved > 2) cfg.commit(last);             // 拖过才提交；原地按住不动 = 无变化
+      } else if (movedY > 10) {
+        lastTap = 0;                                  // v41：纵向滑动 = 滚动面板，不算点击
       } else {
         var t = Date.now();
         if (t - lastTap < 320) startEdit();          // 第二击快速松手 → 编辑
@@ -473,6 +483,10 @@ waitUI(function () {
     };
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
+    el.addEventListener("pointerleave", function () {
+      // v41：未武装时滑出控件（无指针捕获）按放弃处理，避免残留计时误开编辑
+      if (dragging && !armed) { clearTimeout(holdTimer); dragging = false; lastTap = 0; }
+    });
     function startEdit() {
       clearTimeout(holdTimer);
       dragging = false; armed = false; el.classList.remove("sd-dv-drag");
@@ -530,7 +544,7 @@ waitUI(function () {
         '<span class="sd-dv-lab">焦距</span>' +
         dvHtml("vp-foc", "焦距", "FOCAL", "sd-dv-foc", "1 – 500") +
       '</div>' +
-      '<div class="sd-dir-hint">双击数值输入精确值；双击后第二击按住拖动粗调，松手生效（改动可撤销）</div>' +
+      '<div class="sd-dir-hint">双击数值输入精确值；双击后第二击按住拖动粗调，松手生效（改动可撤销）；上下滑动不误触</div>' +
       '<div class="sd-dir-row">' +
         '<button class="sd-dir-btn sd-shot-btn" data-vp="restore" title="裁剪回自动 + 焦距回 50mm">↺ 恢复默认</button>' +
       '</div>' +

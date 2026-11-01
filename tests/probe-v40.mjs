@@ -117,6 +117,10 @@ try {
     check('editor ready', await waitFor('!!window.scene', 100, 500));
     check('director ready', await waitFor('!!window.__director', 60, 500));
     check('dock ready', await waitFor('document.body.classList.contains("sd-docks-ready")', 60, 500));
+    // v41 门禁：页面必须报当前引擎版本，否则连到了旧标签页（避免拿旧代码假失败）
+    const ver = await evalJs('window.__directorVer || "none"');
+    check('engine version gate', ver === 'v41-shotbody-behind', 'got=' + ver);
+    if (ver !== 'v41-shotbody-behind') throw new Error('stale page: ' + ver);
 
     // 清场：删掉历史机位
     await evalJs(`(() => { const d = window.__director;
@@ -144,16 +148,19 @@ try {
             num: ratio('.sd-num'),
             nudge: ratio('.sd-shot-panel .sd-nudge-btn'),
             rot: ratio('.sd-shot-panel .sd-rot-btn'),
+            compact24: css.includes('min-height:2.4rem'),
             base31: css.includes('min-height:31px'),
-            vp31: css.includes('min-height:3.1rem'),
-            oldGone: !css.includes('min-height:4.5rem') && !css.includes('min-height:4.4rem')
+            noZoom: css.includes('text-size-adjust:100%'),
+            oldGone: !css.includes('min-height:4.5rem') && !css.includes('min-height:4.4rem') &&
+                     !css.includes('min-height:3.15rem') && !css.includes('min-height:3.1rem')
         };
     })()`);
-    check('A control heights shrunk ~30% (was 4.4-4.5rem / 44px)',
-        heights.num >= 2.6 && heights.num <= 3.0 &&
-        heights.nudge >= 3.0 && heights.nudge <= 3.3 &&
-        heights.rot >= 2.9 && heights.rot <= 3.3 &&
-        heights.base31 === true && heights.vp31 === true && heights.oldGone === true, JSON.stringify(heights));
+    check('A control heights compact v41 (2.4rem band, font-zoom locked)',
+        heights.num >= 2.2 && heights.num <= 2.6 &&
+        heights.nudge >= 2.2 && heights.nudge <= 2.6 &&
+        heights.rot >= 2.2 && heights.rot <= 2.6 &&
+        heights.compact24 === true && heights.base31 === true &&
+        heights.noZoom === true && heights.oldGone === true, JSON.stringify(heights));
 
     // ---- B：单击长按不拖动；双击长按才拖动 ----
     const single = await singleHoldDrag('#vp-near', 500, 60);
@@ -163,33 +170,31 @@ try {
     const dbl = await dblHoldDrag('#vp-near', 400, 60);
     check('B double-tap-hold arms drag', /sd-dv-drag/.test(dbl.clsMid), JSON.stringify(dbl));
 
-    // ---- C：自机位白框隐藏（近裁剪≈0 时 <2m 的机位标记必须隐藏） ----
-    // 场景构造：addShot 后 enter→nudge fwd 30→exit（discard）→ 相机停在原点，标记在 30m 外
+    // ---- C：机位白框整体放在机位视角后方（v41 规则，取代 v40 自机位隐藏） ----
     const marker = await evalJs(`(async () => {
         const d = window.__director;
         const s = d.addShot();
-        d.enterShotView(s.id);            // 相机钉到机位
-        d.nudgeShot(s.id, 'fwd', 30);     // 机位推到视线前方 30m
-        d.exitShotView(false);            // 丢弃退出：相机回到进入时的位姿（距标记 30m）
-        await new Promise(r => setTimeout(r, 300));
         const m = window.scene.app.root.findByName('shot-marker-' + s.id);
         if (!m) return { err: 'no-marker-entity' };
-        // 近裁剪≈0：旧逻辑下 30m 外的标记可见
-        d.setClipRange({ enabled: true, near: 0.001, far: 100 });
+        const vis = m.findByName('vis');
+        if (!vis) return { err: 'no-vis-group' };
+        const eye = m.getPosition();
+        const fwd = m.forward;                          // 机位视线方向
+        const bp = vis.getPosition();
+        const dot = (bp.x - eye.x) * fwd.x + (bp.y - eye.y) * fwd.y + (bp.z - eye.z) * fwd.z;
+        const dist = Math.sqrt((bp.x-eye.x)**2 + (bp.y-eye.y)**2 + (bp.z-eye.z)**2);
+        const behindShotAxis = dot < 0;
+        // 远观仍可见（nudge 把机位推远 30m，探针相机留在原地）
+        d.nudgeShot(s.id, 'fwd', 30);
         await new Promise(r => setTimeout(r, 400));
-        const farVisible = m.enabled;
-        // 拉回 1.5m（<2m）：自机位规则必须隐藏
-        d.nudgeShot(s.id, 'back', 28.5);
-        await new Promise(r => setTimeout(r, 400));
-        const m2 = window.scene.app.root.findByName('shot-marker-' + s.id);
-        const nearHidden = !m2.enabled;   // nudge 重建了标记实体，必须重查
-        // 清理：删机位、关手动裁剪
+        const m3 = window.scene.app.root.findByName('shot-marker-' + s.id);
+        const farVisible = !!(m3 && m3.enabled);
         d.removeShot(s.id);
-        d.setClipRange({ enabled: false });
-        return { farVisible, nearHidden };
+        return { behindShotAxis, dist: +dist.toFixed(2), farVisible };
     })()`);
-    check('C self-shot marker hidden within 2m even at near≈0',
-        marker.farVisible === true && marker.nearHidden === true, JSON.stringify(marker));
+    check('C shot body sits behind its own view axis (never blocks viewport)',
+        marker.behindShotAxis === true && marker.dist >= 1.4 && marker.dist <= 1.8 &&
+        marker.farVisible === true, JSON.stringify(marker));
 
     // ---- 无异常 ----
     const errs = logs.filter(l => /EXC|Uncaught|Cannot read|is not a function/.test(l));

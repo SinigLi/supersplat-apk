@@ -1,7 +1,7 @@
 ﻿/* SuperSplat Dock Overhaul v5 鈥?鏍峰紡锛坮em 鐩稿鍗曚綅锛氭牴瀛楀彿璺熷睆瀹借蛋锛屾崲璁惧涓嶈窇鏍凤級 */
 html { font-size: clamp(13px, 4.2vw, 18px); }
 /* 鎵嬪娍璇Е闃叉姢锛氱椤甸潰绾х缉鏀?涓嬫媺鍒锋柊/闀挎寜閫変腑锛岀敾甯冩墜鍔垮叏浜ょ粰 SS 鑷繁澶勭悊 */
-html, body { overscroll-behavior:none; touch-action:manipulation; }
+html, body { overscroll-behavior:none; touch-action:manipulation; -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 body { -webkit-user-select:none; user-select:none; }
 body canvas, #application-canvas { touch-action:none !important; }
 .sd-dock, .sd-sub-wrap, .sd-sheet-header, .sd-back-btn { touch-action:manipulation; }
@@ -228,14 +228,14 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-cur-btn .sd-txt { font-size:14px; color:#e2e8f0; white-space:nowrap; }
 /* v32 机位面板：机位行（下拉+改名/新增小钮）、内联改名行（模式行已并入 v38 视口组） */
 .sd-shot-pick-row { gap:6px; }
-.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; min-height:3.15rem; }
+.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; min-height:2.4rem; }
 /* v33 老板反馈加大到 3 倍后 v34 实机反馈太大：缩回一半（7.5rem → 3.75rem，约 67px）。
  * width/height 必须 !important —— .sd-shot-btn 基础规则的 width:auto !important 会压掉普通声明 */
 .sd-shot-panel .sd-shot-btn.sd-shot-mini { flex:0 0 auto; width:3.75rem !important; height:3.75rem !important; padding:0 !important;
   justify-content:center; font-size:20px !important; }
 .sd-shot-edit-row { gap:6px; }
 .sd-shot-edit-row[hidden] { display:none; }
-.sd-shot-edit { flex:1; min-width:0; min-height:3.15rem; background:rgba(30,41,59,.92); color:#e2e8f0;
+.sd-shot-edit { flex:1; min-width:0; min-height:2.4rem; background:rgba(30,41,59,.92); color:#e2e8f0;
   border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 12px; font-size:14px; }
 
 /* v32 设置页透明度滑条 */
@@ -309,9 +309,9 @@ body.sd-has-bar .sd-dock.sd-right {
 .sd-dv-lab { flex:0 0 auto; font-size:1.1rem; color:#94a3b8; }
 .sd-dv { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center;
   background:rgba(30,41,59,.92); border:1px solid rgba(148,163,184,.35); border-radius:.6rem;
-  padding:.35rem .3rem .3rem; text-align:center; touch-action:none; user-select:none; }
+  padding:.2rem .25rem .2rem; text-align:center; touch-action:pan-y; user-select:none; }
 .sd-dv-t { font-size:.9rem; letter-spacing:.12em; color:#94a3b8; }
-.sd-dv-v { font-size:1.3rem; color:#e2e8f0; font-weight:400; line-height:1.25; }
+.sd-dv-v { font-size:1.1rem; color:#e2e8f0; font-weight:400; line-height:1.25; }
 .sd-dv-r { font-size:.8rem; color:#64748b; line-height:1.2; }
 .sd-dv-near { border-bottom:.2rem solid #4da3ff; }
 .sd-dv-far  { border-bottom:.2rem solid #26b333; }
@@ -319,7 +319,7 @@ body.sd-has-bar .sd-dock.sd-right {
 .sd-dv-drag { background:#243040; border-color:#4da3ff; }
 .sd-dv-edit { border-color:#4da3ff; background:#243040; }
 .sd-dv-in { display:none; width:100%; min-width:0; background:transparent; border:none; outline:none;
-  font:inherit; font-size:1.3rem; color:#fff; text-align:center; padding:0; margin:0; }
+  font:inherit; font-size:1.1rem; color:#fff; text-align:center; padding:0; margin:0; }
 .sd-dv-edit .sd-dv-v { display:none; }
 .sd-dv-edit .sd-dv-in { display:block; }
 .sd-pill { flex:0 0 auto; font-size:1rem; border-radius:999px; padding:.2rem .8rem;
@@ -332,16 +332,16 @@ body.sd-has-bar .sd-dock.sd-right {
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; }
 .sd-sect { font-size:1rem; color:#8a919c; letter-spacing:.05em; padding:.8rem 0 0; margin-top:.4rem;
   border-top:1px dashed rgba(148,163,184,.25); }
-.sd-num { flex:1; min-width:0; min-height:2.8rem; background:#1e293b; color:#e2e8f0;
-  border:1px solid rgba(148,163,184,.35); border-radius:.6rem; padding:.4rem .6rem;
-  font:1.05rem ui-monospace,Consolas,monospace; }
+.sd-num { flex:1; min-width:0; min-height:2.4rem; background:#1e293b; color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.35); border-radius:.6rem; padding:.3rem .5rem;
+  font:1rem ui-monospace,Consolas,monospace; }
 .sd-nudge { display:grid; grid-template-columns:repeat(6,1fr); gap:.5rem; }
-.sd-nudge-btn { min-height:3.15rem; font-size:1.2rem; padding:0; background:rgba(30,41,59,.92);
+.sd-nudge-btn { min-height:2.4rem; font-size:1.05rem; padding:0; background:rgba(30,41,59,.92);
   border:1px solid rgba(148,163,184,.35); border-radius:.6rem; color:#e2e8f0; }
 .sd-nudge-btn:active { background:#2563eb; color:#fff; }
 /* v38：视口面板也用整行按钮/提示（v9c 的 2.25rem 紧凑规则只该管图标钮） */
 .sd-vp-panel .sd-dir-hint, .sd-shot-panel .sd-dir-hint { flex:none; font-size:1.05rem; color:#8b96a5; padding:.2rem 2px; line-height:1.5; }
-.sd-vp-panel .sd-dir-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px; min-height:3.1rem; justify-content:center; }
+.sd-vp-panel .sd-dir-btn { width:auto !important; flex:1 1 0; padding:0 8px !important; gap:6px; min-height:2.4rem; justify-content:center; }
 
 /* ===== v39：系统栏避让 + 菜单栏左上停靠 + 机位视角模式 ===== */
 :root { --sd-safe-top: env(safe-area-inset-top, 0px); }
@@ -350,14 +350,14 @@ body:not(.sd-has-bar) .sd-dock[data-dock="file"] {
   top: calc(env(safe-area-inset-top, 0px) + 10px); transform: none;
 }
 /* v39 #5：机位视角模式横幅 + 编辑门控置灰 */
-.sd-view-banner { flex:none; padding:.8rem 1rem; border-radius:.8rem; background:rgba(37,99,235,.35);
-  border:1px solid rgba(96,165,250,.5); color:#bfdbfe; font-size:1.2rem; }
+.sd-view-banner { flex:none; padding:.45rem .8rem; border-radius:.7rem; background:rgba(37,99,235,.35);
+  border:1px solid rgba(96,165,250,.5); color:#bfdbfe; font-size:1.05rem; }
 .sd-view-banner b { color:#fff; }
 .sd-off { opacity:.45; pointer-events:none; filter:saturate(.4); }
 /* v39 #7：三轴步进旋转（水平/俯仰/倾斜 各 +−） */
 .sd-rot-grid { display:grid; grid-template-columns:4.2rem 1fr 1fr; gap:.5rem; align-items:center; }
 .sd-rot-grid .sd-dv-lab { text-align:left; }
-.sd-rot-btn { min-height:3.1rem; font-size:1.2rem; padding:0; background:rgba(30,41,59,.92);
+.sd-rot-btn { min-height:2.4rem; font-size:1.05rem; padding:0; background:rgba(30,41,59,.92);
   border:1px solid rgba(148,163,184,.35); border-radius:.6rem; color:#e2e8f0; }
 .sd-rot-btn:active { background:#2563eb; color:#fff; }
-.sd-num-mini { flex:0 0 7rem !important; min-height:2.5rem !important; }
+.sd-num-mini { flex:0 0 7rem !important; min-height:2.2rem !important; }
