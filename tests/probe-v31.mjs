@@ -20,7 +20,7 @@ async function getWs() {
     for (let i = 0; i < 60; i++) {
         try {
             const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
-            const page = list.find(t => t.type === 'page');
+            const page = list.find(t => t.type === 'page' && (t.url || '').includes(':' + PORT));
             if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
         } catch { /* 还没起来 */ }
         await sleep(500);
@@ -31,7 +31,7 @@ async function getWs() {
 const srv = spawn(process.execPath, ['tools/dev/staticsrv.cjs', ROOT, String(PORT)], { stdio: 'ignore' });
 const edge = spawn(EDGE, [
     `--remote-debugging-port=${CDP}`, '--headless=new', '--no-first-run', '--no-default-browser-check',
-    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v31_profile'),
+    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v31_' + Date.now()),
     '--enable-unsafe-webgpu', '--use-angle=d3d11', '--window-size=390,844',
     `http://127.0.0.1:${PORT}/index.html`
 ], { stdio: 'ignore' });
@@ -172,11 +172,14 @@ try {
         const cr1 = window.__director.getClipRange();
         const r = el.getBoundingClientRect();
         const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
-        el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: cx, clientY: cy, bubbles: true }));
-        await new Promise(r2 => setTimeout(r2, 300));
+        const dn = x => el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
+        const upE = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 40)); upE(cx);   // v40：第一击轻点只记时
+        await new Promise(r2 => setTimeout(r2, 60));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 400));           // 第二击按住 ≥260ms → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + 60, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
-        el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: cx + 60, clientY: cy, bubbles: true }));
+        upE(cx + 60);
         await new Promise(r2 => setTimeout(r2, 150));
         const cr2 = window.__director.getClipRange();
         return { ok: true, before: [cr1.near, cr1.far], after: [cr2.near, cr2.far] };
@@ -191,11 +194,12 @@ try {
     check('no runtime exceptions', errs.length === 0, errs.slice(0, 3).join(' | '));
 } catch (e) {
     console.error('TEST ERROR:', e.message);
+    globalThis.__hadError = true;
 } finally {
     const failed = results.filter(r => !r.ok).length;
     console.log(`\n=== ${results.length - failed}/${results.length} passed ===`);
     try { ws?.close(); } catch {}
     edge.kill();
     srv.kill();
-    setTimeout(() => process.exit(failed ? 1 : 0), 300);
+    setTimeout(() => process.exit(failed || globalThis.__hadError ? 1 : 0), 300);
 }

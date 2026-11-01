@@ -161,7 +161,7 @@ body.sd-drag-any { touch-action:none; overscroll-behavior:contain; }
 
 /* ===== 瀵兼紨鍙伴潰鏉?(v9) ===== */
 .sd-dir-panel { flex-direction:column !important; gap:6px !important; align-items:stretch; min-width:190px; }
-.sd-dir-btn { display:flex; align-items:center; gap:8px; padding:10px 12px; background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:10px; font-size:13px; min-height:44px; }
+.sd-dir-btn { display:flex; align-items:center; gap:8px; padding:7px 10px; background:rgba(30,41,59,.92); color:#e2e8f0; border:none; border-radius:10px; font-size:13px; min-height:31px; }
 .sd-dir-btn.sd-on { background:#2563eb; color:#fff; }
 .sd-dir-btn:active { filter:brightness(1.4); }
 .sd-dir-row { display:flex; gap:6px; align-items:center; }
@@ -212,7 +212,7 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-dir-hint { flex:1; font-size:12px; color:#94a3b8; padding-left:4px; }
 /* ===== v20 机位面板：下拉 + 四个动作按钮 ===== */
 .sd-shot-panel { min-width:250px; }
-.sd-shot-panel .sd-shot-list { width:100%; min-height:40px; padding:8px 10px; border-radius:10px;
+.sd-shot-panel .sd-shot-list { width:100%; min-height:28px; padding:6px 8px; border-radius:10px;
   background:rgba(30,41,59,.92); color:#e2e8f0; border:1px solid rgba(148,163,184,.28); font-size:13px; }
 .sd-shot-panel .sd-shot-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px;
   font-size:13px !important; white-space:nowrap; }
@@ -228,15 +228,15 @@ body.sd-tool-yield .sd-dock.sd-bottom { display:none !important; }
 .sd-cur-btn .sd-txt { font-size:14px; color:#e2e8f0; white-space:nowrap; }
 /* v32 机位面板：机位行（下拉+改名/新增小钮）、内联改名行（模式行已并入 v38 视口组） */
 .sd-shot-pick-row { gap:6px; }
-.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; min-height:4.5rem; }
+.sd-shot-pick-row .sd-shot-list { flex:1; min-width:0; width:auto; min-height:3.15rem; }
 /* v33 老板反馈加大到 3 倍后 v34 实机反馈太大：缩回一半（7.5rem → 3.75rem，约 67px）。
  * width/height 必须 !important —— .sd-shot-btn 基础规则的 width:auto !important 会压掉普通声明 */
 .sd-shot-panel .sd-shot-btn.sd-shot-mini { flex:0 0 auto; width:3.75rem !important; height:3.75rem !important; padding:0 !important;
   justify-content:center; font-size:20px !important; }
 .sd-shot-edit-row { gap:6px; }
 .sd-shot-edit-row[hidden] { display:none; }
-.sd-shot-edit { flex:1; min-width:0; min-height:4.5rem; background:rgba(30,41,59,.92); color:#e2e8f0;
-  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 12px; font-size:16px; }
+.sd-shot-edit { flex:1; min-width:0; min-height:3.15rem; background:rgba(30,41,59,.92); color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.28); border-radius:10px; padding:0 12px; font-size:14px; }
 
 /* v32 设置页透明度滑条 */
 .sd-alpha-row { display:flex; align-items:center; gap:10px; margin:0 0 8px 0; padding:12px 14px;
@@ -309,7 +309,7 @@ body.sd-has-bar .sd-dock.sd-right {
 .sd-dv-lab { flex:0 0 auto; font-size:1.1rem; color:#94a3b8; }
 .sd-dv { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center;
   background:rgba(30,41,59,.92); border:1px solid rgba(148,163,184,.35); border-radius:.6rem;
-  padding:.5rem .4rem .4rem; text-align:center; touch-action:none; user-select:none; }
+  padding:.35rem .3rem .3rem; text-align:center; touch-action:none; user-select:none; }
 .sd-dv-t { font-size:.9rem; letter-spacing:.12em; color:#94a3b8; }
 .sd-dv-v { font-size:1.3rem; color:#e2e8f0; font-weight:400; line-height:1.25; }
 .sd-dv-r { font-size:.8rem; color:#64748b; line-height:1.2; }
@@ -332,16 +332,16 @@ body.sd-has-bar .sd-dock.sd-right {
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; }
 .sd-sect { font-size:1rem; color:#8a919c; letter-spacing:.05em; padding:.8rem 0 0; margin-top:.4rem;
   border-top:1px dashed rgba(148,163,184,.25); }
-.sd-num { flex:1; min-width:0; min-height:4rem; background:#1e293b; color:#e2e8f0;
-  border:1px solid rgba(148,163,184,.35); border-radius:.6rem; padding:.6rem .8rem;
-  font:1.2rem ui-monospace,Consolas,monospace; }
+.sd-num { flex:1; min-width:0; min-height:2.8rem; background:#1e293b; color:#e2e8f0;
+  border:1px solid rgba(148,163,184,.35); border-radius:.6rem; padding:.4rem .6rem;
+  font:1.05rem ui-monospace,Consolas,monospace; }
 .sd-nudge { display:grid; grid-template-columns:repeat(6,1fr); gap:.5rem; }
-.sd-nudge-btn { min-height:4.5rem; font-size:1.5rem; padding:0; background:rgba(30,41,59,.92);
+.sd-nudge-btn { min-height:3.15rem; font-size:1.2rem; padding:0; background:rgba(30,41,59,.92);
   border:1px solid rgba(148,163,184,.35); border-radius:.6rem; color:#e2e8f0; }
 .sd-nudge-btn:active { background:#2563eb; color:#fff; }
 /* v38：视口面板也用整行按钮/提示（v9c 的 2.25rem 紧凑规则只该管图标钮） */
 .sd-vp-panel .sd-dir-hint, .sd-shot-panel .sd-dir-hint { flex:none; font-size:1.05rem; color:#8b96a5; padding:.2rem 2px; line-height:1.5; }
-.sd-vp-panel .sd-dir-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px; min-height:4.4rem; justify-content:center; }
+.sd-vp-panel .sd-dir-btn { width:auto !important; flex:1 1 0; padding:0 10px !important; gap:6px; min-height:3.1rem; justify-content:center; }
 
 /* ===== v39：系统栏避让 + 菜单栏左上停靠 + 机位视角模式 ===== */
 :root { --sd-safe-top: env(safe-area-inset-top, 0px); }
@@ -357,7 +357,7 @@ body:not(.sd-has-bar) .sd-dock[data-dock="file"] {
 /* v39 #7：三轴步进旋转（水平/俯仰/倾斜 各 +−） */
 .sd-rot-grid { display:grid; grid-template-columns:4.2rem 1fr 1fr; gap:.5rem; align-items:center; }
 .sd-rot-grid .sd-dv-lab { text-align:left; }
-.sd-rot-btn { min-height:4.4rem; font-size:1.5rem; padding:0; background:rgba(30,41,59,.92);
+.sd-rot-btn { min-height:3.1rem; font-size:1.2rem; padding:0; background:rgba(30,41,59,.92);
   border:1px solid rgba(148,163,184,.35); border-radius:.6rem; color:#e2e8f0; }
 .sd-rot-btn:active { background:#2563eb; color:#fff; }
-.sd-num-mini { flex:0 0 7rem !important; min-height:3.6rem !important; }
+.sd-num-mini { flex:0 0 7rem !important; min-height:2.5rem !important; }

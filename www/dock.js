@@ -422,9 +422,10 @@ waitUI(function () {
  * #2 注释置顶/模式钮其下 #3 双击编辑+按住拖动 #5 机位视角模式 #7 三轴步进旋转
  */
 
-  /* ----- v39 通用：数值块（双击就地编辑 + 按住拖动粗调） -----
-   * #3 防误触：单击不再触发。双击（两击 <320ms）→ 块内 <b> 换 <input>（回车/失焦生效）；
-   * 按住 ≥260ms 进入拖动模式（起算点重锚，避免跳值），松手生效；
+  /* ----- v40 通用：数值块（双击就地编辑 + 双击长按拖动粗调） -----
+   * #3 防误触：单击不触发；第一击只记时；双击（两击 <320ms）第二击快速松手 → 就地编辑；
+   * 第二击按住 ≥260ms → 拖动模式（起算点重锚，避免跳值），松手生效。
+   * 单击长按不再触发拖动（老板 v40 反馈：必须双击长按才起效）。
    * pointercancel 按松手处理（真机快速点按常被系统判成滚动而改发 cancel，v5 教训）。
    */
   function bindDragVal(el, cfg) {
@@ -436,7 +437,8 @@ waitUI(function () {
       startX = e.clientX; startV = cfg.get(); lastX = e.clientX;
       dragging = true; armed = false; moved = 0;
       try { el.setPointerCapture(e.pointerId); } catch (err) {}
-      if (Date.now() - lastTap < 320) { startEdit(); return; }   // 双击第二按 → 编辑
+      // v40：第一击只记时；只有双击的第二击按住才可能进入拖动
+      if (Date.now() - lastTap >= 320) return;
       clearTimeout(holdTimer);
       holdTimer = setTimeout(function () {
         if (!dragging || el.__editing) return;
@@ -463,7 +465,9 @@ waitUI(function () {
       if (armed) {
         if (moved > 2) cfg.commit(last);             // 拖过才提交；原地按住不动 = 无变化
       } else {
-        lastTap = Date.now();                        // 快速点按只记时，等第二击
+        var t = Date.now();
+        if (t - lastTap < 320) startEdit();          // 第二击快速松手 → 编辑
+        else lastTap = t;                            // 第一击：记时，等第二击
       }
       armed = false;
     };
@@ -526,7 +530,7 @@ waitUI(function () {
         '<span class="sd-dv-lab">焦距</span>' +
         dvHtml("vp-foc", "焦距", "FOCAL", "sd-dv-foc", "1 – 500") +
       '</div>' +
-      '<div class="sd-dir-hint">双击数值输入精确值；按住约 0.3 秒拖动粗调，松手生效（改动可撤销）</div>' +
+      '<div class="sd-dir-hint">双击数值输入精确值；双击后第二击按住拖动粗调，松手生效（改动可撤销）</div>' +
       '<div class="sd-dir-row">' +
         '<button class="sd-dir-btn sd-shot-btn" data-vp="restore" title="裁剪回自动 + 焦距回 50mm">↺ 恢复默认</button>' +
       '</div>' +

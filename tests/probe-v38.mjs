@@ -21,7 +21,7 @@ async function getWs() {
     for (let i = 0; i < 60; i++) {
         try {
             const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
-            const page = list.find(t => t.type === 'page');
+            const page = list.find(t => t.type === 'page' && (t.url || '').includes(':' + PORT));
             if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
         } catch { /* 还没起来 */ }
         await sleep(500);
@@ -32,7 +32,7 @@ async function getWs() {
 const srv = spawn(process.execPath, ['tools/dev/staticsrv.cjs', ROOT, String(PORT)], { stdio: 'ignore' });
 const edge = spawn(EDGE, [
     `--remote-debugging-port=${CDP}`, '--headless=new', '--no-first-run', '--no-default-browser-check',
-    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v38_profile'),
+    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v38_' + Date.now()),
     '--enable-unsafe-webgpu', '--use-angle=d3d11', '--window-size=390,844',
     `http://127.0.0.1:${PORT}/index.html`
 ], { stdio: 'ignore' });
@@ -73,18 +73,21 @@ async function waitFor(expr, tries = 60, gap = 400) {
 const FOCAL_REF = 50 * Math.tan(85 * Math.PI / 360);
 const focalToFov = mm => 2 * Math.atan(FOCAL_REF / Math.min(500, Math.max(1, mm))) * 180 / Math.PI;
 
-// 数值块拖动：按住 300ms 后横移 dx 再松手（引擎 commit 路径）
+// 数值块拖动（v40 交互）：第一击轻点，第二击按住 300ms 后横移 dx 再松手
 async function dragBlock(sel, dx) {
     return evalJs(`(async () => {
         const el = document.querySelector('${sel}');
         if (!el) return { ok: false, why: 'no-dom' };
         const r = el.getBoundingClientRect();
         const cx = Math.round(r.x + r.width / 2) || 40, cy = Math.round(r.y + r.height / 2) || 40;
-        el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: cx, clientY: cy, bubbles: true }));
-        await new Promise(r2 => setTimeout(r2, 300));
+        const dn = x => el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
+        const up = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 40)); up(cx);   // 第一击：只记时
+        await new Promise(r2 => setTimeout(r2, 60));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 400));          // 第二击按住 ≥260ms → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + ${dx}, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
-        el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: cx + ${dx}, clientY: cy, bubbles: true }));
+        up(cx + ${dx});
         await new Promise(r2 => setTimeout(r2, 150));
         return { ok: true };
     })()`);
@@ -283,11 +286,15 @@ try {
         const r = el.getBoundingClientRect();
         const cx = Math.round(r.x + r.width / 2) || 40, cy = Math.round(r.y + r.height / 2) || 40;
         const f0 = d.listShots().find(x => x.id === id).focal;
-        el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 8, clientX: cx, clientY: cy, bubbles: true }));
-        await new Promise(r2 => setTimeout(r2, 300));
+        // v40 交互：第一击轻点只记时，第二击按住 ≥260ms 后拖动
+        const dn = x => el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 8, clientX: x, clientY: cy, bubbles: true }));
+        const upE = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8, clientX: x, clientY: cy, bubbles: true }));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 40)); upE(cx);   // 第一击
+        await new Promise(r2 => setTimeout(r2, 60));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 400));           // 第二击按住 → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 8, clientX: cx + 25, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
-        el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8, clientX: cx + 25, clientY: cy, bubbles: true }));
+        upE(cx + 25);
         await new Promise(r2 => setTimeout(r2, 200));
         const f1 = d.listShots().find(x => x.id === id).focal;
         d.exitShotView(true);   // v39：退出并保存，还原视口供后续套件
@@ -315,11 +322,12 @@ try {
     check('no runtime exceptions', errs.length === 0, errs.slice(0, 3).join(' | '));
 } catch (e) {
     console.error('TEST ERROR:', e.message);
+    globalThis.__hadError = true;
 } finally {
     const failed = results.filter(r => !r.ok).length;
     console.log(`\n=== ${results.length - failed}/${results.length} passed ===`);
     try { ws?.close(); } catch {}
     edge.kill();
     srv.kill();
-    setTimeout(() => process.exit(failed ? 1 : 0), 300);
+    setTimeout(() => process.exit(failed || globalThis.__hadError ? 1 : 0), 300);
 }

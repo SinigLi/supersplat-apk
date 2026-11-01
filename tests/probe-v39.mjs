@@ -22,7 +22,7 @@ async function getWs() {
     for (let i = 0; i < 60; i++) {
         try {
             const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
-            const page = list.find(t => t.type === 'page');
+            const page = list.find(t => t.type === 'page' && (t.url || '').includes(':' + PORT));
             if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
         } catch { /* 还没起来 */ }
         await sleep(500);
@@ -31,9 +31,10 @@ async function getWs() {
 }
 
 const srv = spawn(process.execPath, ['tools/dev/staticsrv.cjs', ROOT, String(PORT)], { stdio: 'ignore' });
+srv.on('exit', (c, sig) => console.log(`[probe] staticsrv exited c=${c} sig=${sig}`));   // 服务器中途死亡会让页内 fetch 全挂
 const edge = spawn(EDGE, [
     `--remote-debugging-port=${CDP}`, '--headless=new', '--no-first-run', '--no-default-browser-check',
-    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v39_profile'),
+    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v39_' + Date.now()),
     '--enable-unsafe-webgpu', '--use-angle=d3d11', '--window-size=390,844',
     `http://127.0.0.1:${PORT}/index.html`
 ], { stdio: 'ignore' });
@@ -70,18 +71,21 @@ async function waitFor(expr, tries = 60, gap = 400) {
     return false;
 }
 
-// 拖动数值块：按住 300ms（>260 阈值）后横移 dx 再松手
+// 拖动数值块（v40 交互）：第一击轻点，第二击按住 300ms（>260 阈值）后横移 dx 再松手
 async function dragBlock(sel, dx) {
     return evalJs(`(async () => {
         const el = document.querySelector('${sel}');
         if (!el) return { ok: false, why: 'no-dom' };
         const r = el.getBoundingClientRect();
         const cx = Math.round(r.x + r.width / 2) || 40, cy = Math.round(r.y + r.height / 2) || 40;
-        el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: cx, clientY: cy, bubbles: true }));
-        await new Promise(r2 => setTimeout(r2, 300));
+        const dn = x => el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
+        const up = x => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: cy, bubbles: true }));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 40)); up(cx);   // 第一击：只记时
+        await new Promise(r2 => setTimeout(r2, 60));
+        dn(cx); await new Promise(r2 => setTimeout(r2, 400));          // 第二击按住 ≥260ms → 拖动模式
         el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: cx + ${dx}, clientY: cy, bubbles: true }));
         await new Promise(r2 => setTimeout(r2, 40));
-        el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: cx + ${dx}, clientY: cy, bubbles: true }));
+        up(cx + ${dx});
         await new Promise(r2 => setTimeout(r2, 150));
         return { ok: true };
     })()`);
@@ -108,8 +112,16 @@ try {
 
     // ---- #1 + #4：静态标记（viewport-fit/钳位/左上停靠）+ 菜单栏实际位置 ----
     const statics = await evalJs(`(async () => {
-        const html = await fetch('/index.html').then(r => r.text());
-        const js = await fetch('/dock.js').then(r => r.text());
+        let html = null, js = null, fe = [];
+        for (let i = 0; i < 3 && !html; i++) {
+            try { html = await (await fetch('/index.html')).text(); }
+            catch (e) { fe.push('idx:' + e.name + ':' + e.message); await new Promise(r => setTimeout(r, 400)); }
+        }
+        for (let i = 0; i < 3 && !js; i++) {
+            try { js = await (await fetch('/dock.js')).text(); }
+            catch (e) { fe.push('js:' + e.name + ':' + e.message); await new Promise(r => setTimeout(r, 400)); }
+        }
+        if (!html || !js) return { fetchDead: true, alive: !!window.scene, fe: fe.slice(0, 4) };
         return {
             cover: html.includes('viewport-fit=cover'),
             safeTopRefs: (js.match(/safeTopPx\\(/g) || []).length,
@@ -312,11 +324,12 @@ try {
     check('no runtime exceptions', errs.length === 0, errs.slice(0, 3).join(' | '));
 } catch (e) {
     console.error('TEST ERROR:', e.message);
+    globalThis.__hadError = true;
 } finally {
     const failed = results.filter(r => !r.ok).length;
     console.log(`\n=== ${results.length - failed}/${results.length} passed ===`);
     try { ws?.close(); } catch {}
     edge.kill();
     srv.kill();
-    setTimeout(() => process.exit(failed ? 1 : 0), 300);
+    setTimeout(() => process.exit(failed || globalThis.__hadError ? 1 : 0), 300);
 }
