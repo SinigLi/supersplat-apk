@@ -119,8 +119,8 @@ try {
     check('dock ready', await waitFor('document.body.classList.contains("sd-docks-ready")', 60, 500));
     // v41 门禁：页面必须报当前引擎版本，否则连到了旧标签页（避免拿旧代码假失败）
     const ver = await evalJs('window.__directorVer || "none"');
-    check('engine version gate', ver === 'v42-aspect-frame', 'got=' + ver);
-    if (ver !== 'v42-aspect-frame') throw new Error('stale page: ' + ver);
+    check('engine version gate', ver === 'v42b-frame-bars', 'got=' + ver);
+    if (ver !== 'v42b-frame-bars') throw new Error('stale page: ' + ver);
 
     // 清场：删掉历史机位
     await evalJs(`(() => { const d = window.__director;

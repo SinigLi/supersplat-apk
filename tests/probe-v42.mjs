@@ -90,8 +90,8 @@ try {
     check('director ready', await waitFor('!!window.__director', 60, 500));
     check('dock ready', await waitFor('document.body.classList.contains("sd-docks-ready")', 60, 500));
     const ver = await evalJs('window.__directorVer || "none"');
-    check('engine version gate', ver === 'v42-aspect-frame', 'got=' + ver);
-    if (ver !== 'v42-aspect-frame') throw new Error('stale page: ' + ver);
+    check('engine version gate', ver === 'v42b-frame-bars', 'got=' + ver);
+    if (ver !== 'v42b-frame-bars') throw new Error('stale page: ' + ver);
 
     // 清场
     await evalJs(`(() => { const d = window.__director;
@@ -192,7 +192,11 @@ try {
         const enterR = d.enterShotView(s.id);
         await new Promise(r2 => setTimeout(r2, 600));
         const el = document.querySelector('.sd-shot-frame3d');
-        const grab = () => el && el.style.display !== 'none' ? [el.offsetWidth, el.offsetHeight] : null;
+        const grab = () => {
+            if (!el || el.style.display === 'none') return null;
+            const box = el.querySelector('.sd-sf-box');
+            return box ? [box.offsetWidth, box.offsetHeight] : null;
+        };
         const f169 = grab();
         const camFov169 = Math.round(window.scene.camera.fov);
         d.updateShot(s.id, { aspect: '9:21' });
@@ -205,11 +209,12 @@ try {
         await new Promise(r2 => setTimeout(r2, 200));
         const gone = !document.querySelector('.sd-shot-frame3d');
         d.listShots().slice().forEach(x => d.removeShot(x.id));
-        return { enterR, sw, sh, shotFov: Math.round(shotFov), camFov169, f169, f921, f11, exitR, gone };
+        const bars = ['sd-sf-t', 'sd-sf-b', 'sd-sf-l', 'sd-sf-r'].every(c2 => !!el.querySelector('.' + c2));
+        return { enterR, sw, sh, shotFov: Math.round(shotFov), camFov169, f169, f921, f11, exitR, gone, bars };
     })()`);
     const ratioOf = v => Array.isArray(v) && v[1] > 0 ? v[0] / v[1] : -1;
     check('C safe frame 16:9 fills width, bars top/bottom, ratio ≈ 16:9',
-        c.enterR === 'ok' && ratioOf(c.f169) > 16 / 9 - 0.05 && ratioOf(c.f169) < 16 / 9 + 0.05 &&
+        c.enterR === 'ok' && c.bars === true && ratioOf(c.f169) > 16 / 9 - 0.05 && ratioOf(c.f169) < 16 / 9 + 0.05 &&
         c.f169[0] <= c.sw + 2 && c.f169[1] < c.sh - 30, JSON.stringify(c));
     check('C safe frame 9:21 fills height, side bars; 1:1 square-ish',
         ratioOf(c.f921) > 9 / 21 - 0.04 && ratioOf(c.f921) < 9 / 21 + 0.04 &&
