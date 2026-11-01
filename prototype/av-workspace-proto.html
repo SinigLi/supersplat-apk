@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>摸鱼台 v44 原型 · 音视频工作台</title>
+<style>
+:root{--bg:#0b0e14;--panel:#141924;--panel2:#1b2233;--line:#2a3247;--txt:#e8ecf5;--dim:#8b94a8;--acc:#4f8cff;--ok:#3fbf6f;--warn:#ffb64f;--red:#ff5f6d;--mark:#ffcc4d}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);font:14px/1.45 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;touch-action:manipulation}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;user-select:none}
+button:active{filter:brightness(1.25)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button.ghost{background:transparent}
+input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 8px;width:64px;text-align:center}
+.view{position:fixed;inset:0;display:none;flex-direction:column}
+.view.on{display:flex}
+/* ---- 首页 ---- */
+#v-home{padding:calc(env(safe-area-inset-top) + 12px) 14px 12px}
+#v-home h1{font-size:17px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+#v-home h1 .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:2px 8px}
+.topbar{display:flex;gap:10px;margin-bottom:12px}
+.topbar button{flex:1;padding:11px}
+.proj{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+.proj .t{font-weight:600}
+.proj .s{font-size:12px;color:var(--dim)}
+.badge{font-size:11px;border-radius:6px;padding:2px 8px;border:1px solid var(--line);color:var(--dim)}
+.badge.m3d{color:#9fb6ff}.badge.mvid{color:#ffd08a}.badge.maud{color:#9fe3b8}
+/* ---- 模式选择 ---- */
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;z-index:50}
+#sheet.on{display:flex}
+#sheet .box{width:100%;background:var(--panel);border-radius:16px 16px 0 0;padding:16px 14px calc(env(safe-area-inset-bottom) + 16px)}
+#sheet h3{margin-bottom:12px}
+.mode{display:flex;gap:12px}
+.mode>div{flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 8px;text-align:center}
+.mode .ic{font-size:24px}
+.mode .n{margin-top:4px}
+.mode .d{font-size:11px;color:var(--dim)}
+.mode>div.def{border-color:var(--acc)}
+/* ---- 工作台 ---- */
+#wb{flex:1;display:flex;min-height:0}
+#list{width:30%;min-width:150px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;transition:width .15s,min-width .15s}
+#list.hid{width:0!important;min-width:0;overflow:hidden;border-right:none}
+#list .lh{padding:10px;display:flex;gap:8px;border-bottom:1px solid var(--line)}
+#list .lh button{padding:6px 9px;font-size:12px}
+#files{flex:1;overflow-y:auto;scrollbar-width:none}
+#files::-webkit-scrollbar{display:none}
+.fitem{padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;align-items:center;gap:8px}
+.fitem.cur{background:var(--panel2)}
+.fitem .no{font-size:10px;color:var(--warn);border:1px solid #4d4429;border-radius:5px;padding:1px 5px;white-space:nowrap}
+.fitem .no.auto{color:var(--dim);border-color:var(--line)}
+.fitem .nm{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fitem .mc{font-size:10px;color:var(--mark)}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#mtop{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
+#mtop .ttl{flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mtop button{padding:6px 10px;font-size:12px}
+#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#05070b;position:relative}
+#stage canvas{max-width:100%;max-height:100%}
+/* 工具行 */
+#tools{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:center;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+#tools::-webkit-scrollbar{display:none}
+#tools button{padding:8px 11px;font-size:12px;white-space:nowrap}
+#tools .cut{color:#ffd08a}#tools .mrg{color:#9fe3b8}
+#tools .grp{display:flex;align-items:center;gap:4px}
+#tools input{width:52px;padding:6px 4px;font-size:12px}
+/* 播放条 */
+#playbar{padding:6px 10px calc(env(safe-area-inset-bottom) + 8px);border-top:1px solid var(--line);background:var(--panel)}
+#prow{display:flex;align-items:center;gap:8px;position:relative}
+#prow button{padding:7px 10px;font-size:12px;white-space:nowrap}
+#bar{flex:1;height:34px;border-radius:8px;background:var(--panel2);position:relative;overflow:hidden;touch-action:none}
+#buf,#trackmarks{position:absolute;inset:0}
+#buf::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#223055,#2b3c6b)}
+#trackmarks .tm{position:absolute;top:0;bottom:0;width:3px;background:var(--mark);border-radius:2px}
+#trackmarks .tm.mrg{background:var(--ok)}
+#ph{position:absolute;top:0;bottom:0;width:2px;background:#fff;left:0}
+#ph::before{content:"";position:absolute;top:0;left:-4px;border:5px solid transparent;border-top-color:#fff}
+#ptime{font-size:12px;color:var(--dim);position:absolute;top:-2px;left:0;transform:translateY(-100%);background:var(--panel);padding:1px 6px;border-radius:6px;border:1px solid var(--line);white-space:nowrap}
+#ptime b{color:var(--txt);font-weight:600}
+/* 标记侧栏 */
+#marks{position:fixed;top:0;right:-75%;width:72%;max-width:340px;bottom:0;background:var(--panel);border-left:1px solid var(--line);z-index:60;transition:right .18s;display:flex;flex-direction:column}
+#marks.on{right:0}
+#marks .mh{padding:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+#mlist{flex:1;overflow-y:auto}
+.mk{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;cursor:pointer}
+.mk .ic{font-size:16px}
+.mk .tx{flex:1;font-size:12px}
+.mk .tx small{color:var(--dim);display:block}
+.mk .del{color:var(--red);border:none;background:none;font-size:15px;padding:4px}
+#mempty{padding:24px;text-align:center;color:var(--dim);font-size:12px}
+/* 导出浮层 */
+#exp{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:70;align-items:center;justify-content:center;padding:14px}
+#exp.on{display:flex}
+#exp .box{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;max-height:92%;display:flex;flex-direction:column}
+#exp h3{margin-bottom:8px;font-size:15px}
+#exp pre{flex:1;overflow:auto;background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:11px;line-height:1.5;color:#c9d6f0;white-space:pre;scrollbar-width:none}
+#exp pre::-webkit-scrollbar{display:none}
+#exp .row{display:flex;gap:8px;margin-top:10px}
+#exp .row button{flex:1;padding:9px}
+#exp .hint{font-size:11px;color:var(--dim);margin-top:8px}
+/* toast */
+#toast{position:fixed;left:50%;bottom:14%;transform:translateX(-50%);background:#243052;border:1px solid var(--acc);border-radius:10px;padding:9px 16px;font-size:13px;z-index:99;display:none;max-width:86%;text-align:center}
+/* demo 切换器 */
+#demo{position:fixed;top:42%;right:6px;transform:translateY(-50%);z-index:80;display:flex;flex-direction:column;gap:6px;opacity:.9}
+#demo button{font-size:11px;padding:4px 9px;border-radius:99px}
+#demo button.on{border-color:var(--acc);color:var(--acc)}
+/* 解压弹层 */
+#unz{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:70;align-items:center;justify-content:center;padding:14px}
+#unz.on{display:flex}
+#unz .box{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+#unz h3{margin-bottom:10px;font-size:15px}
+#unz .f{background:var(--panel2);border:1px dashed var(--line);border-radius:8px;padding:10px;font-size:12px;margin-bottom:10px;word-break:break-all}
+#unz .prog{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-bottom:10px;display:none}
+#unz .prog i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#unz .res{font-size:12px;color:var(--ok);display:none;margin-bottom:10px;word-break:break-all}
+#unz .row{display:flex;gap:8px}
+#unz .row button{flex:1;padding:9px}
+</style>
+</head>
+<body>
+
+<!-- 首页 -->
+<div class="view on" id="v-home">
+  <h1>🎬 摸鱼台 <span class="chip">v44 原型</span></h1>
+  <div class="topbar">
+    <button id="b-unz">🗜️ 解压</button>
+    <button class="primary" id="b-new">＋ 新建</button>
+  </div>
+  <div id="plist"></div>
+</div>
+
+<!-- 新建模式选择 -->
+<div id="sheet">
+  <div class="box">
+    <h3>新建工程 · 选择模式</h3>
+    <div class="mode">
+      <div class="def" data-m="3d"><div class="ic">🧊</div><div class="n">3D 模型工程</div><div class="d">默认 · 导演台</div></div>
+      <div data-m="video"><div class="ic">🎞️</div><div class="n">视频工程</div><div class="d">分镜重切/合并</div></div>
+      <div data-m="audio"><div class="ic">🎵</div><div class="n">音频工程</div><div class="d">段落重切/合并</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 解压 -->
+<div id="unz">
+  <div class="box">
+    <h3>🗜️ 解压压缩包</h3>
+    <div class="f" id="unz-file">点击下方「选择文件」模拟系统文件选择器（支持 zip / 7z / .7z.001~NNN 分卷）</div>
+    <div class="prog" id="unz-prog"><i></i></div>
+    <div class="res" id="unz-res"></div>
+    <div class="row">
+      <button id="unz-pick">选择文件</button>
+      <button class="primary" id="unz-go" disabled>开始解压</button>
+      <button class="ghost" id="unz-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 视频工作台 -->
+<div class="view" id="v-video">
+  <div id="wb">
+    <div id="list"><div class="lh"><button id="lv-pick">📂 加载文件夹</button></div><div id="files"></div></div>
+    <div id="main">
+      <div id="mtop">
+        <button id="mt-fold">☰</button>
+        <div class="ttl" id="v-title">（未加载文件夹）</div>
+        <button id="mt-marks">🏷️ 标记 <span id="v-mkn">0</span></button>
+        <button id="mt-exp">导出 JSON</button>
+      </div>
+      <div id="stage"><canvas id="v-canvas" width="832" height="430"></canvas></div>
+      <div id="tools">
+        <button class="cut" id="v-cut">✂ 分割点</button>
+        <button class="mrg" id="v-mrg">⤴ 并入前段</button>
+        <div class="grp">步进 <button id="v-sdn">◀</button><input id="v-step" value="1帧"><button id="v-sup">▶</button></div>
+      </div>
+      <div id="playbar">
+        <div id="prow">
+          <div id="bar"><div id="buf"></div><div id="trackmarks"></div><div id="ph"></div><div id="ptime"><b>第 1 帧</b> · 0.00s / 0.00s</div></div>
+          <button id="v-prev">⏮ 上一条</button>
+          <button id="v-play">▶</button>
+          <button id="v-next">下一条 ⏭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 音频工作台 -->
+<div class="view" id="v-audio">
+  <div id="wb">
+    <div id="alist-wrap" style="display:contents"></div>
+    <div id="list2-wrap" style="display:contents"></div>
+    <div id="list"><div class="lh"><button id="al-pick">📂 加载文件夹</button></div><div id="files2"></div></div>
+    <div id="main">
+      <div id="mtop">
+        <button id="at-fold">☰</button>
+        <div class="ttl" id="a-title">（未加载文件夹）</div>
+        <button id="at-marks">🏷️ 标记 <span id="a-mkn">0</span></button>
+        <button id="at-exp">导出 JSON</button>
+      </div>
+      <div id="stage"><canvas id="a-canvas" width="832" height="430"></canvas></div>
+      <div id="tools">
+        <button class="cut" id="a-cut">✂ 分割点</button>
+        <button class="mrg" id="a-mrg">⤴ 并入前段</button>
+        <div class="grp">步进 <button id="a-sdn">◀</button><input id="a-step" value="0.05s"><button id="a-sup">▶</button></div>
+      </div>
+      <div id="playbar">
+        <div id="prow">
+          <div id="bar2"><div id="buf2" style="position:absolute;inset:0"></div><div id="trackmarks2"></div><div id="ph2" style="position:absolute;top:0;bottom:0;width:2px;background:#fff;left:0"></div><div id="ptime2" style="font-size:12px;color:var(--dim);position:absolute;top:-2px;left:0;transform:translateY(-100%);background:var(--panel);padding:1px 6px;border-radius:6px;border:1px solid var(--line);white-space:nowrap"><b>0.00s</b> / 0.00s</div></div>
+          <button id="a-prev">⏮ 上一条</button>
+          <button id="a-play">▶</button>
+          <button id="a-next">下一条 ⏭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 标记侧栏 -->
+<div id="marks">
+  <div class="mh"><b id="mk-title">标记</b><button class="ghost" id="mk-close">✕</button></div>
+  <div id="mlist"><div id="mempty">暂无标记</div></div>
+</div>
+
+<!-- 导出 -->
+<div id="exp">
+  <div class="box">
+    <h3>📤 标记导出（moyutai.marks.v1）</h3>
+    <pre id="exp-json"></pre>
+    <div class="row">
+      <button class="primary" id="exp-copy">📋 复制 JSON</button>
+      <button class="ghost" id="exp-close">关闭</button>
+    </div>
+    <div class="hint">复制后手动发飞书给音视频助手，按标记执行真实拆分/合并（段号降序，规避镜号平移）。</div>
+  </div>
+</div>
+
+<div id="demo">
+  <button data-v="home" class="on">首页</button>
+  <button data-v="video">视频工作台</button>
+  <button data-v="audio">音频工作台</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ---------- 公共 ---------- */
+const $ = s => document.querySelector(s);
+const toast = (m, ms) => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms || 2200); };
+const fmt2 = s => s.toFixed(2);
+const segNo = name => { const m = name.match(/(?:shot|seg|part)?(\d+)(?=\.?[a-z0-9]*$)/i); return m ? { no: m[1], auto: false } : { no: '', auto: true }; };
+
+/* 模拟素材（无编号文件演示自动编号） */
+const VFILES = [
+  { name: '让子弹飞这是你吗-名场面_shot001.mp4', dur: 8.4 },
+  { name: '让子弹飞这是你吗-名场面_shot002.mp4', dur: 6.12 },
+  { name: '让子弹飞这是你吗-名场面_shot003.mp4', dur: 9.88 },
+  { name: '花絮_备用.mp4', dur: 4.5, autoNo: 4 },
+  { name: '让子弹飞这是你吗-名场面_shot005.mp4', dur: 7.2 },
+];
+const AFILES = [
+  { name: 'seg001_vocals.wav', dur: 12.36 },
+  { name: 'seg002_vocals.wav', dur: 8.04 },
+  { name: '旁白_重录.wav', dur: 5.5, autoNo: 3 },
+  { name: 'seg004_vocals.wav', dur: 15.72 },
+];
+const fps = 25;
+
+/* 状态 */
+const st = {
+  mode: 'video',
+  v: { i: 0, t: 0, playing: false, marks: {}, loaded: false },
+  a: { i: 0, t: 0, playing: false, marks: {}, loaded: false },
+};
+const cur = () => st.mode === 'video' ? st.v : st.a;
+const curFiles = () => st.mode === 'video' ? VFILES : AFILES;
+const curFile = () => curFiles()[cur().i];
+const fileKey = f => (f.autoNo ? 'auto-' + String(f.autoNo).padStart(2, '0') : segNo(f.name).no) + ':' + f.name;
+
+/* ---------- 首页 ---------- */
+const PROJS = [
+  { n: '让子弹飞 分镜校对', s: '视频工程 · 12 段素材 · 5 标记', m: 'vid' },
+  { n: '播客人声整理', s: '音频工程 · 8 段素材 · 2 标记', m: 'aud' },
+  { n: '场景一 · 三人对话', s: '3D 模型工程 · 昨天', m: '3d' },
+];
+$('#plist').innerHTML = PROJS.map((p, i) =>
+  `<div class="proj"><div><div class="t">${p.n}</div><div class="s">${p.s}</div></div><span class="badge m${p.m}">${p.m === '3d' ? '3D' : p.m === 'vid' ? '视频' : '音频'}</span></div>`
+).join('');
+
+$('#b-new').onclick = () => $('#sheet').classList.add('on');
+$('#sheet').onclick = e => { if (e.target.id === 'sheet') $('#sheet').classList.remove('on'); };
+document.querySelectorAll('.mode>div').forEach(el => el.onclick = () => {
+  $('#sheet').classList.remove('on');
+  const m = el.dataset.m;
+  if (m === '3d') toast('3D 模型工程：走现有导演台流程（原型未含）');
+  else switchView(m);
+});
+
+/* ---------- 解压 ---------- */
+const unz = { file: '', on: false };
+$('#b-unz').onclick = () => { $('#unz').classList.add('on'); };
+$('#unz-close').onclick = () => $('#unz').classList.remove('on');
+$('#unz-pick').onclick = () => {
+  unz.file = '主美_场景资产.7z.001';
+  $('#unz-file').textContent = '已选择：主美_场景资产.7z.001（识别同卷 .002~.004，共 4 卷 · 96.5MB）';
+  $('#unz-go').disabled = false;
+};
+$('#unz-go').onclick = () => {
+  const pg = $('#unz-prog'), bar = pg.firstElementChild, res = $('#unz-res');
+  pg.style.display = 'block'; res.style.display = 'none'; $('#unz-go').disabled = true;
+  let p = 0;
+  const h = setInterval(() => {
+    p += 12 + Math.random() * 10;
+    bar.style.width = Math.min(100, p) + '%';
+    if (p >= 100) {
+      clearInterval(h);
+      res.style.display = 'block';
+      res.textContent = '✅ 解压完成 → 源目录/主美_场景资产/（同名夹已存在时自动 _exp）· 37 个文件';
+      toast('解压完成');
+      window.__testUnz = 'done';
+    }
+  }, 220);
+};
+
+/* ---------- 视图切换 ---------- */
+function switchView(v) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('on'));
+  $('#demo').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'home') $('#v-home').classList.add('on');
+  else { st.mode = v; $('#v-' + v).classList.add('on'); renderList(); drawStage(); updateBar(); renderMarks(); }
+}
+$('#demo').querySelectorAll('button').forEach(b => b.onclick = () => switchView(b.dataset.v));
+
+/* ---------- 文件列表 ---------- */
+function renderList() {
+  const box = st.mode === 'video' ? $('#files') : $('#files2');
+  const c = cur();
+  box.innerHTML = curFiles().map((f, i) => {
+    const sg = f.autoNo ? { no: 'auto-' + f.autoNo, auto: true } : segNo(f.name);
+    const mk = (c.marks[fileKey(f)] || []).length;
+    return `<div class="fitem${i === c.i ? ' cur' : ''}" data-i="${i}"><span class="no${sg.auto ? ' auto' : ''}">${sg.auto ? sg.no : '#' + sg.no}</span><span class="nm">${f.name}</span>${mk ? `<span class="mc">🏷${mk}</span>` : ''}</div>`;
+  }).join('');
+  box.querySelectorAll('.fitem').forEach(el => el.onclick = () => { c.i = +el.dataset.i; c.t = 0; c.playing = false; renderList(); drawStage(); updateBar(); });
+  const ttl = st.mode === 'video' ? $('#v-title') : $('#a-title');
+  ttl.textContent = c.loaded ? curFile().name : '（未加载文件夹）';
+}
+function fakeLoad() {
+  cur().loaded = true; cur().i = 0; cur().t = 0;
+  toast('已加载文件夹：' + (st.mode === 'video' ? 'clips/' : 'vocals/') + `（${curFiles().length} 个文件，按名称排序）`);
+  renderList(); drawStage(); updateBar();
+  window.__testLoaded = true;
+}
+$('#lv-pick').onclick = fakeLoad; $('#al-pick').onclick = fakeLoad;
+$('#mt-fold').onclick = () => $('#v-video #list').classList.toggle('hid');
+$('#at-fold').onclick = () => { const l = $('#v-audio #list'); l.classList.toggle('hid'); };
+window.__listHidden = () => $('#v-video #list').classList.contains('hid');
+
+/* ---------- 舞台绘制 ---------- */
+function drawStage() {
+  const c = cur(); const f = curFile();
+  if (st.mode === 'video') {
+    const cv = $('#v-canvas'), g = cv.getContext('2d');
+    g.fillStyle = '#0a0d13'; g.fillRect(0, 0, cv.width, cv.height);
+    const grd = g.createLinearGradient(0, 0, cv.width, cv.height);
+    grd.addColorStop(0, '#1a2440'); grd.addColorStop(1, '#2b1f33');
+    g.fillStyle = grd; g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = 'rgba(255,255,255,.92)'; g.font = '600 44px sans-serif'; g.textAlign = 'center';
+    const frame = Math.floor(c.t * fps) + 1;
+    g.fillText('第 ' + frame + ' 帧', cv.width / 2, cv.height / 2 - 8);
+    g.font = '20px sans-serif'; g.fillStyle = 'rgba(255,255,255,.55)';
+    g.fillText(fmt2(c.t) + 's / ' + fmt2(f.dur) + 's · 25fps · ' + f.name.slice(0, 34), cv.width / 2, cv.height / 2 + 28);
+    g.strokeStyle = 'rgba(255,255,255,.14)'; g.strokeRect(8.5, 8.5, cv.width - 17, cv.height - 17);
+  } else {
+    const cv = $('#a-canvas'), g = cv.getContext('2d');
+    g.fillStyle = '#0a0d13'; g.fillRect(0, 0, cv.width, cv.height);
+    const f0 = f.name; let seed = 0; for (const ch of f0) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const rnd = i => { seed = (seed * 1103515245 + 12345 + i) >>> 0; return (seed >>> 8) / 16777216; };
+    const W = cv.width, H = cv.height, cols = 208, cw = W / cols;
+    for (let x = 0; x < cols; x++) {
+      for (let y = 0; y < 64; y++) {
+        const e = rnd(x * 7 + y * 13);
+        const a = Math.max(0, 1 - y / 64) * (0.35 + 0.65 * Math.abs(Math.sin(x / 9 + y / 5))) * e * (0.25 + 0.75 * Math.abs(Math.sin(x / 23)));
+        if (a > 0.28) {
+          const hue = 18 + a * 30;
+          g.fillStyle = `hsla(${hue},95%,${28 + a * 34}%,${Math.min(1, a * 1.4)})`;
+          g.fillRect(x * cw, H - (y + 1) * (H / 64), cw + 0.5, H / 64 + 0.5);
+        }
+      }
+    }
+    g.fillStyle = 'rgba(255,255,255,.75)'; g.font = '13px sans-serif'; g.textAlign = 'left';
+    g.fillText('时频图（STFT 预览 · 联调期与音视频助手参数对齐）· ' + f.name, 12, 22);
+    const px = (c.t / f.dur) * W;
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(px, 0); g.lineTo(px, H); g.stroke();
+  }
+}
+function updateBar() {
+  const c = cur(); const f = curFile();
+  const bar = st.mode === 'video' ? $('#bar') : $('#bar2');
+  const ph = st.mode === 'video' ? $('#ph') : $('#ph2');
+  const pt = st.mode === 'video' ? $('#ptime') : $('#ptime2');
+  const tm = st.mode === 'video' ? $('#trackmarks') : $('#trackmarks2');
+  ph.style.left = (c.t / f.dur * 100) + '%';
+  const frame = Math.floor(c.t * fps) + 1;
+  pt.innerHTML = st.mode === 'video'
+    ? `<b>第 ${frame} 帧</b> · ${fmt2(c.t)}s / ${fmt2(f.dur)}s`
+    : `<b>${fmt2(c.t)}s</b> / ${fmt2(f.dur)}s`;
+  const mks = c.marks[fileKey(f)] || [];
+  tm.innerHTML = mks.map((m, i) => `<div class="tm${m.type === 'merge_prev' ? ' mrg' : ''}" style="left:${(m.at / f.dur * 100) - 0.4}%"></div>`).join('');
+  const btn = st.mode === 'video' ? $('#v-play') : $('#a-play');
+  btn.textContent = c.playing ? '⏸' : '▶';
+  const mkn = st.mode === 'video' ? $('#v-mkn') : $('#a-mkn');
+  mkn.textContent = mks.length;
+}
+
+/* ---------- 播放模拟 ---------- */
+let raf = 0, lastTs = 0;
+function tick(ts) {
+  raf = requestAnimationFrame(tick);
+  const c = cur();
+  if (!c.playing) { lastTs = ts; return; }
+  const dt = (ts - lastTs) / 1000; lastTs = ts;
+  c.t = Math.min(curFile().dur, c.t + dt);
+  if (c.t >= curFile().dur) { c.playing = false; toast('播放结束'); }
+  drawStage(); updateBar();
+}
+raf = requestAnimationFrame(tick);
+
+function bindPlay(prefix) {
+  const c = () => st.mode === 'video' ? st.v : st.a;
+  $('#' + prefix + '-play').onclick = () => { const x = c(); if (!x.loaded) return toast('先加载文件夹'); x.playing = !x.playing; };
+  $('#' + prefix + '-prev').onclick = () => { const x = c(); if (!x.loaded) return; x.i = Math.max(0, x.i - 1); x.t = 0; x.playing = false; renderList(); drawStage(); updateBar(); toast('上一条：' + curFile().name); };
+  $('#' + prefix + '-next').onclick = () => { const x = c(); if (!x.loaded) return; x.i = Math.min(curFiles().length - 1, x.i + 1); x.t = 0; x.playing = false; renderList(); drawStage(); updateBar(); toast('下一条：' + curFile().name); };
+  const bar = $('#' + (prefix === 'v' ? 'bar' : 'bar2'));
+  const seek = e => {
+    const x = c(); if (!x.loaded) return;
+    const r = bar.getBoundingClientRect();
+    x.t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * curFile().dur;
+    drawStage(); updateBar();
+  };
+  bar.addEventListener('pointerdown', e => { seek(e); bar.setPointerCapture && (() => { try { bar.setPointerCapture(e.pointerId); } catch (err) { } })(); });
+  bar.addEventListener('pointermove', e => { if (e.buttons) seek(e); });
+}
+bindPlay('v'); bindPlay('a');
+
+/* ---------- 标记 ---------- */
+function addMark(type) {
+  const c = cur(); if (!c.loaded) return toast('先加载文件夹');
+  const f = curFile(); const k = fileKey(f);
+  (c.marks[k] = c.marks[k] || []).push({
+    id: 'm' + Date.now(), type, at: +c.t.toFixed(2),
+    frame: st.mode === 'video' ? Math.floor(c.t * fps) + 1 : undefined,
+    note: ''
+  });
+  renderList(); updateBar(); renderMarks();
+  toast(type === 'split' ? `✂ 已标记：此处分割 @ ${fmt2(c.t)}s` : `⤴ 已标记：${f.name} 并入前段`);
+  window.__testMark = (c.marks[k] || []).length;
+}
+$('#v-cut').onclick = () => addMark('split'); $('#a-cut').onclick = () => addMark('split');
+$('#v-mrg').onclick = () => addMark('merge_prev'); $('#a-mrg').onclick = () => addMark('merge_prev');
+
+function bindStep(prefix, isVideo) {
+  const stepVal = () => {
+    const raw = $('#' + prefix + '-step').value.trim();
+    if (isVideo) { const m = raw.match(/([\d.]+)\s*帧/); const n = m ? +m[1] : 1; return n / fps; }
+    const m = raw.match(/([\d.]+)\s*s/i); return m ? +m[1] : 0.05;
+  };
+  const jump = d => {
+    const c = cur(); if (!c.loaded) return toast('先加载文件夹');
+    c.playing = false;
+    c.t = Math.max(0, Math.min(curFile().dur, c.t + d * stepVal()));
+    drawStage(); updateBar();
+  };
+  $('#' + prefix + '-sdn').onclick = () => jump(-1);
+  $('#' + prefix + '-sup').onclick = () => jump(1);
+}
+bindStep('v', true); bindStep('a', false);
+
+/* ---------- 标记侧栏 ---------- */
+function renderMarks() {
+  const c = cur(); const f = curFile();
+  const mks = c.marks[fileKey(f)] || [];
+  $('#mk-title').textContent = '标记 · ' + f.name.slice(0, 24);
+  $('#mlist').innerHTML = mks.length ? mks.map((m, i) =>
+    `<div class="mk" data-i="${i}"><span class="ic">${m.type === 'split' ? '✂' : '⤴'}</span><span class="tx">${m.type === 'split' ? '此处分割' : '并入前段'} @ ${fmt2(m.at)}s${m.frame ? '（第 ' + m.frame + ' 帧）' : ''}<small>${m.note || '（无备注）'}</small></span><button class="del" data-i="${i}">✕</button></div>`
+  ).join('') : '<div id="mempty">暂无标记</div>';
+  $('#mlist').querySelectorAll('.mk').forEach(el => el.onclick = e => {
+    if (e.target.classList.contains('del')) {
+      c.marks[fileKey(f)].splice(+e.target.dataset.i, 1);
+      renderList(); updateBar(); renderMarks(); return;
+    }
+    c.t = mks[+el.dataset.i].at; c.playing = false; drawStage(); updateBar(); toast('跳转 ' + fmt2(c.t) + 's');
+  });
+}
+$('#mt-marks').onclick = () => { renderMarks(); $('#marks').classList.add('on'); };
+$('#at-marks').onclick = () => { renderMarks(); $('#marks').classList.add('on'); };
+$('#mk-close').onclick = () => $('#marks').classList.remove('on');
+
+/* ---------- 导出 ---------- */
+function buildJson() {
+  const files = curFiles().map((f, i) => {
+    const sg = f.autoNo ? { no: 'auto-' + f.autoNo, auto: true } : segNo(f.name);
+    return { index: i + 1, file: f.name, seg: sg.auto ? sg.no : sg.no, seg_is_auto: !!sg.auto, duration: +f.dur.toFixed(2) };
+  });
+  const actions = [];
+  curFiles().forEach((f, i) => {
+    const k = fileKey(f); const sg = f.autoNo ? 'auto-' + f.autoNo : segNo(f.name).no;
+    (cur().marks[k] || []).forEach(m => actions.push({
+      action: m.type, target: sg, target_file: f.name, list_index: i + 1,
+      at_seconds: m.at, at_frame: m.frame, note: m.note || ''
+    }));
+  });
+  actions.sort((a, b) => a.list_index !== b.list_index ? b.list_index - a.list_index : b.at_seconds - a.at_seconds);
+  return {
+    schema: 'moyutai.marks.v1', mode: st.mode,
+    source_dir: st.mode === 'video' ? 'clips' : 'vocals',
+    fps: st.mode === 'video' ? fps : undefined,
+    files, actions,
+    generated_by: '摸鱼台 v44 原型', generated_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+  };
+}
+function openExport() {
+  $('#exp-json').textContent = JSON.stringify(buildJson(), null, 2);
+  $('#exp').classList.add('on'); $('#marks').classList.remove('on');
+}
+$('#mt-exp').onclick = openExport; $('#at-exp').onclick = openExport;
+$('#exp-close').onclick = () => $('#exp').classList.remove('on');
+$('#exp-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#exp-json').textContent); toast('已复制，去飞书手动发送'); }
+  catch (e) { toast('复制失败，长按 JSON 文本手动全选复制'); }
+  window.__testExport = true;
+};
+
+/* ---------- 测试钩子 ---------- */
+window.__test = {
+  switchView, addMark, openExport, buildJson,
+  state: () => ({ mode: st.mode, i: cur().i, t: +cur().t.toFixed(3), loaded: cur().loaded, marks: cur().marks })
+};
+</script>
+</body>
+</html>
