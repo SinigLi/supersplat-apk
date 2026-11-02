@@ -342,6 +342,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v45 | P2 视频工作台 | 9a415df | 三模式新建（R4：3D/视频/音频，AV 工程媒体不进包）；av-store/av-ui Web 层（清单自然序+标号解析 auto-N、标记 split/merge_prev/multiframe_ref、吸附±半帧、帧量化、fps rVFC 自动估算+手动修正、导出 moyutai.marks.v1 降序）；MediaServerPlugin 原生层（SAF 目录授权+持久化、127.0.0.1 随机端口 HTTP Range 流服务器、路径索引防穿越、MIME 白名单）；network_security_config 仅放行 loopback 明文；SaveImage.shareFile（JSON 导出走系统分享）；probe-v45 31 项全过 |
 | v45b | 真机反馈 6 条 | 5f00cf9 | ①进工作台强制横屏（MediaServer.lockLandscape 原生 Activity 级+JS 兑底，返回解锁）②补 ⏯ 播放按钮（v45 漏实现，也是 fps 采不到的根因）③帧数常显（fps 未估算按 25）④游标命中 ±半帧按钮变红「移除」态+播放条点选吸附 ⑤多帧不再被 fps 阻塞 ⑥布局照抄 r6 原型（工具行单行+播放条 ⏮⏯⏭）。probe-v45 扩到 36 项；修探针假失败：随机 CDP 端口+独立 profile+孤儿进程清理 |
 | v45c | 真机反馈二轮 7 条 | d3c18bf | ①⏮⏯⏭+◀步进▶ 移右侧中间竖排栏（av-rail，按钮放大 50%）②标记刻度挪进进度条同层（av-range-wrap 内缩对齐）③时间/帧数悬浮播放器右上角（av-pos-top）④原生 getSafeArea（WindowInsetsCompat）→CSS 变量四向避让系统栏/挖孔（Android 15 edge-to-edge env() 不可靠）⑤工具行顺序 ⤴并入/✂分割/▦多帧/fps ⑥删单击视频切全屏（stage-hit）⑦按钮放大。probe-v45 扩 38 项 |
+| v45d | 热修：整页大黑边 | 155086d | 老板 23:18 截图：工作台内容被挤到右下角、顶部/左侧大黑带、控件堆叠。根因=v45c getSafeArea 直接把原生物理 px 当 CSS px 用（未 ÷ devicePixelRatio，放大 2~3 倍）且旋转过渡期读到竖屏旧值（top≈460 物理px）。修：换算 DPR + 超 48css px 视为脏值归零 + 400/1000/2000ms 延迟重读 + resize/orientationchange 自愈 + 内层元素不再重复消费安全区变量（统一 .av-page padding）。probe-v45 39 项（C3 换算/钳制断言）|
 
 ## 9. 已知边界 / 待办
 
