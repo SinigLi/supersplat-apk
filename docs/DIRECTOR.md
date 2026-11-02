@@ -335,6 +335,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v43 | ef8839f | 5ab1742 | 应用更名**摸鱼台**：桌面名/PWA/网页标题/关于弹窗/启动页/错误提示全量替换（引擎+覆盖层+原生 strings）；相册目录 Pictures/SuperSplat → Pictures/摸鱼台；导出查看器启动页标题同步；包名与仓库内部名保持不变（覆盖安装兼容），版本标记 v43-moyutai |
 | v44 | —（原生插件） | 1df14dd | 解压中心 P1：ExtractPlugin（SAF 多选分卷→自然序拼接→commons-compress 流式解压→MediaStore Downloads/摸鱼台/<名>[_expN]）；工程页新建左侧「🗜️ 解压」按钮 + extract.js 弹层（进度/完成/错误）；rar 明确拒绝；probe-v44 13 项（mock 原生） |
 | v44b | —（修复） | 3e1bfc2 | 真机「选完无反应」根因修复：pick 改 C7 @ActivityCallback（旧 handleOnActivityResult 不触发）；新增 DebugLog 插件 + 「🐞 日志」调试按钮（查看/清空/SAF 导出，release 隐藏）+ ExtractPlugin 全程原生日记；probe-v44 扩 16 项 |
+| v44c | —（体验） | <sha> | 分卷缺卷预检（.NNN 序列断号直接报缺哪卷）+ header 越界错误翻译成人话（真机案例：MOOD_-37.7z 缺 .005）|
 
 ## 9. 已知边界 / 待办
 

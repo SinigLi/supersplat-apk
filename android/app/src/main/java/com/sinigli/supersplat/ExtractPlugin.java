@@ -209,6 +209,25 @@ public class ExtractPlugin extends Plugin {
             final boolean is7z = lower.endsWith(".7z");
             final boolean isZip = lower.endsWith(".zip");
             if (!is7z && !isZip) throw new IllegalArgumentException("不支持的格式（仅 zip / 7z，含分卷）");
+            // 分卷连续性预检（真机案例 MOOD_-37.7z 缺 .005 → 提前报错指出缺哪卷，不再报天书）
+            List<Integer> vols = new ArrayList<>();
+            java.util.regex.Pattern volDigits = java.util.regex.Pattern.compile("\\.(\\d{3})$");
+            for (Integer i : idx) {
+                Matcher vm = volDigits.matcher(names.get(i));
+                if (vm.find()) vols.add(Integer.parseInt(names.get(i).substring(vm.start() + 1)));
+            }
+            if (vols.size() > 1) {
+                Collections.sort(vols);
+                List<String> missing = new ArrayList<>();
+                for (int v = vols.get(0); v <= vols.get(vols.size() - 1); v++) {
+                    if (!vols.contains(v)) missing.add(String.format(".%03d", v));
+                }
+                if (!missing.isEmpty()) {
+                    dl("缺卷预检命中: 缺 " + missing);
+                    throw new IllegalArgumentException("缺少分卷 " + String.join("、", missing)
+                            + "：请在文件选择器里补选后重试（当前只选了 " + vols.size() + " 卷）");
+                }
+            }
             dl("解压开始: " + first + " → " + base + " (" + (is7z ? "7z" : "zip") + ", " + idx.size() + "卷)");
 
             // 1) 分卷拼接（或单卷复制）到缓存
@@ -290,6 +309,8 @@ public class ExtractPlugin extends Plugin {
             String msg = String.valueOf(e.getMessage());
             if (msg.contains("Can't open archive") || msg.contains("Error opening")) {
                 msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
+            } else if (msg.contains("nextHeaderOffset") || msg.contains("out of bounds")) {
+                msg = "压缩包数据不完整：大概率缺卷（对照文件管理器补齐 .001~.NNN 全部卷）或个别卷传输时损坏";
             }
             err.put("message", msg);
             dl("解压失败: " + msg);
