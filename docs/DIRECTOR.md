@@ -338,7 +338,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v44c | —（体验） | 4c92f83 | 分卷缺卷预检（.NNN 序列断号直接报缺哪卷）+ header 越界错误翻译成人话（真机案例：MOOD_-37.7z 缺 .005）|
 | v44d | —（稳定） | 096d0a4 | 真机 218MB 9卷档解压中途闪退对策：解压线程 MIN_PRIORITY + 单飞行锁防并发互踩 + 唯一临时文件 + 逐条目日记（闪退点可从日志直接看到最后解出的条目）|
 | v44e | —（根因） | 3399bba | 7z 闪退根因=OOM：LZMA 字典分配超默认堆上限，Error 未被 catch(Exception) 接住→线程静默死（debug3 日志 16:00/16:01 铁证：拼接完成后 48/72ms 无声退出）。修复 largeHeap + catch(Throwable) 给人话 + 内存状态日记 |
-| v44f | —（真因） | <sha> | 7z 无声闪退真因=XZ 库缺失（NoClassDefFoundError: LZMA2Options，commons-compress 可选依赖未带入；debug3 日志堆内存充足 4MB/512MB 排除 OOM）→ gradle 补 org.tukaani:xz:1.9。v44e 的 catch(Throwable)+类名日记立功定位 |
+| v44f | —（真因） | a020837 | 7z 无声闪退真因=XZ 库缺失（NoClassDefFoundError: LZMA2Options，commons-compress 可选依赖未带入；debug3 日志堆内存充足 4MB/512MB 排除 OOM）→ gradle 补 org.tukaani:xz:1.9。v44e 的 catch(Throwable)+类名日记立功定位 |
 
 ## 9. 已知边界 / 待办
 
