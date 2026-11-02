@@ -230,7 +230,7 @@ public class ExtractPlugin extends Plugin {
                         currentEntry = e;   // EntrySource 回调读当前条目（循环变量非终态，经字段中转）
                         String entryPath = relDir + "/" + sanitize(e.getName());
                         done += writeDownload(cr, entryPath, new EntrySource() {
-                            @Override public int read(byte[] b) throws Exception { return z.read(currentEntry, b, 0, b.length); }
+                            @Override public int read(byte[] b) throws Exception { return z.read(currentEntry, b); }
                         }, buf);
                         files++;
                         notifyProgress("extract", done, total);
