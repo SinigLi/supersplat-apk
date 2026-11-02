@@ -340,6 +340,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v44e | —（根因） | 3399bba | 7z 闪退根因=OOM：LZMA 字典分配超默认堆上限，Error 未被 catch(Exception) 接住→线程静默死（debug3 日志 16:00/16:01 铁证：拼接完成后 48/72ms 无声退出）。修复 largeHeap + catch(Throwable) 给人话 + 内存状态日记 |
 | v44f | —（真因） | a020837 | 7z 无声闪退真因=XZ 库缺失（NoClassDefFoundError: LZMA2Options，commons-compress 可选依赖未带入；debug3 日志堆内存充足 4MB/512MB 排除 OOM）→ gradle 补 org.tukaani:xz:1.9。v44e 的 catch(Throwable)+类名日记立功定位 |
 | v45 | P2 视频工作台 | 9a415df | 三模式新建（R4：3D/视频/音频，AV 工程媒体不进包）；av-store/av-ui Web 层（清单自然序+标号解析 auto-N、标记 split/merge_prev/multiframe_ref、吸附±半帧、帧量化、fps rVFC 自动估算+手动修正、导出 moyutai.marks.v1 降序）；MediaServerPlugin 原生层（SAF 目录授权+持久化、127.0.0.1 随机端口 HTTP Range 流服务器、路径索引防穿越、MIME 白名单）；network_security_config 仅放行 loopback 明文；SaveImage.shareFile（JSON 导出走系统分享）；probe-v45 31 项全过 |
+| v45b | 真机反馈 6 条 | 5f00cf9 | ①进工作台强制横屏（MediaServer.lockLandscape 原生 Activity 级+JS 兑底，返回解锁）②补 ⏯ 播放按钮（v45 漏实现，也是 fps 采不到的根因）③帧数常显（fps 未估算按 25）④游标命中 ±半帧按钮变红「移除」态+播放条点选吸附 ⑤多帧不再被 fps 阻塞 ⑥布局照抄 r6 原型（工具行单行+播放条 ⏮⏯⏭）。probe-v45 扩到 36 项；修探针假失败：随机 CDP 端口+独立 profile+孤儿进程清理 |
 
 ## 9. 已知边界 / 待办
 
