@@ -337,7 +337,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v44b | —（修复） | 3e1bfc2 | 真机「选完无反应」根因修复：pick 改 C7 @ActivityCallback（旧 handleOnActivityResult 不触发）；新增 DebugLog 插件 + 「🐞 日志」调试按钮（查看/清空/SAF 导出，release 隐藏）+ ExtractPlugin 全程原生日记；probe-v44 扩 16 项 |
 | v44c | —（体验） | 4c92f83 | 分卷缺卷预检（.NNN 序列断号直接报缺哪卷）+ header 越界错误翻译成人话（真机案例：MOOD_-37.7z 缺 .005）|
 | v44d | —（稳定） | 096d0a4 | 真机 218MB 9卷档解压中途闪退对策：解压线程 MIN_PRIORITY + 单飞行锁防并发互踩 + 唯一临时文件 + 逐条目日记（闪退点可从日志直接看到最后解出的条目）|
-| v44e | —（根因） | 1b456a6 | 7z 闪退根因=OOM：LZMA 字典分配超默认堆上限，Error 未被 catch(Exception) 接住→线程静默死（debug3 日志 16:00/16:01 铁证：拼接完成后 48/72ms 无声退出）。修复 largeHeap + catch(Throwable) 给人话 + 内存状态日记 |
+| v44e | —（根因） | 3399bba | 7z 闪退根因=OOM：LZMA 字典分配超默认堆上限，Error 未被 catch(Exception) 接住→线程静默死（debug3 日志 16:00/16:01 铁证：拼接完成后 48/72ms 无声退出）。修复 largeHeap + catch(Throwable) 给人话 + 内存状态日记 |
 
 ## 9. 已知边界 / 待办
 
