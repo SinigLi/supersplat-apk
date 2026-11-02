@@ -423,7 +423,15 @@
                 var mb = await store().read(p.meta);
                 var mm = JSON.parse(new TextDecoder().decode(mb));
                 if (mm && (mm.mode === 'video' || mm.mode === 'audio')) {
-                    if (window.__av) { window.__av.open(name); return; }
+                    if (window.__av) {
+                        // v45e 排障：路由进 AV 前先落日志（真机静默失败终结者）
+                        try {
+                            var dp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.DebugLog;
+                            if (dp && dp.append) dp.append('[pj] route AV ' + name + ' mode=' + mm.mode);
+                        } catch (e) { }
+                        window.__av.open(name);
+                        return;
+                    }
                     toast('AV 工作台模块未加载');
                     return;
                 }

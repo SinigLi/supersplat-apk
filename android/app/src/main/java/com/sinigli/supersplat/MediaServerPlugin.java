@@ -93,6 +93,16 @@ public class MediaServerPlugin extends Plugin {
     private String rootUri;
     private long totalBytes = 0;
 
+    /** v45e：进程未死时重开 App，上个会话在 workbench 里设置的横屏请求会残留
+     *  （老板 07:21 反馈「一点就横屏」的嫌疑之一）。每次 Activity 重建都回系统默认。 */
+    @Override
+    public void load() {
+        Activity a = getActivity();
+        if (a != null) {
+            a.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
+        }
+    }
+
     /* ---------- SAF ---------- */
 
     private Activity act() { return getActivity(); }

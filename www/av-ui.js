@@ -21,6 +21,28 @@
     var L = window.__avLogic;
     if (!L) { console.error('[av] __avLogic 未加载'); return; }
 
+    /* ---------- v45e 排障埋点（老板 07:21 反馈：点视频工程只横屏不出界面；
+     * 桌面探针全绿但真机静默失败 → 错误不能再用 console 吞掉，全部进 DebugLog） ---------- */
+
+    function dlog(msg) {
+        try {
+            var cap = window.Capacitor;
+            var p = cap && cap.Plugins && cap.Plugins.DebugLog;
+            if (p && p.append) {
+                var r = p.append('[av] ' + msg);
+                if (r && r.catch) r.catch(function () { });
+            }
+        } catch (e) { }
+    }
+    // 全局网：任何未捕获错误/拒绝都落日志（真机上不再有静默失败）
+    window.addEventListener('error', function (e) {
+        dlog('JS-ERR ' + (e.message || '') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || '?'));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        dlog('REJ ' + (r && (r.message || r) || ''));
+    });
+
     function ms() {
         var cap = window.Capacitor;
         return (cap && cap.Plugins && cap.Plugins.MediaServer) || null;
@@ -414,6 +436,7 @@
             (r.files || []).forEach(function (f) { names.push(f.name); sizes[f.name] = f.size; });
             S.files = L.buildFileList(names, S.meta.mode);
             S.files.forEach(function (f) { f.size = sizes[f.name] || 0; });
+            dlog('listFiles n=' + S.files.length);
             if (!S.files.length) {
                 toast('目录里没有' + (S.meta.mode === 'audio' ? '音频' : '视频') + '文件');
             }
@@ -423,6 +446,9 @@
             renderList();
             if (S.cur < 0 && S.files.length) selectFile(0);
             else if (S.cur >= 0) playCurrent(true);
+        }).catch(function (e) {
+            dlog('folder/server ERR ' + (e && (e.message || e) || e));
+            throw e;
         });
     }
 
@@ -689,28 +715,42 @@
     /* ---------- 打开工程 ---------- */
 
     function open(projectName) {
-        build();
-        S.project = projectName;
-        S.meta = L.loadMeta(projectName) || L.emptyMeta(projectName, 'video');
-        S.marks = L.loadMarks(projectName);
-        S.files = [];
-        S.cur = -1;
-        S.fps = S.meta.fps || null;
-        setSide(true);
-        renderStepBox();
-        renderSideHead();
-        renderList();
-        renderPos();
-        page.classList.add('open');
-        lockLandscape();
-        applySafeArea();      // #4：系统栏避让
-        if (S.meta.folderUri) {
-            refreshFolder().catch(function () {
+        try {
+            dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
+                ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
+            build();
+            S.project = projectName;
+            S.meta = L.loadMeta(projectName) || L.emptyMeta(projectName, 'video');
+            S.marks = L.loadMarks(projectName);
+            S.files = [];
+            S.cur = -1;
+            S.fps = S.meta.fps || null;
+            setSide(true);
+            renderStepBox();
+            renderSideHead();
+            renderList();
+            renderPos();
+            page.classList.add('open');
+            lockLandscape();
+            applySafeArea();      // #4：系统栏避让
+            dlog('page open; folderUri=' + (S.meta.folderUri ? 'yes' : 'no'));
+            if (S.meta.folderUri) {
+                refreshFolder().then(function () {
+                    dlog('files=' + S.files.length + ' port=' + S.serverPort + ' cur=' + S.cur);
+                }).catch(function (e) {
+                    dlog('refresh ERR ' + (e && (e.message || e) || e));
+                    emptyHint.style.display = 'block';
+                    toast('目录授权失效或不可读：请重新「📂 加载文件夹」');
+                });
+            } else {
                 emptyHint.style.display = 'block';
-                toast('目录授权失效或不可读：请重新「📂 加载文件夹」');
-            });
-        } else {
-            emptyHint.style.display = 'block';
+            }
+        } catch (e) {
+            // 静默失败终结者：打开过程任何异常都直接告诉老板 + 落日志
+            var m = e && (e.stack || e.message) || String(e);
+            dlog('open FAIL ' + m);
+            toast('打开视频工作台失败：' + (e && e.message || e));
+            try { page.classList.remove('open'); var pj = document.getElementById('pjPage'); if (pj) pj.classList.add('open'); } catch (e2) { }
         }
     }
 
