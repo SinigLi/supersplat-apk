@@ -238,3 +238,25 @@
     scrollbar-width: none;
 }
 .pj-dbg-log::-webkit-scrollbar { display: none; }
+
+/* v45 新建工程模式三选一（R4） */
+.pj-mode-row {
+    display: flex;
+    gap: 6px;
+    margin: 10px 0 4px;
+}
+.pj-mode {
+    flex: 1;
+    background: #26262e;
+    color: #bbb;
+    border: 1px solid #3a3a44;
+    border-radius: 8px;
+    padding: 8px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.pj-mode.on {
+    background: rgba(48, 98, 158, 0.45);
+    color: #fff;
+    border-color: #3d6ea8;
+}

@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SaveImagePlugin.class);
         registerPlugin(ExtractPlugin.class);
         registerPlugin(DebugLogPlugin.class);
+        registerPlugin(MediaServerPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

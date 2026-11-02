@@ -240,7 +240,7 @@ public class SaveImagePlugin extends Plugin {
             Uri uri = FileProvider.getUriForFile(getContext(), authority, file);
 
             Intent send = new Intent(Intent.ACTION_SEND);
-            send.setType("image/png");
+            send.setType(shareMime(call.getString("mime"), "image/png"));
             send.putExtra(Intent.EXTRA_STREAM, uri);
             send.putExtra(Intent.EXTRA_SUBJECT, name);
             send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -258,7 +258,65 @@ public class SaveImagePlugin extends Plugin {
         }
     }
 
+    // ----- v45 shareFile: 任意小文件（JSON 导出等）走系统分享；与 share 的区别：
+    // 不强制 .png 后缀、mime 可指定（白名单内）、data 为裸 base64（无 dataUrl 前缀） -----
+
+    @PluginMethod
+    public void shareFile(PluginCall call) {
+        String b64 = call.getString("data");
+        String filename = call.getString("filename", "export.bin");
+        if (b64 == null || b64.isEmpty()) { call.reject("missing data"); return; }
+        try {
+            byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+            String name = sanitizeName(filename);
+
+            File dir = new File(getContext().getCacheDir(), "shared");
+            if (!dir.exists() && !dir.mkdirs()) { call.reject("could not create the share cache"); return; }
+            File file = new File(dir, name);
+            try (OutputStream out = new FileOutputStream(file)) {
+                out.write(bytes);
+                out.flush();
+            }
+
+            String authority = getContext().getPackageName() + ".fileprovider";
+            Uri uri = FileProvider.getUriForFile(getContext(), authority, file);
+
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType(shareMime(call.getString("mime"), "application/octet-stream"));
+            send.putExtra(Intent.EXTRA_STREAM, uri);
+            send.putExtra(Intent.EXTRA_SUBJECT, name);
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            Intent chooser = Intent.createChooser(send, "分享文件");
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getActivity().startActivity(chooser);
+
+            JSObject res = new JSObject();
+            res.put("ok", true);
+            res.put("name", name);
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("share failed: " + e.getMessage(), e);
+        }
+    }
+
     // ----- helpers -----
+
+    /** 分享文件名消毒：保留调用方给的扩展名，只去文件系统非法字符 */
+    private String sanitizeName(String filename) {
+        String base = filename == null ? "" : filename;
+        base = base.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        if (base.isEmpty()) base = "export.bin";
+        return base;
+    }
+
+    /** v45：mime 白名单（空/未知回退 image/png，保持既有行为） */
+    private String shareMime(String mime, String fallback) {
+        if (mime == null || mime.isEmpty()) return fallback;
+        String m = mime.toLowerCase();
+        if (m.matches("[a-z]+/[a-z0-9.+-]+")) return m;
+        return fallback;
+    }
 
     private byte[] decode(String dataUrl) {
         int comma = dataUrl.indexOf(',');

@@ -119,12 +119,25 @@
 
     /* ---------- 新建对话框 ---------- */
 
-    var newDlg, newInput;
+    var newDlg, newInput, newMode = 'model';
 
     function buildNewDialog() {
         newDlg = el('div', 'pj-dlg-mask');
         var box = el('div', 'pj-dlg');
         box.appendChild(el('div', 'pj-dlg-title', '新建工程'));
+        // v45：模式三选一（R4，默认 3D 模型）
+        var modeRow = el('div', 'pj-mode-row');
+        var modes = [['model', '🔮 3D 模型'], ['video', '🎬 视频'], ['audio', '🎵 音频']];
+        modes.forEach(function (m) {
+            var b = el('button', 'pj-mode' + (m[0] === newMode ? ' on' : ''), m[1]);
+            b.addEventListener('click', function () {
+                newMode = m[0];
+                modeRow.querySelectorAll('.pj-mode').forEach(function (x) { x.classList.remove('on'); });
+                b.classList.add('on');
+            });
+            modeRow.appendChild(b);
+        });
+        box.appendChild(modeRow);
         newInput = el('input', 'pj-input');
         newInput.type = 'text';
         newInput.placeholder = '工程名称';
@@ -159,7 +172,7 @@
                 return;
             }
             close();
-            createProject(v.name);
+            createProject(v.name, newMode);
         };
         ok.addEventListener('click', submit);
         newInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
@@ -277,8 +290,11 @@
 
             var info = el('div', 'pj-info');
             info.appendChild(el('div', 'pj-name', item.name));
+            var modeTxt = item.mode === 'video' ? '🎬 视频' :
+                item.mode === 'audio' ? '🎵 音频' :
+                (item.hasModel ? '已有模型' : '空工程');
             var sub = el('div', 'pj-sub',
-                (item.hasModel ? '已有模型' : '空工程') +
+                modeTxt +
                 ' · ' + String(item.updatedAt || '').slice(0, 16).replace('T', ' '));
             info.appendChild(sub);
             card.appendChild(info);
@@ -318,29 +334,42 @@
 
     /* ===================== 新建 / 打开 ===================== */
 
-    async function createProject(name) {
+    async function createProject(name, mode) {
         if (busy) return;
         busy = true;
+        var m = mode || 'model';
         try {
-            currentProject = name;
-            lastSavedSnapshot = null;
-            clearScene();
-            showWait('创建工程…');
-
-            // v30 #1：新工程从干净默认视口开始——相机/基准点/游标/手动裁剪
-            // 全部重置，不再继承上一个工程调整过的视角
-            try {
-                var d0 = window.__director;
-                if (d0 && d0.resetViewport) d0.resetViewport();
-            } catch (e) { /* 引擎未就绪就算了 */ }
-
-            // 关键：新建就得把空工程落盘。v29 起写的是纯状态 project.json
-            // （几 KB），不再打 zip；模型字节由保存时按内容寻址另存。
             var p = L.pathsFor(name);
-            await store().write(p.state, new TextEncoder().encode(JSON.stringify(L.emptyProjectState())));
+            if (m === 'model') {
+                currentProject = name;
+                lastSavedSnapshot = null;
+                clearScene();
+                showWait('创建工程…');
+
+                // v30 #1：新工程从干净默认视口开始——相机/基准点/游标/手动裁剪
+                // 全部重置，不再继承上一个工程调整过的视角
+                try {
+                    var d0 = window.__director;
+                    if (d0 && d0.resetViewport) d0.resetViewport();
+                } catch (e) { /* 引擎未就绪就算了 */ }
+
+                // 关键：新建就得把空工程落盘。v29 起写的是纯状态 project.json
+                // （几 KB），不再打 zip；模型字节由保存时按内容寻址另存。
+                await store().write(p.state, new TextEncoder().encode(JSON.stringify(L.emptyProjectState())));
+            } else {
+                // v45 AV 工程（R4）：媒体不进包（300MB 级，方案 §3.2），
+                // 只落 meta.json 带模式标记；AV 工作台的 meta/folderUri/fps
+                // 写入 localStorage（av-store），这里先建空记录，否则重开时丢设置
+                showWait('创建工程…');
+                if (window.__avLogic) {
+                    var am = window.__avLogic.emptyMeta(name, m);
+                    window.__avLogic.saveMeta(am);
+                }
+            }
 
             var meta = {
                 name: name,
+                mode: m,
                 updatedAt: new Date().toISOString(),
                 hasModel: false
             };
@@ -348,10 +377,17 @@
             L.saveRegistry(L.upsertProject(L.loadRegistry(), meta));
 
             hideWait();
-            showEditorPage();
-            // 空工程落盘后就是“已保存”状态，返回时不该弹未保存确认
-            lastSavedSnapshot = snapshotNow();
-            toast('已创建「' + name + '」，请导入模型');
+            if (m === 'model') {
+                showEditorPage();
+                // 空工程落盘后就是“已保存”状态，返回时不该弹未保存确认
+                lastSavedSnapshot = snapshotNow();
+                toast('已创建「' + name + '」，请导入模型');
+            } else {
+                // AV 工作台直接接管（工程页垫底，工作台返回时恢复）
+                showProjectsPage();
+                if (window.__av) window.__av.open(name);
+                else toast('AV 工作台模块未加载');
+            }
         } catch (err) {
             console.error('[projects] create failed', err);
             toast('创建失败：' + (err && err.message ? err.message : '未知错误'));
@@ -379,6 +415,16 @@
         try {
             showWait('打开工程：读取数据…');
             var p = L.pathsFor(name);
+            // v45 模式路由：AV 工程走 AV 工作台（媒体不进包，无 project.json）
+            try {
+                var mb = await store().read(p.meta);
+                var mm = JSON.parse(new TextDecoder().decode(mb));
+                if (mm && (mm.mode === 'video' || mm.mode === 'audio')) {
+                    if (window.__av) { window.__av.open(name); return; }
+                    toast('AV 工作台模块未加载');
+                    return;
+                }
+            } catch (e) { /* 无 meta/读取失败：按 3D 工程走 */ }
             var state, files = {}, recovered = false, migrated = false;
 
             try {
@@ -591,8 +637,14 @@
         page.classList.add('open');
         refreshList();
 
-        // 硬件返回键：在编辑器里退回工程列表，而不是退出 App
+        // 硬件返回键：AV 工作台开着→工作台自己处理；编辑器里退回工程列表，而不是退出 App
         document.addEventListener('backbutton', function (e) {
+            var avPage = document.getElementById('avPage');
+            if (avPage && avPage.classList.contains('open')) {
+                e.preventDefault();
+                if (window.__av) window.__av.back();
+                return;
+            }
             if (currentProject) {
                 e.preventDefault();
                 backToProjects();

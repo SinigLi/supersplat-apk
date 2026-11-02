@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v45 AV 工作台：仅放行本地回环的明文流量。
+  内嵌媒体服务器只绑 127.0.0.1（随机端口），WebView <video> 从
+  https://localhost 页面请求 http://127.0.0.1:port/ 属被动混合内容，
+  除 allowMixedContent 外还需 loopback 明文白名单（Android 默认
+  networkSecurityConfig 连 127.0.0.1 的明文也拦）。
+  不开全局 cleartext，外部域名依旧全部禁止。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

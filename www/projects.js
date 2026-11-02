@@ -160,9 +160,11 @@
     function upsertProject(reg, entry) {
         if (!entry || !entry.name) throw new Error('项目名无效');
         var rest = (reg.projects || []).filter(function (p) { return p.name !== entry.name; });
+        // v45：mode 进索引（model/video/audio），列表卡片显示类型角标
         return {
             projects: [{
                 name: entry.name,
+                mode: entry.mode || 'model',
                 updatedAt: entry.updatedAt,
                 hasModel: !!entry.hasModel
             }].concat(rest)

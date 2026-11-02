@@ -1,0 +1,364 @@
+/* tests/probe-v45.mjs — v45 AV 工作台 Web 层探针（390x844 headless Edge）
+ *
+ * 桌面无原生插件：mock window.Capacitor.Plugins.MediaServer（pickFolder/listFiles/start/stop）
+ * 与 SaveImage.shareFile；验证：
+ *  1. av-store 纯逻辑：清单构建（自然序/标号解析/auto-N）、标记增删、吸附、量化、导出降序
+ *  2. 新建对话框模式三选一出现且默认 3D
+ *  3. AV 工程创建 → 工作台打开（不进 3D 编辑器）
+ *  4. 加载文件夹（mock）→ 列表渲染 → 选段播放（video src 指向 127.0.0.1:mock 端口）
+ *  5. fps 手动设定 → 帧显示/步进/帧精确归档
+ *  6. ✂ 分割点：添加 → 吸附命中变移除（F2/G1）
+ *  7. ⤴ 并入前段：开关 + 每段一个（F1）
+ *  8. ▦ 多帧参考：加/删帧（F3）
+ *  9. 沉浸切换（G2）
+ * 10. 导出 JSON：结构 + 降序 + merge/split/multiframe 映射（R10）
+ * 11. 保存/返回：marks.json 持久 + 工程页恢复
+ * 12. 既有回归不受影响：工程列表卡片渲染正常（含模式角标）
+ */
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const ROOT = path.resolve('www');
+const PORT = 4198;
+const CDP = 9259;
+const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function getWs() {
+    for (let i = 0; i < 60; i++) {
+        try {
+            const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
+            const page = list.find(t => t.type === 'page');
+            if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
+        } catch {}
+        await sleep(500);
+    }
+    throw new Error('CDP not ready');
+}
+
+const srv = spawn(process.execPath, ['tools/dev/staticsrv.cjs', ROOT, String(PORT)], { stdio: 'ignore' });
+const edge = spawn(EDGE, [
+    `--remote-debugging-port=${CDP}`, '--headless=new', '--no-first-run', '--no-default-browser-check',
+    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v45_profile'),
+    '--window-size=390,844',
+    `http://127.0.0.1:${PORT}/index.html`
+], { stdio: 'ignore' });
+
+let ws, id = 0;
+const pending = new Map();
+const exceptions = [];
+function send(method, params = {}) {
+    return new Promise((resolve, reject) => {
+        const msgId = ++id; pending.set(msgId, { resolve, reject });
+        ws.send(JSON.stringify({ id: msgId, method, params }));
+    });
+}
+async function evalJs(expr) {
+    const r = await send('Runtime.evaluate', {
+        expression: expr, awaitPromise: true, returnByValue: true
+    });
+    if (r.exceptionDetails) {
+        const d = r.exceptionDetails;
+        const txt = d.exception?.description || d.text || 'eval error';
+        exceptions.push(txt);
+        throw new Error('PAGE-EXC: ' + txt.split('\n')[0]);
+    }
+    return r.result?.value;
+}
+
+const results = [];
+function check(name, ok, extra) {
+    results.push({ name, ok: !!ok, extra: extra || '' });
+    console.log((ok ? 'PASS' : 'FAIL') + ' ' + name + (extra ? ' | ' + extra : ''));
+}
+
+let logBuf = '';
+function onMsg(raw) {
+    const m = JSON.parse(raw);
+    if (m.id && pending.has(m.id)) {
+        const p = pending.get(m.id); pending.delete(m.id);
+        p.resolve(m.result || {});
+    } else if (m.method === 'Runtime.exceptionThrown') {
+        const d = m.params.exceptionDetails;
+        exceptions.push(d.exception?.description || d.text);
+    } else if (m.method === 'Runtime.consoleAPICalled') {
+        const args = (m.params.args || []).map(a => a.value ?? a.description ?? '').join(' ');
+        logBuf += args + '\n';
+    }
+}
+
+const tests = `
+(async () => {
+    const out = {};
+    const A = window.__avLogic, AV = window.__av;
+    out.hasLogic = !!A;
+    out.hasUI = !!AV;
+
+    // ---- 1. 纯逻辑：清单构建 ----
+    const files = A.buildFileList([
+        'shot10.mp4', 'shot2.mp4', 'shot003.mp4', 'notes.txt', '封面.jpg', 'part.wav', 'seg12.mp3'
+    ], 'video');
+    out.fileList = files.map(f => f.name);
+    out.labels = files.map(f => f.label);
+    // 期望：视频扩展过滤（mp4/wav?? — wav 不在 VIDEO_EXT）→ shot003/shot2/shot10 + seg12(mp3 不在) 
+    // VIDEO_EXT = mp4/webm/mkv/mov/m4v → 只剩 3 个 mp4，自然序 shot2 < shot003 < shot10
+    out.fileListOk = JSON.stringify(out.fileList) === JSON.stringify(['shot2.mp4', 'shot003.mp4', 'shot10.mp4']);
+    out.labelsOk = JSON.stringify(out.labels) === JSON.stringify(['2', '3', '10']);
+
+    // auto-N
+    const files2 = A.buildFileList(['a.mp4', 'b.mp4'], 'video');
+    out.autoLabels = files2.map(f => f.label).join(',');
+    out.autoOk = out.autoLabels === 'auto-1,auto-2';
+
+    // 音频过滤
+    const af = A.buildFileList(['x.wav', 'y.mp4', 'z.flac'], 'audio');
+    out.audioOk = af.length === 2 && af[0].name === 'x.wav';
+
+    // ---- 2. 标记操作 ----
+    A.saveRegistry(A.upsertProject(A.loadRegistry(), { name: 'v45probe', mode: 'video' }));
+    A.saveMeta(A.emptyMeta('v45probe', 'video'));
+    const marks = A.emptyMarks();
+    marks.marks.push({ id: 'm1', type: 'split', seg: '2', at: 1.5, note: '' });
+    marks.marks.push({ id: 'm2', type: 'merge_prev', seg: '3', note: '' });
+    A.saveMarks('v45probe', marks);
+    const back = A.loadMarks('v45probe');
+    out.marksOk = back.marks.length === 2 && back.marks[0].at === 1.5;
+
+    // 吸附（fps=25 → 半帧 0.02s）
+    const snapped = A.snapT(1.51, back.marks, 25);
+    out.snapOk = Math.abs(snapped - 1.5) < 1e-9;   // 1.51 距 1.5 = 0.01 < 0.02 → 吸附
+    const noSnap = A.snapT(1.6, back.marks, 25);
+    out.noSnapOk = noSnap === 1.6;                 // 0.1 > 0.02 → 不吸附
+
+    // 帧量化
+    out.frameOk = A.frameAt(1.5, 25) === 38 && Math.abs(A.secAtFrame(38, 25) - 1.52) < 1e-9;
+
+    // merge 互斥查找
+    out.mergeOk = A.normalizeMerge(back, '3')?.seg === '3' && A.normalizeMerge(back, '2') == null;
+
+    // ---- 3. 导出（降序 + 结构） ----
+    marks.marks.push({ id: 'm3', type: 'split', seg: '10', at: 2.04, note: 'test' });
+    marks.marks.push({ id: 'm4', type: 'multiframe_ref', seg: '2', frames: [5, 9], note: '' });
+    const meta = A.loadMeta('v45probe');
+    meta.fps = 25;
+    meta.folderName = 'test_split';
+    const exp = A.buildExport(meta, marks, files);
+    out.exportTargets = exp.marks.map(m => m.target).join(',');
+    // 降序：shot10(10) → shot003(3) → shot2(2)；同段内 split 先于 merge? 需求只说按段降序
+    out.exportSchema = exp.schema === 'moyutai.marks.v1' && exp.mode === 'video' && exp.fps === 25;
+    out.exportFrame = exp.marks.find(m => m.target === 'shot10')?.at_frame === 51; // 2.04*25=51
+    out.exportMulti = exp.marks.find(m => m.target === 'shot2' && m.action === 'multiframe_ref')?.frames?.join(',') === '5,9';
+    out.exportOk = out.exportTargets === 'shot10,shot003,shot2,shot2' && out.exportSchema && out.exportFrame && out.exportMulti;
+
+    // merge_prev 的 target 也在导出里
+    out.mergeExport = exp.marks.some(m => m.action === 'merge_prev' && m.target === 'shot003');
+    return out;
+})()
+`;
+
+const uiTests = `
+(async () => {
+    const out = {};
+    // ---- 4. 新建对话框：模式三选一 ----
+    const newBtn = document.querySelector('.pj-new:not(.pj-ext-btn)');
+    newBtn.click();
+    await new Promise(r => setTimeout(r, 150));
+    const modeBtns = [...document.querySelectorAll('.pj-mode')];
+    out.modeCount = modeBtns.length;
+    out.modeDefault = modeBtns.findIndex(b => b.classList.contains('on'));
+    // 选视频
+    modeBtns[1].click();
+    await new Promise(r => setTimeout(r, 50));
+    out.videoSelected = modeBtns[1].classList.contains('on');
+    // 填名 + 创建（新建对话框 = .pj-input 所在的那个）
+    const input = document.querySelector('.pj-input');
+    input.value = 'v45ui';
+    input.closest('.pj-dlg').querySelector('.pj-primary').click();
+    await new Promise(r => setTimeout(r, 600));
+    // 工作台应打开
+    const avPage = document.getElementById('avPage');
+    out.avOpen = !!avPage && avPage.classList.contains('open');
+    out.uiState = JSON.stringify(window.__av.state());
+    // 3D 编辑器不应打开
+    out.editorHidden = !document.querySelector('.pj-bar').classList.contains('open');
+    return out;
+})()
+`;
+
+const wsUrl = await getWs();
+ws = new WebSocket(wsUrl);
+await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+ws.onmessage = ev => onMsg(typeof ev.data === 'string' ? ev.data : ev.data.toString());
+await send('Runtime.enable');
+await send('Page.enable');
+// 就绪等待：脚本执行完 + 工程页按钮出现（冷启动时序，固定 sleep 会翻车）
+for (let i = 0; i < 40; i++) {
+    const rd = await evalJs(`({l:!!window.__avLogic,u:!!window.__av,b:!!document.querySelector('.pj-new')})`);
+    if (rd && rd.l && rd.u && rd.b) break;
+    await sleep(500);
+}
+await sleep(300);
+
+try {
+    // 基础加载
+    const logic = await evalJs(tests);
+    check('S1 纯逻辑清单构建', logic.fileListOk, JSON.stringify(logic.fileList));
+    check('S2 标号解析标签', logic.labelsOk, logic.labels.join(','));
+    check('S3 auto-N 无标号', logic.autoOk, logic.autoLabels);
+    check('S4 音频扩展过滤', logic.audioOk);
+    check('S5 标记持久化', logic.marksOk);
+    check('S6 吸附命中(±半帧)', logic.snapOk, '1.51→1.5');
+    check('S7 不误吸附', logic.noSnapOk);
+    check('S8 帧/秒互转', logic.frameOk);
+    check('S9 merge 互斥查找', logic.mergeOk);
+    check('S10 导出降序+结构', logic.exportOk, logic.exportTargets);   // 4 条按段降序，同段稳定序：10→3→2(split)→2(multi)
+    check('S11 merge_prev 进导出', logic.mergeExport);
+
+    // UI 流程
+    const ui = await evalJs(uiTests);
+    check('U1 模式三选一', ui.modeCount === 3);
+    check('U2 默认 3D 高亮', ui.modeDefault === 0);
+    check('U3 视频可选', ui.videoSelected);
+    check('U4 AV 工程打开工作台', ui.avOpen, ui.uiState);
+    check('U5 不进 3D 编辑器', ui.editorHidden);
+
+    // mock 插件后续验证（文件夹加载）
+    const folder = await evalJs(`
+        (async () => {
+            const out = {};
+            // mock MediaServer
+            const calls = [];
+            window.Capacitor = window.Capacitor || { Plugins: {} };
+            window.Capacitor.Plugins.MediaServer = {
+                pickFolder: async () => { calls.push('pick'); return { uri: 'content://tree/x', name: 'mock_split' }; },
+                listFiles: async () => ({ files: [
+                    { name: 'shot2.mp4', size: 1000, docId: 'd2' },
+                    { name: 'shot003.mp4', size: 2000, docId: 'd3' },
+                    { name: 'shot10.mp4', size: 3000, docId: 'd10' }
+                ]}),
+                start: async () => { calls.push('start'); return { port: 45999, count: 3 }; },
+                stop: async () => { calls.push('stop'); }
+            };
+            window.__av._S.meta.folderUri = 'content://tree/x';
+            // 预置授权目录进 localStorage，再走 open() 的恢复路径
+            const meta0 = window.__avLogic.loadMeta('v45ui');
+            meta0.folderUri = 'content://tree/x';
+            meta0.folderName = 'mock_split';
+            window.__avLogic.saveMeta(meta0);
+            window.__av.open('v45ui');
+            await new Promise(r => setTimeout(r, 600));
+            const st = window.__av.state();
+            out.files = st.files;
+            out.folder = st.folderName;
+            out.port = st.port;
+            out.cur = st.cur;
+            out.mode = st.mode;
+            out.listItems = document.querySelectorAll('.av-item').length;
+            out.videoSrc = (document.querySelector('.av-video') || {}).src || '';
+            out.topTitle = (document.querySelector('.av-top-title') || {}).textContent || '';
+            return out;
+        })()
+    `);
+    check('V1 文件夹清单恢复', folder.files === 3, `cur=${folder.cur} mode=${folder.mode}`);
+    check('V2 列表渲染', folder.listItems === 3);
+    check('V3 流端口获取', folder.port === 45999);
+    check('V4 video.src 指向本地流', folder.videoSrc.includes('127.0.0.1:45999'), folder.videoSrc);
+    check('V5 顶栏显示目录', folder.topTitle.includes('mock_split'), folder.topTitle);
+
+    // 标记交互（F1/F2/F3）
+    const markTests = await evalJs(`
+        (async () => {
+            const out = {};
+            const v = document.querySelector('.av-video');
+            // 模拟时长与时间（headless 无真实媒体，直接覆写属性）
+            Object.defineProperty(v, 'duration', { value: 4.0, configurable: true });
+            let cur = 0;
+            Object.defineProperty(v, 'currentTime', {
+                get: () => cur, set: (t) => { cur = t; }, configurable: true
+            });
+            window.__av._setFps(25);
+            window.__av._setVideoTime(1.52);
+            window.__av._markSplit();          // 加分割点 @1.52（量化到帧 38 → 1.52）
+            let marks = window.__av.marks().marks;
+            out.added = marks.filter(m => m.type === 'split' && m.seg === '2').length;
+            out.atQuant = marks.find(m => m.type === 'split' && m.seg === '2')?.at;
+            // 再点同位置（±半帧）→ 移除（F2）
+            window.__av._setVideoTime(1.53);
+            window.__av._markSplit();
+            marks = window.__av.marks().marks;
+            out.removed = marks.filter(m => m.type === 'split' && m.seg === '2').length;
+            // merge 开关（F1）
+            window.__av._toggleMerge();
+            marks = window.__av.marks().marks;
+            out.mergeOn = marks.some(m => m.type === 'merge_prev' && m.seg === '2');
+            // 再点 → 解除
+            window.__av._toggleMerge();
+            marks = window.__av.marks().marks;
+            out.mergeOff = !marks.some(m => m.type === 'merge_prev' && m.seg === '2');
+            // 多帧（F3）
+            window.__av._toggleMulti();   // 帧 38 加
+            window.__av._setVideoTime(2.0);
+            window.__av._toggleMulti();   // 帧 50 加
+            marks = window.__av.marks().marks;
+            const mf = marks.find(m => m.type === 'multiframe_ref');
+            out.multi = mf ? mf.frames.join(',') : '';
+            // 沉浸（G2）
+            document.querySelector('.av-stage-hit').click();
+            await new Promise(r => setTimeout(r, 100));
+            out.imm = document.getElementById('avPage').classList.contains('imm');
+            document.querySelector('.av-stage-hit').click();
+            await new Promise(r => setTimeout(r, 100));
+            out.unimm = !document.getElementById('avPage').classList.contains('imm');
+            return out;
+        })()
+    `);
+    check('M1 分割点添加+帧量化', markTests.added === 1, String(markTests.atQuant));
+    check('M2 命中变移除(F2)', markTests.removed === 0);
+    check('M3 merge 开(F1)', markTests.mergeOn);
+    check('M4 merge 解除', markTests.mergeOff);
+    check('M5 多帧参考(F3)', markTests.multi === '38,50', markTests.multi);
+    check('M6 沉浸切换(G2)', markTests.imm && markTests.unimm);
+
+    // 持久化 + 返回
+    const persist = await evalJs(`
+        (async () => {
+            const out = {};
+            // 保存再读
+            window.__av._markSplit();   // 当前 2.0 → 帧 50 → 加回一个分割点
+            const saved = localStorage.getItem('av-v45ui-marks');
+            out.saved = !!saved && saved.includes('multiframe_ref');
+            // 导出结构最终检查
+            const exp = window.__av._exportJson();
+            out.schema = exp.schema === 'moyutai.marks.v1';
+            out.desc = exp.marks.map(m => m.target).join(',');
+            // 返回
+            window.__av.back();
+            await new Promise(r => setTimeout(r, 200));
+            out.backToList = document.getElementById('pjPage').classList.contains('open');
+            out.avClosed = !document.getElementById('avPage').classList.contains('open');
+            // 工程卡片出现且带视频角标
+            const cards = [...document.querySelectorAll('.pj-card')];
+            out.cardCount = cards.length;
+            out.cardMode = cards.some(c => c.textContent.includes('🎬 视频'));
+            return out;
+        })()
+    `);
+    check('P1 marks.json 持久', persist.saved);
+    check('P2 导出 schema', persist.schema, persist.desc);
+    check('P3 返回工程列表', persist.backToList && persist.avClosed);
+    check('P4 卡片显示视频模式', persist.cardMode, `cards=${persist.cardCount}`);
+} catch (e) {
+    check('EXCEPTION', false, String(e.message || e).slice(0, 160));
+}
+
+const pass = results.filter(r => r.ok).length;
+console.log('========================');
+console.log(`probe-v45: ${pass}/${results.length} passed`);
+if (exceptions.length) {
+    console.log('PAGE EXCEPTIONS:');
+    exceptions.slice(0, 5).forEach(e => console.log('  ' + e.split('\n')[0].slice(0, 140)));
+}
+edge.kill();
+srv.kill();
+process.exit(pass === results.length && exceptions.length === 0 ? 0 : 1);
