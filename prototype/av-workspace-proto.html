@@ -57,24 +57,25 @@ input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid va
 #mtop .ttl{flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #mtop button{padding:6px 10px;font-size:12px;white-space:nowrap}
 #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#05070b;position:relative}
-#stage canvas{max-width:100%;max-height:100%}
+#stage-hit{position:absolute;inset:0;z-index:3;cursor:pointer}
+#stage canvas{width:100%;height:100%;object-fit:contain}
 /* 悬浮工具行/播放条（视频沉浸） */
 #v-video #main,#v-audio #main{position:relative}
 #v-video #stage{overflow:hidden}
-.ovl{position:absolute;left:0;right:0;z-index:5;background:rgba(11,14,20,.62);backdrop-filter:blur(8px)}
-#v-tools{bottom:56px;border-top:1px solid rgba(42,50,71,.55);display:flex;gap:8px;padding:8px 10px;align-items:center;flex-wrap:wrap}
+.ovl{position:absolute;left:0;right:0;z-index:5;background:rgba(11,14,20,.45);backdrop-filter:blur(10px)}
+#v-tools{bottom:56px;border-top:1px solid rgba(42,50,71,.35);display:flex;gap:8px;padding:8px 10px;align-items:center;flex-wrap:wrap}
 #v-tools button{padding:8px 11px;font-size:12px;white-space:nowrap}
 #v-tools .grp{display:flex;align-items:center;gap:4px}
 #v-tools input{width:52px;padding:6px 4px;font-size:12px}
-#v-playbar{bottom:0;padding:6px 10px calc(env(safe-area-inset-bottom) + 8px);border-top:1px solid rgba(42,50,71,.55)}
-#v-video.immerse #v-tools,#v-video.immerse #v-playbar{display:none}
-#v-video.immerse #mt-immerse{border-color:var(--acc);color:var(--acc)}
+#v-playbar{bottom:0;padding:6px 10px calc(env(safe-area-inset-bottom) + 8px);border-top:1px solid rgba(42,50,71,.35)}
+/* 点画面隐藏/恢复全部编辑层（含顶栏、左侧列表） */
+.hide-chrome .chrome,.hide-chrome .ovl{display:none!important}
 /* 音频：普通排布的工具行/播放条 */
-#a-tools{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:center;flex-wrap:wrap}
+#a-tools{bottom:56px;border-top:1px solid rgba(42,50,71,.35);display:flex;gap:8px;padding:8px 10px;align-items:center;flex-wrap:wrap}
 #a-tools button{padding:8px 11px;font-size:12px;white-space:nowrap}
 #a-tools .grp{display:flex;align-items:center;gap:4px}
 #a-tools input{width:52px;padding:6px 4px;font-size:12px}
-#a-playbar{padding:6px 10px calc(env(safe-area-inset-bottom) + 8px);border-top:1px solid var(--line);background:var(--panel)}
+#a-playbar{bottom:0;padding:6px 10px calc(env(safe-area-inset-bottom) + 8px);border-top:1px solid rgba(42,50,71,.35)}
 /* 播放条通用 */
 #prow{display:flex;align-items:center;gap:8px}
 #prow button{padding:7px 10px;font-size:12px;white-space:nowrap}
@@ -89,7 +90,7 @@ input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid va
 #ph::before,#ph2::before{content:"";position:absolute;top:0;left:-4px;border:5px solid transparent;border-top-color:#fff}
 #ptime,#ptime2{font-size:12px;color:var(--dim);position:absolute;top:-2px;left:0;transform:translateY(-100%);background:var(--panel);padding:1px 6px;border-radius:6px;border:1px solid var(--line);white-space:nowrap;z-index:6}
 #ptime b,#ptime2 b{color:var(--txt);font-weight:600}
-#v-playbar #ptime{background:rgba(11,14,20,.85)}
+#v-playbar #ptime{background:rgba(11,14,20,.65)}
 /* 标记侧栏 */
 #marks{position:fixed;top:0;right:-75%;width:72%;max-width:340px;bottom:0;background:var(--panel);border-left:1px solid var(--line);z-index:60;transition:right .18s;display:flex;flex-direction:column}
 #marks.on{right:0}
@@ -173,12 +174,11 @@ input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid va
 <!-- 视频工作台（悬浮工具行+播放条，可沉浸） -->
 <div class="view" id="v-video">
   <div id="wb">
-    <div id="list"><div class="lh"><button id="lv-pick">📂 加载文件夹</button></div><div id="files"></div></div>
+    <div id="list" class="chrome"><div class="lh"><button id="lv-pick">📂 加载文件夹</button></div><div id="files"></div></div>
     <div id="main">
-      <div id="mtop">
+      <div id="mtop" class="chrome">
         <button id="mt-fold">☰</button>
         <div class="ttl" id="v-title">（未加载文件夹）</div>
-        <button id="mt-immerse">🎬 沉浸</button>
         <button id="mt-marks">🏷️ <span id="v-mkn">0</span></button>
         <button id="mt-exp">导出</button>
       </div>
@@ -206,26 +206,28 @@ input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid va
 <!-- 音频工作台 -->
 <div class="view" id="v-audio">
   <div id="wb">
-    <div id="list"><div class="lh"><button id="al-pick">📂 加载文件夹</button></div><div id="files2"></div></div>
+    <div id="list" class="chrome"><div class="lh"><button id="al-pick">📂 加载文件夹</button></div><div id="files2"></div></div>
     <div id="main">
-      <div id="mtop">
+      <div id="mtop" class="chrome">
         <button id="at-fold">☰</button>
         <div class="ttl" id="a-title">（未加载文件夹）</div>
         <button id="at-marks">🏷️ <span id="a-mkn">0</span></button>
         <button id="at-exp">导出</button>
       </div>
-      <div id="stage"><canvas id="a-canvas" width="832" height="430"></canvas></div>
-      <div id="a-tools">
-        <button class="cut" id="a-cut">✂ 分割点</button>
-        <button class="mrg" id="a-mrg">⤴ 并入前段</button>
-        <div class="grp">步进 <button id="a-sdn">◀</button><input id="a-step" value="0.05s"><button id="a-sup">▶</button></div>
-      </div>
-      <div id="a-playbar">
-        <div id="prow">
-          <div id="bar2"><div id="trackmarks2"></div><div id="ph2"></div><div id="ptime2"><b>0.00s</b> / 0.00s</div></div>
-          <button id="a-prev">⏮</button>
-          <button id="a-play">▶</button>
-          <button id="a-next">⏭</button>
+      <div id="stage">
+        <canvas id="a-canvas" width="832" height="430"></canvas>
+        <div id="a-tools" class="ovl">
+          <button class="cut" id="a-cut">✂ 分割点</button>
+          <button class="mrg" id="a-mrg">⤴ 并入前段</button>
+          <div class="grp">步进 <button id="a-sdn">◀</button><input id="a-step" value="0.05s"><button id="a-sup">▶</button></div>
+        </div>
+        <div id="a-playbar" class="ovl">
+          <div id="prow">
+            <div id="bar2"><div id="trackmarks2"></div><div id="ph2"></div><div id="ptime2"><b>0.00s</b> / 0.00s</div></div>
+            <button id="a-prev">⏮</button>
+            <button id="a-play">▶</button>
+            <button id="a-next">⏭</button>
+          </div>
         </div>
       </div>
     </div>
@@ -462,7 +464,8 @@ const SNAP_PX = 12, HIT_PX = 8;
 function nearestMark(type) {
   const c = cur(); const f = curFile();
   const bar = st.mode === 'video' ? $('#bar') : $('#bar2');
-  const thrSec = Math.max(0.05, (HIT_PX / Math.max(60, bar.getBoundingClientRect().width)) * f.dur);
+  /* 帧精确：视频命中阈值=半帧（步进 1 帧后状态必然翻转）；音频保持像素阈值 */
+  const thrSec = st.mode === 'video' ? (0.5 / fps) : Math.max(0.05, (HIT_PX / Math.max(60, bar.getBoundingClientRect().width)) * f.dur);
   let best = null;
   for (const m of marksOf(f)) {
     const at = m.type === 'merge_prev' ? 0 : m.at;
@@ -482,7 +485,10 @@ function snapT(x) {
     const d = Math.abs(m.at - x);
     if (d <= thrSec && (best === null || d < Math.abs(best.at - x))) best = m;
   }
-  return best ? best.at : x;
+  if (best) return best.at;
+  /* 视频：非吸附时量化到帧网格，保证当前帧号确定 */
+  if (st.mode === 'video') return Math.max(0, Math.min(f.dur, Math.floor(x * fps + 1e-9) / fps));
+  return x;
 }
 
 /* ---------- 标记操作 ---------- */
@@ -527,6 +533,7 @@ function bindStep(prefix, isVideo) {
     const c = cur(); if (!c.loaded) return toast('先加载文件夹');
     c.playing = false;
     c.t = Math.max(0, Math.min(curFile().dur, c.t + d * stepVal()));
+    if (st.mode === 'video') c.t = Math.round(c.t * fps) / fps;   /* 帧网格量化，步进帧号确定 */
     drawStage(); updateBar();
   };
   $('#' + prefix + '-sdn').onclick = () => jump(-1);
@@ -552,12 +559,22 @@ function bindPlay(prefix, isVideo) {
 }
 bindPlay('v', true); bindPlay('a', false);
 
-/* ---------- 沉浸切换（视频台） ---------- */
-$('#mt-immerse').onclick = () => {
-  const el = $('#v-video');
-  el.classList.toggle('immerse');
-  toast(el.classList.contains('immerse') ? '🎬 沉浸模式：编辑工具已隐藏' : '✏ 编辑模式');
-};
+/* ---------- 点画面切换编辑层（视频+音频通用） ---------- */
+function setupStageTap(viewSel) {
+  const view = $(viewSel);
+  const stage = view.querySelector('#stage');
+  if (!stage.querySelector('#stage-hit')) {
+    const hit = document.createElement('div');
+    hit.id = 'stage-hit';
+    stage.insertBefore(hit, stage.firstChild);
+  }
+  stage.querySelector('#stage-hit').onclick = () => {
+    view.classList.toggle('hide-chrome');
+    toast(view.classList.contains('hide-chrome') ? '👁 已隐藏编辑层' : '✏ 编辑层已显示');
+  };
+}
+setupStageTap('#v-video');
+setupStageTap('#v-audio');
 
 /* ---------- 标记侧栏 ---------- */
 function renderMarks() {
@@ -625,7 +642,7 @@ $('#exp-copy').onclick = async () => {
 /* ---------- 测试钩子 ---------- */
 window.__test = {
   switchView, toggleSplit, toggleMulti, toggleMerge, openExport, buildJson, snapT, nearestMark,
-  immerse: () => $('#mt-immerse').click(),
+  toggleChrome: v => { const view = $(v === 'audio' ? '#v-audio' : '#v-video'); view.classList.toggle('hide-chrome'); return view.classList.contains('hide-chrome'); },
   state: () => ({ mode: st.mode, i: cur().i, t: +cur().t.toFixed(3), loaded: cur().loaded, marks: cur().marks })
 };
 </script>

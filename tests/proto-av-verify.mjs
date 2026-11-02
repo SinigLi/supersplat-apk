@@ -134,6 +134,21 @@ try {
     const tNear = await seekBar('#bar', (markAt + 0.35) / 8.4);
     check('snap nearby click', Math.abs(tNear - markAt) < 0.01, 'mark=' + markAt + ' snapped=' + tNear.toFixed(3));
 
+    /* 5b. 帧精确上下文：吸附只影响手指点按；步进跨帧必须翻转按钮状态 */
+    await seekBar('#bar', 0.30);                       // 量化到帧网格后加标记
+    arr = Object.values(await evalJs(`__test.state().marks`)).flat();
+    const at0 = arr[0].at;
+    check('seek quantized to frame grid', Math.abs(at0 * 25 - Math.round(at0 * 25)) < 1e-6, 'at=' + at0);
+    await click('#v-sdn');                             // 后退 1 帧 → 离开标记帧
+    let ctxTxt = await evalJs(`document.querySelector('#v-cut').textContent`);
+    check('step off mark → 分割点', ctxTxt.includes('分割点'), ctxTxt);
+    await click('#v-sup');                             // 前进 1 帧 → 回到标记帧
+    ctxTxt = await evalJs(`document.querySelector('#v-cut').textContent`);
+    check('step onto mark → 移除剪切点', ctxTxt.includes('移除剪切点'), ctxTxt);
+    const tFar = await seekBar('#bar', 0.80);          // 拖远处 → 量化+无命中
+    ctxTxt = await evalJs(`document.querySelector('#v-cut').textContent`);
+    check('seek far → back to 分割点', ctxTxt.includes('分割点') && Math.abs(tFar - at0) > 0.1, 't=' + tFar);
+
     /* 6. 并入前段：开关语义 + 标记在开头 */
     await click('#v-mrg');
     const mrgTxt = await evalJs(`document.querySelector('#v-mrg').textContent`);
@@ -170,14 +185,17 @@ try {
     await click('#v-sup'); const tb = await evalJs(`__test.state().t`);
     check('video step = 1 frame', Math.abs((tb - ta) - 1 / 25) < 1e-6, 'd=' + (tb - ta).toFixed(4));
 
-    /* 9. 沉浸模式 */
-    await click('#mt-immerse'); await sleep(150);
-    const imm = await evalJs(`({on:document.querySelector('#v-video').classList.contains('immerse'),tools:getComputedStyle(document.querySelector('#v-tools')).display,bar:getComputedStyle(document.querySelector('#v-playbar')).display})`);
-    check('immerse hides overlays', imm.on && imm.tools === 'none' && imm.bar === 'none', JSON.stringify(imm));
-    await shot('08-immerse');
-    await click('#mt-immerse');
-    const imm2 = await evalJs(`getComputedStyle(document.querySelector('#v-tools')).display`);
-    check('immerse off restores', imm2 !== 'none', imm2);
+    /* 9. 点画面隐藏/恢复编辑层（视频+音频通用，无沉浸按钮） */
+    check('no immerse button', await evalJs(`!document.querySelector('#mt-immerse')`));
+    const chromeOff = await evalJs(`__test.toggleChrome('video')`);
+    const chromeState = await evalJs(`(() => { const v=document.querySelector('#v-video'); const d=s=>getComputedStyle(v.querySelector(s)).display; return {on:v.classList.contains('hide-chrome'),top:d('#mtop'),list:d('#list'),tools:d('#v-tools'),bar:d('#v-playbar')}; })()`);
+    check('tap hides all chrome', chromeOff && chromeState.on && [chromeState.top, chromeState.list, chromeState.tools, chromeState.bar].every(x => x === 'none'), JSON.stringify(chromeState));
+    await shot('08-tap-hidden');
+    await evalJs(`__test.toggleChrome('video')`);
+    const chromeBack = await evalJs(`(() => { const d=s=>getComputedStyle(document.querySelector(s)).display; return {top:d('#mtop'),tools:d('#v-tools')}; })()`);
+    check('tap restores chrome', chromeBack.top !== 'none' && chromeBack.tools !== 'none', JSON.stringify(chromeBack));
+    const ovlAlpha = await evalJs(`getComputedStyle(document.querySelector('#v-tools')).backgroundColor`);
+    check('overlay translucency <=0.45', /rgba\(11, 14, 20, (0\.[0-4]\d*)\)/.test(ovlAlpha), ovlAlpha);
 
     /* 10. 导出 JSON（含 split，降序） */
     const json = await evalJs(`__test.buildJson()`);
@@ -206,7 +224,7 @@ try {
     check('audio step 0.05s', Math.abs((a2 - a1) - 0.05) < 1e-6, 'd=' + (a2 - a1).toFixed(4));
     const px = await evalJs(`(function(){ const cv=document.querySelector('#a-canvas'); const g=cv.getContext('2d'); const d=g.getImageData(0,40,cv.width,200).data; let n=0; for(let i=3;i<d.length;i+=4*997) if(d[i]>8) n++; return n; })()`);
     check('spectrogram painted', px > 50, 'n=' + px);
-    /* 13. 音频播放条完整性（r2 修复项） */
+    /* 13. 音频播放条完整性（悬浮层同样适用） */
     const fit = await evalJs(`(() => { const r=document.querySelector('#bar2').getBoundingClientRect(); const bs=['#a-prev','#a-play','#a-next'].map(s=>{const x=document.querySelector(s).getBoundingClientRect();return {w:Math.round(x.width),r:Math.round(x.right)};}); return {bw:Math.round(r.width),br:Math.round(r.right),vw:window.innerWidth,bs}; })()`);
     check('audio playbar fits viewport', fit.bw > 60 && fit.br <= fit.vw && fit.bs.every(b => b.w > 20 && b.r <= fit.vw + 1), JSON.stringify(fit));
     check('audio merge button exists', await evalJs(`!!document.querySelector('#a-mrg')`));
@@ -220,6 +238,14 @@ try {
     const at = await evalJs(`__test.state().t`);
     check('audio playback advances', at > 0.3, 't=' + at?.toFixed(2));
     await shot('11-audio-workspace');
+
+    /* 14. 音频同套点画面隐藏（作用域在 #v-audio 内查询，避免读到视频侧重复 ID） */
+    const aOff = await evalJs(`__test.toggleChrome('audio')`);
+    const aState = await evalJs(`(() => { const v=document.querySelector('#v-audio'); const d=s=>getComputedStyle(v.querySelector(s)).display; return {on:v.classList.contains('hide-chrome'),top:d('#mtop'),list:d('#list'),tools:d('#a-tools'),bar:d('#a-playbar')}; })()`);
+    check('audio tap hides chrome', aOff && aState.on && [aState.top, aState.list, aState.tools, aState.bar].every(x => x === 'none'), JSON.stringify(aState));
+    await shot('12-audio-hidden');
+    await evalJs(`__test.toggleChrome('audio')`);
+    check('audio tap restores', await evalJs(`getComputedStyle(document.querySelector('#v-audio').querySelector('#a-tools')).display`) !== 'none');
 
     /* 异常检查 */
     check('no page exceptions', exceptions.length === 0, exceptions.join(' | ').slice(0, 160));
