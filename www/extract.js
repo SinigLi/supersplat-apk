@@ -125,7 +125,7 @@
             resEl.style.display = 'none';
             resEl.className = 'pj-ext-res';
             progBar.style.width = '0%';
-            progTxt.textContent = '准备…';
+            progTxt.textContent = '准备…（大文件解压需数分钟，请保持前台勿退出）';
             var uris = picked.map(function (f) { return f.uri; });
             p.extract({ uris: uris }).catch(function (e) {
                 busy = false;
@@ -142,7 +142,7 @@
         if (p) {
             p.addListener('progress', function (ev) {
                 progBar.style.width = Math.round(ev.pct || 0) + '%';
-                progTxt.textContent = (ev.phase === 'copy' ? '拼接分卷… ' : '解压中… ')
+                progTxt.textContent = (ev.phase === 'copy' ? '拼接分卷… ' : '解压中…大文件需数分钟，请保持前台勿退出 ')
                     + Math.round(ev.pct || 0) + '%';
             });
             p.addListener('done', function (ev) {

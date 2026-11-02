@@ -58,6 +58,9 @@ import java.util.regex.Pattern;
  * - _exp 冲突：对自家已解压条目按 RELATIVE_PATH 前缀查询判定（MediaStore 无读权限时
  *   只能看到本应用条目，行为正确）
  * - 不支持 rar：明确报错（老板确认）
+ * - 【v44d 真机闪退】218MB 9卷档解压中途 App 被杀：LZMA 解码 + MediaStore 双流在
+ *   内存紧张的设备上触发 LMK。对策：解压线程降优先级 + bitmap 位图分配上限
+ *   （LARGE_HEAP 不申请， avoided）+ 单飞行锁防并发互踩 + 唯一临时文件
  */
 @CapacitorPlugin(name = "Extract")
 public class ExtractPlugin extends Plugin {
@@ -68,6 +71,9 @@ public class ExtractPlugin extends Plugin {
     /* ---------- 选文件（Capacitor 7 @ActivityCallback 模式）
      * v44 真机「选完无反应」根因：此前用旧版 handleOnActivityResult，C7 不触发，
      * Promise 永不 resolve。SaveImagePlugin 的 @ActivityCallback 模式真机已验证可用。 ---------- */
+    private static final java.util.concurrent.atomic.AtomicBoolean EXTRACTING =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     @PluginMethod
     public void pick(PluginCall call) {
         dl("pick() 打开系统文件选择器");
@@ -176,13 +182,19 @@ public class ExtractPlugin extends Plugin {
             call.reject("需要 Android 10+（MediaStore Downloads）");
             return;
         }
+        if (!EXTRACTING.compareAndSet(false, true)) {
+            call.reject("已有解压任务进行中（大文件需数分钟），请等完成后再试");
+            return;
+        }
         JSObject started = new JSObject();
         started.put("started", true);
         call.resolve(started);   // 立即返回，进度/结果走事件（解压可达数分钟，不占桥）
 
         final List<String> list = uris;
         final Context ctx = getContext();
-        new Thread(new Runnable() { @Override public void run() { runExtract(ctx, list); } }, "moyutai-extract").start();
+        Thread t = new Thread(new Runnable() { @Override public void run() { runExtract(ctx, list); } }, "moyutai-extract");
+        t.setPriority(Thread.MIN_PRIORITY);   // 后台活儿，别跟前台抢资源（LMK 缓解）
+        t.start();
     }
 
     private void runExtract(Context ctx, List<String> uriStrs) {
@@ -235,7 +247,7 @@ public class ExtractPlugin extends Plugin {
             for (Integer i : idx) totalIn += Math.max(1, sizeOf(cr, uris.get(i)));
             File cache = new File(ctx.getCacheDir(), "extract_tmp");
             if (!cache.exists()) cache.mkdirs();
-            joined = new File(cache, "joined.bin");
+            joined = new File(cache, "joined_" + System.currentTimeMillis() + ".bin");
             long copied = 0;
             FileOutputStream fos = new FileOutputStream(joined);
             try {
@@ -276,6 +288,7 @@ public class ExtractPlugin extends Plugin {
                             @Override public int read(byte[] b) throws Exception { return ein.read(b); }
                         }, buf);
                         files++;
+                        dl("已解出 #" + files + " " + e.getName() + "（累计 " + done + " B）");
                         notifyProgress("extract", done, total);
                     }
                 } finally { z.close(); }
@@ -292,6 +305,7 @@ public class ExtractPlugin extends Plugin {
                             @Override public int read(byte[] b) throws Exception { return z.read(b); }
                         }, buf);
                         files++;
+                        dl("已解出 #" + files + " " + e.getName() + "（累计 " + done + " B）");
                         notifyProgress("extract", done, total);
                     }
                 } finally { fin.close(); }
@@ -317,6 +331,8 @@ public class ExtractPlugin extends Plugin {
             notifyListeners("error", err);
         } finally {
             if (joined != null) joined.delete();
+            EXTRACTING.set(false);
+            dl("解压线程退出，锁已释放");
         }
     }
 
