@@ -1,4 +1,4 @@
-/* 摸鱼台 v45c —— AV 工作台 UI 层（视频工程，真机反馈第二轮修复）
+/* 摸鱼台 v45d —— AV 工作台 UI 层（视频工程，真机反馈第二轮+热修）
  *
  * v45c 布局（2026-11-02 22:08 老板 7 条反馈）：
  *  1. ⏮⏯⏭ + ◀步进▶ 移到右侧中间竖排控制栏（大按钮）
@@ -8,6 +8,10 @@
  *  5. 工具行顺序：⤴并入前段 | ✂分割点 | ▦多帧点（+fps 框）
  *  6. 去掉单击视频切全屏（stage-hit 层删除）
  *  7. 播放/上下集/步进按钮放大 50%
+ *
+ * v45d 热修（23:19 老板截图：整页大黑边、控件挤叠）：
+ *  applySafeArea 物理px→CSS 换算 + 超过 48px 视为旋转过渡期脏值归零 +
+ *  旋转稳定后延迟重读 3 次 + resize/orientationchange 自愈。
  *
  * 继承 v45b：强制横屏、帧数常显、±半帧红色移除态、r6 交互语义。
  */
@@ -88,16 +92,34 @@
             if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
         } catch (e) { }
     }
-    /* #4：系统栏/挖孔 insets → CSS 变量（Android 15 edge-to-edge 下 env() 不可靠） */
+    /* #4：系统栏/挖孔 insets → CSS 变量（Android 15 edge-to-edge 下 env() 不可靠）
+     * v45d 真机修复（老板截图：整页被撑出大黑边）:
+     *  a) 原生返回物理 px，必须 ÷ devicePixelRatio 换算成 CSS px（v45c 直接当 CSS px 用 → 放大 2~3 倍）
+     *  b) 旋转过渡期读到旧方向脏值（v45c 截图顶带 ≈460 物理px = 竖屏状态栏值）→ 超过 SAFE_MAX 视为脏值归零
+     *  c) 旋转稳定后延迟重读 3 次 + resize/orientationchange 重读，自愈
+     */
+    var SAFE_MAX = 48;   // CSS px：真实状态栏/挖孔/导航条不会超过它
+
     function applySafeArea() {
         var p = ms();
         if (!p || !p.getSafeArea) return;
-        p.getSafeArea().then(function (r) {
-            page.style.setProperty('--av-safe-top', (r.top || 0) + 'px');
-            page.style.setProperty('--av-safe-right', (r.right || 0) + 'px');
-            page.style.setProperty('--av-safe-left', (r.left || 0) + 'px');
-            page.style.setProperty('--av-safe-bottom', (r.bottom || 0) + 'px');
-        }).catch(function () { /* 桌面 mock：保持 0 */ });
+        var read = function () {
+            p.getSafeArea().then(function (r) {
+                if (!r) return;
+                var dpr = window.devicePixelRatio || 1;
+                var cvt = function (v) {
+                    v = (v || 0) / dpr;
+                    if (v < 0 || v > SAFE_MAX) v = 0;   // 脏值一律归零（宁可靠边不撑破）
+                    return Math.round(v);
+                };
+                page.style.setProperty('--av-safe-top', cvt(r.top) + 'px');
+                page.style.setProperty('--av-safe-right', cvt(r.right) + 'px');
+                page.style.setProperty('--av-safe-left', cvt(r.left) + 'px');
+                page.style.setProperty('--av-safe-bottom', cvt(r.bottom) + 'px');
+            }).catch(function () { });
+        };
+        read();
+        [400, 1000, 2000].forEach(function (t) { setTimeout(read, t); });
     }
 
     function build() {
@@ -252,6 +274,14 @@
         mainEl.appendChild(posEl);
 
         document.body.appendChild(page);
+
+        // 安全区自愈：窗口尺寸/旋转变化时重读（v45d）
+        if (!S._safeHooked) {
+            S._safeHooked = true;
+            var reapply = function () { if (page.classList.contains('open')) applySafeArea(); };
+            addEventListener('resize', reapply);
+            addEventListener('orientationchange', reapply);
+        }
 
         videoEl.addEventListener('timeupdate', renderPos);
         videoEl.addEventListener('seeked', renderPos);

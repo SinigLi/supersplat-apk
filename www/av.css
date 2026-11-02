@@ -11,6 +11,9 @@
  *
  * 继承 v45b：悬浮层 0.25/blur4、按钮 0.38+文字投影、av-danger 红「移除」态、
  * 强制横屏（JS 层，CSS 竖屏规则仅桌面调试兜底）。
+ * v45d 热修：安全区由 .av-page padding 统一承担，内层元素不再重复消费
+ *      （23:18 截图：原生物理 px 未换算 + 旋转过渡期脏值 → 整页被撑出大黑边）
+ */
  */
 
 /* ===== 页面骨架（#4 安全区四向消费） ===== */
@@ -198,7 +201,7 @@
 /* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */
 .av-rail {
     position: absolute;
-    right: calc(12px + var(--av-safe-right));
+    right: 12px;    /* v45d：安全区由 .av-page padding 统一承担 */
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
@@ -274,7 +277,7 @@
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    bottom: calc(64px + var(--av-safe-bottom));
+    bottom: 64px;   /* v45d：内层不重复消费安全区 */
     z-index: 10;
     display: flex;
     align-items: center;
@@ -292,8 +295,8 @@
 /* ===== #3 时间/帧数悬浮右上角 ===== */
 .av-pos-top {
     position: absolute;
-    top: calc(10px + var(--av-safe-top));
-    right: calc(12px + var(--av-safe-right));
+    top: 10px;      /* v45d：内层不重复消费安全区 */
+    right: 12px;
     z-index: 12;
     color: #eee;
     font-size: 12px;
@@ -310,9 +313,9 @@
 /* ===== #2 播放条：刻度与进度条同层 ===== */
 .av-tl-wrap {
     position: absolute;
-    left: calc(16px + var(--av-safe-left));
-    right: calc(16px + var(--av-safe-right));
-    bottom: calc(10px + var(--av-safe-bottom));
+    left: 16px;     /* v45d：内层不重复消费安全区 */
+    right: 16px;
+    bottom: 10px;
     height: 40px;
     z-index: 8;
     background: rgba(11, 14, 20, 0.25);

@@ -242,7 +242,9 @@ try {
                     { name: 'shot10.mp4', size: 3000, docId: 'd10' }
                 ]}),
                 start: async () => { calls.push('start'); return { port: 45999, count: 3 }; },
-                stop: async () => { calls.push('stop'); }
+                stop: async () => { calls.push('stop'); },
+                // v45d：模拟原生物理 px（脏值 top/left 超限应钐 0，right/bottom 正常换算）
+                getSafeArea: async () => ({ top: 720, left: 420, right: 30, bottom: 9 })
             };
             window.__av._S.meta.folderUri = 'content://tree/x';
             // 预置授权目录进 localStorage，再走 open() 的恢复路径
@@ -261,6 +263,19 @@ try {
             out.listItems = document.querySelectorAll('.av-item').length;
             out.videoSrc = (document.querySelector('.av-video') || {}).src || '';
             out.topTitle = (document.querySelector('.av-top-title') || {}).textContent || '';
+            // v45d 安全区换算/钐制断言（物理 px→CSS，超 48 视为脏值归零）
+            const pg = document.getElementById('avPage');
+            const cs = getComputedStyle(pg);
+            const dpr = window.devicePixelRatio || 1;
+            const cv = v => { v = (v || 0) / dpr; return (v < 0 || v > 48) ? 0 : Math.round(v); };
+            out.expRight = cv(30) + 'px';
+            out.expBottom = cv(9) + 'px';
+            out.safeTop = pg.style.getPropertyValue('--av-safe-top');
+            out.safeRight = pg.style.getPropertyValue('--av-safe-right');
+            out.safeBottom = pg.style.getPropertyValue('--av-safe-bottom');
+            out.padTop = cs.paddingTop;
+            out.padRight = cs.paddingRight;
+            out.padBottom = cs.paddingBottom;
             return out;
         })()
     `);
@@ -269,6 +284,7 @@ try {
     check('V3 流端口获取', folder.port === 45999);
     check('V4 video.src 指向本地流', folder.videoSrc.includes('127.0.0.1:45999'), folder.videoSrc);
     check('V5 顶栏显示目录', folder.topTitle.includes('mock_split'), folder.topTitle);
+    check('C3 安全区脏值钐制+物理px换算(v45d)', folder.safeTop === '0px' && folder.safeRight === folder.expRight && folder.safeBottom === folder.expBottom && folder.padTop === '0px', `t=${folder.safeTop} r=${folder.safeRight}(期望${folder.expRight}) padT=${folder.padTop}`);
 
     // 标记交互（F1/F2/F3）
     const markTests = await evalJs(`
