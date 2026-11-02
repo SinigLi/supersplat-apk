@@ -264,6 +264,14 @@ try {
     await evalJs(`__test.toggleChrome('audio')`);
     check('audio tap restores', await evalJs(`getComputedStyle(document.querySelector('#v-audio').querySelector('#a-tools')).display`) !== 'none');
 
+    /* 15. 保存/返回按钮（r5） */
+    check('save/back buttons exist', await evalJs(`!!document.querySelector('#lv-save') && !!document.querySelector('#lv-back') && !!document.querySelector('#al-save') && !!document.querySelector('#al-back')`));
+    const saved = await evalJs(`__test.saveState()`);
+    check('save stores marks + position', saved && typeof saved.t === 'number' && saved.marks !== undefined && saved.file, JSON.stringify(saved).slice(0, 100));
+    const ovlBtnBg = await evalJs(`getComputedStyle(document.querySelector('#v-cut')).backgroundColor`);
+    const m = ovlBtnBg.match(/rgba\(27, 34, 51, (0?\.?\d+)\)/);
+    check('overlay button alpha <=0.4', m && Math.abs(parseFloat(m[1]) - 0.38) < 0.01, ovlBtnBg);
+
     /* 异常检查 */
     check('no page exceptions', exceptions.length === 0, exceptions.join(' | ').slice(0, 160));
 
