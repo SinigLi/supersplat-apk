@@ -334,10 +334,9 @@ public class ExtractPlugin extends Plugin {
                 msg = "内存不足：这个压缩包解出来太大，手机内存扛不住。建议重启手机后只开摸鱼台再试一次；仍失败的话把日志发我加内存参数";
                 dl("OutOfMemoryError!! " + e.getClass().getName());
             } else if (msg != null && (msg.contains("nextHeaderOffset") || msg.contains("out of bounds"))) {
-            if (msg.contains("Can't open archive") || msg.contains("Error opening")) {
-                msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
-            } else if (msg.contains("nextHeaderOffset") || msg.contains("out of bounds")) {
                 msg = "压缩包数据不完整：大概率缺卷（对照文件管理器补齐 .001~.NNN 全部卷）或个别卷传输时损坏";
+            } else if (msg != null && (msg.contains("Can't open archive") || msg.contains("Error opening"))) {
+                msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
             }
             err.put("message", msg);
             dl("解压失败: " + msg + " | " + e.getClass().getName());
