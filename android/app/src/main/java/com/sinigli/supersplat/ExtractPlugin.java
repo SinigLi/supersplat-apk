@@ -335,6 +335,12 @@ public class ExtractPlugin extends Plugin {
                 dl("OutOfMemoryError!! " + e.getClass().getName());
             } else if (msg != null && (msg.contains("nextHeaderOffset") || msg.contains("out of bounds"))) {
                 msg = "压缩包数据不完整：大概率缺卷（对照文件管理器补齐 .001~.NNN 全部卷）或个别卷传输时损坏";
+            } else if (e instanceof NoClassDefFoundError || msg.contains("Failed resolution of") || msg.contains("NoClassDefFoundError")) {
+                msg = "解压组件缺失（安装包不完整）——请重新安装最新版摸鱼台；若仍出现请导出日志发我";
+                dl("组件缺失!! " + msg + " | " + e.getClass().getName());
+            } else if (e instanceof NoClassDefFoundError || e instanceof NoSuchMethodError) {
+                msg = "解压组件缺失（版本安装不完整），请覆盖重装最新包；仍报错请导出日志发我";
+                dl("依赖错误: " + e.getClass().getName() + " | " + msg);
             } else if (msg != null && (msg.contains("Can't open archive") || msg.contains("Error opening"))) {
                 msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
             }
