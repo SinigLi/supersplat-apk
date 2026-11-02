@@ -91,6 +91,7 @@ function onMsg(raw) {
 const tests = `
 (async () => {
     const out = {};
+    localStorage.clear();   // 重跑安全：清掉上次探针留下的工程/标记
     const A = window.__avLogic, AV = window.__av;
     out.hasLogic = !!A;
     out.hasUI = !!AV;

@@ -180,6 +180,9 @@
 
     function openNewDialog() {
         newInput.value = '';
+        // v45：每次打开重置为默认 3D（R4「默认」语义；同时消除模块状态残留，探针确定性）
+        newMode = 'model';
+        newDlg.querySelectorAll('.pj-mode').forEach(function (x, i) { x.classList.toggle('on', i === 0); });
         newDlg.querySelector('.pj-dlg-hint').textContent = '';
         newDlg.classList.add('open');
         setTimeout(function () { newInput.focus(); }, 60);
