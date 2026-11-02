@@ -227,10 +227,11 @@ public class ExtractPlugin extends Plugin {
                     byte[] buf = new byte[BUF];
                     while ((e = z.getNextEntry()) != null) {
                         if (e.isDirectory()) continue;
-                        currentEntry = e;   // EntrySource 回调读当前条目（循环变量非终态，经字段中转）
                         String entryPath = relDir + "/" + sanitize(e.getName());
+                        // 1.26 API：read(entry,buf) 已移除，改 per-entry InputStream（局部变量 effectively final 可被匿名类捕获）
+                        final InputStream ein = z.getInputStream(e);
                         done += writeDownload(cr, entryPath, new EntrySource() {
-                            @Override public int read(byte[] b) throws Exception { return z.read(currentEntry, b); }
+                            @Override public int read(byte[] b) throws Exception { return ein.read(b); }
                         }, buf);
                         files++;
                         notifyProgress("extract", done, total);
@@ -244,7 +245,6 @@ public class ExtractPlugin extends Plugin {
                     ZipArchiveEntry e;
                     while ((e = z.getNextZipEntry()) != null) {
                         if (e.isDirectory()) continue;
-                        final ZipArchiveEntry fe = e;
                         String entryPath = relDir + "/" + sanitize(e.getName());
                         done += writeDownload(cr, entryPath, new EntrySource() {
                             @Override public int read(byte[] b) throws Exception { return z.read(b); }
@@ -275,7 +275,6 @@ public class ExtractPlugin extends Plugin {
     }
 
     private interface EntrySource { int read(byte[] b) throws Exception; }
-    private SevenZArchiveEntry currentEntry;
 
     /** MediaStore Downloads 写一个条目（IS_PENDING 两段式），返回写入字节数 */
     private long writeDownload(ContentResolver cr, String relPathWithFile, EntrySource src, byte[] buf) throws Exception {
