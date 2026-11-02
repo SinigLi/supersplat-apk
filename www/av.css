@@ -1,21 +1,35 @@
-/* 摸鱼台 v45b —— AV 工作台样式（对齐 r6 定稿原型布局，真机反馈 #6）
+/* 摸鱼台 v45c —— AV 工作台样式（真机反馈第二轮 · 老板 7 条布局决议）
  *
- * 反馈 #6：布局照抄 r6 原型——一行工具行（✂⤴▦ + 步进组 + fps）悬浮画面下方，
- * 一行播放条（进度条 + ⏮⏯⏭），时间标签叠进度条左上角。
- * J2 定稿参数：悬浮层 rgba 0.25/blur4、按钮本体 rgba 0.38 + 文字投影。
- * 反馈 #4：av-danger = 游标命中已有标记的「移除」态（红）。
- * 反馈 #1：进入工作台强制横屏（screen.orientation.lock），CSS 仍留竖屏兜底。
+ *  1. ⏮⏯⏭ + ◀步进▶ → 右侧中间竖排控制栏 .av-rail（大按钮 .av-big）
+ *  2. 标记刻度与进度条同层（.av-range-wrap 内绝对定位，按拇指半径内缩对齐）
+ *  3. 时间/帧数 → 播放器右上角悬浮标签 .av-pos-top
+ *  4. 系统栏/挖孔避让：JS 把原生 insets 写进 --av-safe-* 变量，页面四向消费
+ *     （Android 15 edge-to-edge 下 env(safe-area-inset) 不可靠，见 MediaServer.getSafeArea）
+ *  5. 工具行顺序 ⤴|✂|▦|fps（DOM 顺序即视觉顺序，CSS 只管样式）
+ *  6. 单击视频切全屏已删（stage-hit/imm 相关样式全部移除）
+ *  7. .av-big = v45b 按钮放大 50%
+ *
+ * 继承 v45b：悬浮层 0.25/blur4、按钮 0.38+文字投影、av-danger 红「移除」态、
+ * 强制横屏（JS 层，CSS 竖屏规则仅桌面调试兜底）。
  */
 
-/* ===== 页面骨架 ===== */
+/* ===== 页面骨架（#4 安全区四向消费） ===== */
 .av-page {
+    --av-safe-top: 0px;
+    --av-safe-right: 0px;
+    --av-safe-bottom: 0px;
+    --av-safe-left: 0px;
+
     display: none;
     position: fixed;
     inset: 0;
     z-index: 1550;   /* 盖过工程页 1500，低于对话框 1600/toast 1700 */
     background: #141414;
     flex-direction: column;
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-top: var(--av-safe-top);
+    padding-right: var(--av-safe-right);
+    padding-bottom: var(--av-safe-bottom);
+    padding-left: var(--av-safe-left);
 }
 .av-page.open { display: flex; }
 
@@ -28,6 +42,7 @@
     background: #1d1d1f;
     border-bottom: 1px solid #333;
     min-height: 44px;
+    flex: 0 0 auto;
 }
 .av-top-title {
     flex: 1;
@@ -180,32 +195,30 @@
     pointer-events: none;
 }
 
-/* 点画面层（G2）：盖住播放区上部，点击切换沉浸 */
-.av-stage-hit {
+/* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */
+.av-rail {
     position: absolute;
-    inset: 0 0 120px 0;
-    z-index: 5;
-}
-
-/* ===== 工具行（反馈 #6：原型 v-tools 单行，悬浮播放条上方） ===== */
-.av-ovl {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 66px;
+    right: calc(12px + var(--av-safe-right));
+    top: 50%;
+    transform: translateY(-50%);
     z-index: 10;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 10px;
+    padding: 10px;
     background: rgba(11, 14, 20, 0.25);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    border-radius: 12px;
-    max-width: calc(100% - 16px);
-    flex-wrap: wrap;
-    justify-content: center;
+    border-radius: 14px;
 }
+.av-rail-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ===== 通用按钮（v45b 透明定稿） ===== */
 .av-ovl-btn {
     background: rgba(27, 34, 51, 0.38);
     color: #eee;
@@ -220,13 +233,20 @@
 .av-ovl-btn.av-sq { padding: 8px 10px; min-width: 36px; }
 .av-ovl-btn.av-accent { color: #9be29b; }
 .av-ovl-btn.av-multi { color: #b48cff; }
-/* 反馈 #4：游标命中已有标记 → 红「移除」态 */
+/* 游标命中已有标记 → 红「移除」态 */
 .av-ovl-btn.av-danger {
     color: #ff7d7d;
     border-color: rgba(220, 80, 80, 0.55);
     background: rgba(120, 40, 40, 0.45);
 }
-.av-ovl-gap { width: 6px; }
+/* #7 播放/上下集/步进放大 50%（v45b 基准 12px/8x11 → 18px/12x16） */
+.av-ovl-btn.av-big {
+    font-size: 18px;
+    padding: 12px 15px;
+    min-width: 52px;
+}
+.av-ovl-btn.av-big.av-play { min-width: 62px; }
+
 .av-ovl-input {
     width: 52px;
     background: rgba(27, 34, 51, 0.38);
@@ -238,7 +258,7 @@
     text-align: center;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
-.av-ovl-input.av-step { width: 48px; }
+.av-ovl-input.av-step { width: 56px; font-size: 13px; padding: 8px 6px; }
 .av-ovl-input.av-fps { width: 44px; }
 .av-ovl-fps {
     display: flex;
@@ -249,20 +269,72 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
-/* ===== 播放条行（原型 v-playbar：进度条 + ⏮⏯⏭） ===== */
+/* ===== #5 工具行（⤴|✂|▦|fps，悬浮底部居中） ===== */
+.av-ovl {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(64px + var(--av-safe-bottom));
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(11, 14, 20, 0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border-radius: 12px;
+    max-width: calc(100% - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* ===== #3 时间/帧数悬浮右上角 ===== */
+.av-pos-top {
+    position: absolute;
+    top: calc(10px + var(--av-safe-top));
+    right: calc(12px + var(--av-safe-right));
+    z-index: 12;
+    color: #eee;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+    background: rgba(11, 14, 20, 0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    padding: 4px 9px;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+/* ===== #2 播放条：刻度与进度条同层 ===== */
 .av-tl-wrap {
     position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 58px;
+    left: calc(16px + var(--av-safe-left));
+    right: calc(16px + var(--av-safe-right));
+    bottom: calc(10px + var(--av-safe-bottom));
+    height: 40px;
     z-index: 8;
     background: rgba(11, 14, 20, 0.25);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    border-top: 1px solid rgba(42, 50, 71, 0.35);
+    border: 1px solid rgba(42, 50, 71, 0.35);
+    border-radius: 12px;
 }
-.av-tl-ticks { position: absolute; left: 0; right: 96px; top: 12px; bottom: 8px; pointer-events: none; }
+/* 刻度容器与 range 轨道对齐：内缩半个拇指宽（thumb 20px → 10px） */
+.av-range-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.av-tl-ticks {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 8px;
+    bottom: 8px;
+    pointer-events: none;
+}
 .av-tick {
     position: absolute;
     top: 0;
@@ -273,32 +345,14 @@
 }
 .av-tick-split { background: #6fdc8c; }
 .av-tick-multi { background: #b48cff; width: 5px; }
-/* 反馈 #3：时间标签叠进度条左上角（原型 ptime） */
-.av-tl-pos {
-    position: absolute;
-    top: 2px;
-    left: 12px;
-    z-index: 2;
-    color: #eee;
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
-    pointer-events: none;
-}
-.av-prow {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 100%;
-    padding: 16px 12px 8px;
-}
 .av-tl-range {
-    flex: 1;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     -webkit-appearance: none;
-    height: 30px;
     background: transparent;
-    min-width: 0;
+    margin: 0;
 }
 .av-tl-range::-webkit-slider-runnable-track {
     height: 5px;
@@ -314,17 +368,6 @@
     background: #e8e8ec;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
-.av-prow .av-ovl-btn { flex: 0 0 auto; }
-.av-prow .av-play { min-width: 44px; }
-
-/* ===== G2 沉浸态：隐藏全部编辑层（点画面恢复） ===== */
-.av-page.imm .av-top,
-.av-page.imm .av-side,
-.av-page.imm .av-handle,
-.av-page.imm .av-ovl,
-.av-page.imm .av-tl-wrap { display: none; }
-.av-page.imm .av-stage-hit { inset: 0; }
-.av-page.imm .av-handle { display: none !important; }
 
 /* ===== 竖屏兜底（真机强制横屏后不会走到；桌面调试用） ===== */
 @media (max-width: 699px) {
@@ -339,5 +382,5 @@
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
     }
     .av-side.closed { margin-left: -110%; }
-    .av-ovl { bottom: 76px; }
+    .av-rail { right: 8px; }
 }

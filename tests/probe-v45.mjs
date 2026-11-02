@@ -307,13 +307,12 @@ try {
             marks = window.__av.marks().marks;
             const mf = marks.find(m => m.type === 'multiframe_ref');
             out.multi = mf ? mf.frames.join(',') : '';
-            // 沉浸（G2）
-            document.querySelector('.av-stage-hit').click();
-            await new Promise(r => setTimeout(r, 100));
-            out.imm = document.getElementById('avPage').classList.contains('imm');
-            document.querySelector('.av-stage-hit').click();
-            await new Promise(r => setTimeout(r, 100));
-            out.unimm = !document.getElementById('avPage').classList.contains('imm');
+            // v45c #6：stage-hit 已删（单击视频不再切全屏）；#1：右侧竖排控制栏存在
+            out.noStageHit = !document.querySelector('.av-stage-hit');
+            out.railExists = !!document.querySelector('.av-rail');
+            out.railBigBtns = document.querySelectorAll('.av-rail .av-ovl-btn.av-big').length;   // ⏮⏯⏭◀▶ 5 个
+            // #3：时间标签悬浮右上角（.av-pos-top）
+            out.posTop = !!document.querySelector('.av-pos-top');
             return out;
         })()
     `);
@@ -322,14 +321,14 @@ try {
     check('M3 merge 开(F1)', markTests.mergeOn);
     check('M4 merge 解除', markTests.mergeOff);
     check('M5 多帧参考(F3)', markTests.multi === '38,50', markTests.multi);
-    check('M6 沉浸切换(G2)', markTests.imm && markTests.unimm);
+    check('M6 全屏层已删(反馈#6)', markTests.noStageHit);
 
     // v45b 真机反馈修复专项
     const fixTests = await evalJs(`
         (async () => {
             const out = {};
             // F-#2 播放按钮存在且在播放条行内
-            const play = document.querySelector('.av-prow .av-play');
+            const play = document.querySelector('.av-rail .av-play');   // v45c：播放按钮在右侧竖排栏
             out.playBtn = !!play;
             // 点击不抛异常（无真实流 → toast 兑底路径）
             if (play) play.click();
@@ -359,6 +358,8 @@ try {
     check('X3 移开恢复常态', fixTests.dangerOff);
     check('X4 无fps多帧可用(反馈#5)', fixTests.multiNoFps);
     check('X5 横屏调用不抛错(反馈#1)', fixTests.pageOpen);
+    check('C1 右侧竖排控制栏(v45c#1)', markTests.railExists && markTests.railBigBtns === 5, 'big=' + markTests.railBigBtns);
+    check('C2 时间标签右上角(v45c#3)', markTests.posTop);
 
     // 持久化 + 返回
     const persist = await evalJs(`

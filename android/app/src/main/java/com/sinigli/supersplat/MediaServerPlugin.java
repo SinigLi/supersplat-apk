@@ -257,6 +257,36 @@ public class MediaServerPlugin extends Plugin {
         if (call != null) call.resolve();
     }
 
+    /** v45c：读系统栏/挖孔避让尺寸（反馈 #4：顶栏按钮被系统下拉栏遮挡）
+     *  Android 15 强制 edge-to-edge，WebView 里 env(safe-area-inset) 不可靠，
+     *  这里从 WindowInsetsCompat 拿真实 px，Web 层写进 CSS 变量。 */
+    @PluginMethod
+    public void getSafeArea(PluginCall call) {
+        final Activity a = getActivity();
+        if (a == null) { call.reject("no activity"); return; }
+        final PluginCall c = call;
+        a.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    android.view.View v = a.getWindow().getDecorView();
+                    androidx.core.graphics.Insets i = androidx.core.view.WindowInsetsCompat
+                            .toWindowInsetsCompat(v.getRootWindowInsets())
+                            .getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                                    | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+                    JSObject res = new JSObject();
+                    res.put("top", i.top);
+                    res.put("left", i.left);
+                    res.put("right", i.right);
+                    res.put("bottom", i.bottom);
+                    c.resolve(res);
+                } catch (Exception e) {
+                    c.reject("insets failed: " + e.getMessage());
+                }
+            }
+        });
+    }
+
     /** v45b：工作台强制横屏（反馈 #1；screen.orientation.lock 在 WebView 可能被拒，Activity 级保证生效） */
     @PluginMethod
     public void lockLandscape(PluginCall call) {

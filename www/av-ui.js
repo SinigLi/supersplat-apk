@@ -1,22 +1,21 @@
-/* 摸鱼台 v45b —— AV 工作台 UI 层（视频工程 P2，真机反馈修复版）
+/* 摸鱼台 v45c —— AV 工作台 UI 层（视频工程，真机反馈第二轮修复）
  *
- * v45b 修复（2026-11-02 21:08 老板 6 条真机反馈）：
- *  1. 竖屏太挤 → 进入工作台强制横屏（screen.orientation.lock，返回时 unlock）
- *  2. 没有播放按钮 → 播放条加 ⏯（v45 漏实现，连锁根因：无播放则 rVFC 采不了 fps）
- *  3. 帧数显示异常 → fps 未估算时默认 25 显示帧数（不再只显示秒）
- *  4. 吸附异常/无状态标志 → 播放条点选吸附 ±半帧；分割/并入/多帧按钮游标命中变红「移除」态
- *  5. 多帧按钮无效 → 不再被 fps 阻塞（用有效 fps 默认 25）
- *  6. 布局乱 → 照抄 r6 定稿原型：一行工具行 + 一行播放条（⏮ ⏯ ⏭ 在进度条右侧）
+ * v45c 布局（2026-11-02 22:08 老板 7 条反馈）：
+ *  1. ⏮⏯⏭ + ◀步进▶ 移到右侧中间竖排控制栏（大按钮）
+ *  2. 标记刻度与播放条对齐（刻度挪进进度条同层，占位不再被播放按钮挤偏）
+ *  3. 时间/帧数显示移到播放器右上角（悬浮标签）
+ *  4. 顶栏/右栏避让系统栏与挖孔（原生 getSafeArea → CSS 变量）
+ *  5. 工具行顺序：⤴并入前段 | ✂分割点 | ▦多帧点（+fps 框）
+ *  6. 去掉单击视频切全屏（stage-hit 层删除）
+ *  7. 播放/上下集/步进按钮放大 50%
  *
- * 继承 v45：清单/标记/导出逻辑在 av-store.js；原生 MediaServerPlugin 流播放。
+ * 继承 v45b：强制横屏、帧数常显、±半帧红色移除态、r6 交互语义。
  */
 (function () {
     'use strict';
 
     var L = window.__avLogic;
     if (!L) { console.error('[av] __avLogic 未加载'); return; }
-
-    /* ---------- 原生桥 ---------- */
 
     function ms() {
         var cap = window.Capacitor;
@@ -27,8 +26,6 @@
         return (cap && cap.Plugins && cap.Plugins.SaveImage) || null;
     }
 
-    /* ---------- 状态 ---------- */
-
     var S = {
         project: null,
         meta: null,
@@ -36,11 +33,10 @@
         files: [],
         cur: -1,
         serverPort: 0,
-        fps: null,           // 有效估算值；null 时 effFps() 兜底 25
+        fps: null,
         fpsSampling: false,
         vfcSamples: [],
         vfcT0: 0,
-        immersive: false,
         built: false
     };
 
@@ -59,12 +55,10 @@
         return b + 'B';
     }
 
-    /* ---------- DOM ---------- */
-
-    var page, topEl, sideEl, listEl, mainEl, videoEl, stageHit,
+    var page, topEl, sideEl, listEl, mainEl, videoEl,
         ovlEl, btnSplit, btnMerge, btnMulti, stepVal, fpsBox,
         tlWrap, posEl, tlRange, ticksEl, btnPlay, btnPrev, btnNext,
-        audioCv, emptyHint, handleEl, toastTimer = null;
+        railEl, audioCv, emptyHint, handleEl, toastTimer = null;
 
     function toast(msg) {
         var t = document.querySelector('.pj-toast');
@@ -75,7 +69,7 @@
         toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
     }
 
-    /* ---------- 横屏锁定（反馈 #1：原生 Activity 级保证，JS API 兑底） ---------- */
+    /* ---------- 横屏（v45b） + 安全区（v45c #4） ---------- */
 
     function lockLandscape() {
         var p = ms();
@@ -94,6 +88,17 @@
             if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
         } catch (e) { }
     }
+    /* #4：系统栏/挖孔 insets → CSS 变量（Android 15 edge-to-edge 下 env() 不可靠） */
+    function applySafeArea() {
+        var p = ms();
+        if (!p || !p.getSafeArea) return;
+        p.getSafeArea().then(function (r) {
+            page.style.setProperty('--av-safe-top', (r.top || 0) + 'px');
+            page.style.setProperty('--av-safe-right', (r.right || 0) + 'px');
+            page.style.setProperty('--av-safe-left', (r.left || 0) + 'px');
+            page.style.setProperty('--av-safe-bottom', (r.bottom || 0) + 'px');
+        }).catch(function () { /* 桌面 mock：保持 0 */ });
+    }
 
     function build() {
         if (S.built) return;
@@ -102,7 +107,7 @@
         page = el('div', 'av-page');
         page.id = 'avPage';
 
-        // 顶栏（G2 沉浸时隐藏）
+        // 顶栏（#4：padding 避让系统栏，由 CSS 变量控制）
         topEl = el('div', 'av-top');
         var backBtn = el('button', 'av-top-btn', '← 返回');
         backBtn.addEventListener('click', back);
@@ -152,31 +157,25 @@
         emptyHint = el('div', 'av-empty', '先「📂 加载文件夹」');
         mainEl.appendChild(emptyHint);
 
-        // 点画面层（G2）
-        stageHit = el('div', 'av-stage-hit');
-        mainEl.appendChild(stageHit);
-        stageHit.addEventListener('click', function () { setImmersive(!S.immersive); });
+        // ===== 右侧竖排控制栏（#1 位置 + #7 放大）=====
+        // 上排：⏮ ⏯ ⏭；下排：◀ [步进] ▶
+        railEl = el('div', 'av-rail');
+        var rr1 = el('div', 'av-rail-row');
+        btnPrev = el('button', 'av-ovl-btn av-big', '⏮');
+        btnPrev.addEventListener('click', function () { stepFile(-1); });
+        rr1.appendChild(btnPrev);
+        btnPlay = el('button', 'av-ovl-btn av-big av-play', '▶');
+        btnPlay.addEventListener('click', togglePlay);
+        rr1.appendChild(btnPlay);
+        btnNext = el('button', 'av-ovl-btn av-big', '⏭');
+        btnNext.addEventListener('click', function () { stepFile(1); });
+        rr1.appendChild(btnNext);
+        railEl.appendChild(rr1);
 
-        // ===== 工具行（反馈 #6：照抄 r6 原型 v-tools 一行） =====
-        // ✂ 分割点 | ⤴ 并入前段 | ▦ 多帧点 | ◀ [1帧] ▶ | [fps]
-        ovlEl = el('div', 'av-ovl');
-        var row = el('div', 'av-ovl-row');
-        btnSplit = el('button', 'av-ovl-btn av-accent', '✂ 分割点');
-        btnSplit.addEventListener('click', markSplit);
-        row.appendChild(btnSplit);
-        btnMerge = el('button', 'av-ovl-btn', '⤴ 并入前段');
-        btnMerge.addEventListener('click', toggleMerge);
-        row.appendChild(btnMerge);
-        btnMulti = el('button', 'av-ovl-btn av-multi', '▦ 多帧点');
-        btnMulti.addEventListener('click', toggleMulti);
-        row.appendChild(btnMulti);
-
-        var gap = el('i', 'av-ovl-gap');
-        row.appendChild(gap);
-
-        var stL = el('button', 'av-ovl-btn av-sq', '◀');
+        var rr2 = el('div', 'av-rail-row');
+        var stL = el('button', 'av-ovl-btn av-big', '◀');
         stL.addEventListener('click', function () { stepTime(-1); });
-        row.appendChild(stL);
+        rr2.appendChild(stL);
         stepVal = el('input', 'av-ovl-input av-step');
         stepVal.type = 'text';
         stepVal.addEventListener('change', function () {
@@ -188,10 +187,24 @@
             }
             renderStepBox();
         });
-        row.appendChild(stepVal);
-        var stR = el('button', 'av-ovl-btn av-sq', '▶');
+        rr2.appendChild(stepVal);
+        var stR = el('button', 'av-ovl-btn av-big', '▶');
         stR.addEventListener('click', function () { stepTime(1); });
-        row.appendChild(stR);
+        rr2.appendChild(stR);
+        railEl.appendChild(rr2);
+        mainEl.appendChild(railEl);
+
+        // ===== 工具行（#5 顺序：⤴并入前段 | ✂分割点 | ▦多帧点 | fps）=====
+        ovlEl = el('div', 'av-ovl');
+        btnMerge = el('button', 'av-ovl-btn', '⤴ 并入前段');
+        btnMerge.addEventListener('click', toggleMerge);
+        ovlEl.appendChild(btnMerge);
+        btnSplit = el('button', 'av-ovl-btn av-accent', '✂ 分割点');
+        btnSplit.addEventListener('click', markSplit);
+        ovlEl.appendChild(btnSplit);
+        btnMulti = el('button', 'av-ovl-btn av-multi', '▦ 多帧点');
+        btnMulti.addEventListener('click', toggleMulti);
+        ovlEl.appendChild(btnMulti);
 
         var fpsWrap = el('label', 'av-ovl-fps');
         fpsBox = el('input', 'av-ovl-input av-fps');
@@ -210,19 +223,14 @@
         });
         fpsWrap.appendChild(fpsBox);
         fpsWrap.appendChild(el('span', null, 'fps'));
-        row.appendChild(fpsWrap);
-        ovlEl.appendChild(row);
+        ovlEl.appendChild(fpsWrap);
         mainEl.appendChild(ovlEl);
 
-        // ===== 播放条行（原型 v-playbar：进度条 + ⏮ ⏯ ⏭） =====
+        // ===== 播放条（#2 刻度与进度条同层对齐） =====
         tlWrap = el('div', 'av-tl-wrap');
+        var rangeWrap = el('div', 'av-range-wrap');
         ticksEl = el('div', 'av-tl-ticks');
-        tlWrap.appendChild(ticksEl);
-        // 时间标签（帧+秒/总时长）叠在进度条左上（原型 ptime）
-        posEl = el('div', 'av-tl-pos', '帧 1 · 0.00s / 0.00s');
-        tlWrap.appendChild(posEl);
-
-        var prow = el('div', 'av-prow');
+        rangeWrap.appendChild(ticksEl);
         tlRange = el('input', 'av-tl-range');
         tlRange.type = 'range';
         tlRange.min = '0';
@@ -231,24 +239,17 @@
         tlRange.addEventListener('input', function () {
             if (!isFinite(videoEl.duration) || videoEl.duration <= 0) return;
             var t = (parseFloat(tlRange.value) / 1000) * videoEl.duration;
-            // 反馈 #4：播放条点选吸附附近标记（±半帧）
             t = L.snapT(t, S.marks.marks, effFps());
             videoEl.currentTime = t;
             renderPos();
         });
-        prow.appendChild(tlRange);
-
-        btnPrev = el('button', 'av-ovl-btn av-sq', '⏮');
-        btnPrev.addEventListener('click', function () { stepFile(-1); });
-        prow.appendChild(btnPrev);
-        btnPlay = el('button', 'av-ovl-btn av-sq av-play', '▶');    // 反馈 #2：补播放按钮
-        btnPlay.addEventListener('click', togglePlay);
-        prow.appendChild(btnPlay);
-        btnNext = el('button', 'av-ovl-btn av-sq', '⏭');
-        btnNext.addEventListener('click', function () { stepFile(1); });
-        prow.appendChild(btnNext);
-        tlWrap.appendChild(prow);
+        rangeWrap.appendChild(tlRange);
+        tlWrap.appendChild(rangeWrap);
         mainEl.appendChild(tlWrap);
+
+        // #3：时间/帧数悬浮播放器右上角（独立于底条，避免被挤位）
+        posEl = el('div', 'av-pos-top', '帧 1 · 0.00s / 0.00s');
+        mainEl.appendChild(posEl);
 
         document.body.appendChild(page);
 
@@ -270,7 +271,7 @@
         }
     }
 
-    /* ---------- fps 估算（rVFC 播放 1s 采样；未估算时 UI 按 25 显示） ---------- */
+    /* ---------- fps 估算（rVFC） ---------- */
 
     var COMMON_FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60];
 
@@ -322,7 +323,7 @@
         }
     }
 
-    /* ---------- 列表 / 侧栏 ---------- */
+    /* ---------- 列表 ---------- */
 
     function setSide(open) {
         sideEl.classList.toggle('closed', !open);
@@ -411,7 +412,7 @@
 
     function stopServer() {
         var p = ms();
-        if (p) p.stop().catch(function () { /* */ });
+        if (p) p.stop().catch(function () { });
         S.serverPort = 0;
     }
 
@@ -441,7 +442,7 @@
         if (!keepPaused) togglePlay();
     }
 
-    /* ---------- 位置显示 + 按钮状态（反馈 #3/#4） ---------- */
+    /* ---------- 位置显示 + 按钮状态 ---------- */
 
     function renderPos() {
         var t = videoEl.currentTime || 0;
@@ -450,7 +451,6 @@
             tlRange.value = String(Math.round((t / d) * 1000));
         }
         if (S.meta.mode === 'video') {
-            // 反馈 #3：帧数永远显示（fps 未估算按 25）
             posEl.textContent = '帧 ' + (L.frameAt(t, effFps()) + 1) + ' · ' + fmt2(t) + 's / ' +
                 (isFinite(d) ? fmt2(d) : '0.00') + 's';
         } else {
@@ -460,7 +460,6 @@
         renderBtnStates();
     }
 
-    /* 反馈 #4：游标命中（±半帧）时按钮变红「移除」态——所见即可删 */
     function renderBtnStates() {
         var t = videoEl.currentTime || 0;
         var seg = curSeg();
@@ -516,7 +515,7 @@
         return f ? f.label : null;
     }
 
-    /* ---------- 标记（命中判定与按钮状态一致：±半帧） ---------- */
+    /* ---------- 标记 ---------- */
 
     function markSplit() {
         if (S.cur < 0) { toast('先选择片段'); return; }
@@ -531,7 +530,7 @@
             S.marks.marks.splice(S.marks.marks.indexOf(hit), 1);
             toast('已移除分割点 @' + fmt2(hit.at) + 's');
         } else {
-            var qt = L.quantize(t, 'video', effFps(), 0);   // G1 帧精确归档
+            var qt = L.quantize(t, 'video', effFps(), 0);
             S.marks.marks.push({ id: 'm' + Date.now(), type: 'split', seg: seg, at: qt, note: '' });
             toast('✂ 分割点 @' + fmt2(qt) + 's（帧 ' + (L.frameAt(qt, effFps()) + 1) + '）');
         }
@@ -555,7 +554,6 @@
         renderBtnStates();
     }
 
-    /* 反馈 #5：不再被 fps 阻塞（effFps 兜底 25）；当前帧已在参考集 → 移除 */
     function toggleMulti() {
         if (S.cur < 0) { toast('先选择片段'); return; }
         var seg = curSeg();
@@ -585,7 +583,7 @@
         renderPos();
     }
 
-    /* ---------- 步进（R8） ---------- */
+    /* ---------- 步进 ---------- */
 
     function stepTime(dir) {
         if (S.cur < 0) return;
@@ -610,13 +608,6 @@
         fpsBox.placeholder = String(effFps());
     }
 
-    /* ---------- 沉浸（G2） ---------- */
-
-    function setImmersive(on) {
-        S.immersive = on;
-        page.classList.toggle('imm', on);
-    }
-
     /* ---------- 保存 / 返回 ---------- */
 
     function saveAll(explicit) {
@@ -633,14 +624,14 @@
     function back() {
         saveAll(false);
         stopServer();
-        unlockOrientation();     // 反馈 #1：退出恢复竖屏自适应
+        unlockOrientation();
         page.classList.remove('open');
         var pj = document.getElementById('pjPage');
         if (pj) pj.classList.add('open');
         if (window.__projects && window.__projects.list) window.__projects.list();
     }
 
-    /* ---------- 导出（R10） ---------- */
+    /* ---------- 导出 ---------- */
 
     function exportJson() {
         if (!S.project) return;
@@ -675,15 +666,14 @@
         S.files = [];
         S.cur = -1;
         S.fps = S.meta.fps || null;
-        S.immersive = false;
-        page.classList.remove('imm');
         setSide(true);
         renderStepBox();
         renderSideHead();
         renderList();
         renderPos();
         page.classList.add('open');
-        lockLandscape();         // 反馈 #1：进入工作台强制横屏
+        lockLandscape();
+        applySafeArea();      // #4：系统栏避让
         if (S.meta.folderUri) {
             refreshFolder().catch(function () {
                 emptyHint.style.display = 'block';
@@ -704,7 +694,7 @@
                 project: S.project, mode: S.meta && S.meta.mode, files: S.files.length,
                 cur: S.cur, fps: S.fps, effFps: effFps(), port: S.serverPort,
                 marks: S.marks && S.marks.marks.length,
-                immersive: S.immersive, folderName: S.meta && S.meta.folderName
+                folderName: S.meta && S.meta.folderName
             };
         },
         marks: function () { return S.marks; },
