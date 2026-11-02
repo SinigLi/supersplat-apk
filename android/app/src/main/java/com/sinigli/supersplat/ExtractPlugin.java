@@ -241,6 +241,14 @@ public class ExtractPlugin extends Plugin {
                 }
             }
             dl("解压开始: " + first + " → " + base + " (" + (is7z ? "7z" : "zip") + ", " + idx.size() + "卷)");
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) ctx.getSystemService(Context.ACTIVITY_SERVICE);
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                Runtime rt = Runtime.getRuntime();
+                dl("内存: 堆上限=" + rt.maxMemory() / 1048576 + "MB 已用=" + (rt.totalMemory() - rt.freeMemory()) / 1048576
+                        + "MB 系统可用=" + mi.availMem / 1048576 + "MB lowMemory=" + mi.lowMemory);
+            } catch (Exception ignore) { }
 
             // 1) 分卷拼接（或单卷复制）到缓存
             long totalIn = 0;
@@ -318,16 +326,21 @@ public class ExtractPlugin extends Plugin {
             ok.put("volumes", idx.size());
             dl("解压完成: " + files + " 个文件, " + done + " B, → " + ok.getString("dest"));
             notifyListeners("done", ok);
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // OOM 是 Error 不是 Exception——v44e 前接不住，线程静默死（真机 debug3 日志 16:00/16:01 两次）
             JSObject err = new JSObject();
             String msg = String.valueOf(e.getMessage());
+            if (e instanceof OutOfMemoryError) {
+                msg = "内存不足：这个压缩包解出来太大，手机内存扛不住。建议重启手机后只开摸鱼台再试一次；仍失败的话把日志发我加内存参数";
+                dl("OutOfMemoryError!! " + e.getClass().getName());
+            } else if (msg != null && (msg.contains("nextHeaderOffset") || msg.contains("out of bounds"))) {
             if (msg.contains("Can't open archive") || msg.contains("Error opening")) {
                 msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
             } else if (msg.contains("nextHeaderOffset") || msg.contains("out of bounds")) {
                 msg = "压缩包数据不完整：大概率缺卷（对照文件管理器补齐 .001~.NNN 全部卷）或个别卷传输时损坏";
             }
             err.put("message", msg);
-            dl("解压失败: " + msg);
+            dl("解压失败: " + msg + " | " + e.getClass().getName());
             notifyListeners("error", err);
         } finally {
             if (joined != null) joined.delete();
