@@ -24,6 +24,32 @@
     flex: 0 0 auto;
 }
 .pj-title { font-size: 1.3rem; font-weight: 600; color: #eef1f5; letter-spacing: .02em; }
+.pj-ext-btn {
+    background: var(--panel2, #1b2233);
+    color: #dfe6f2;
+}
+.pj-ext-prog {
+    height: 8px;
+    background: #22304d;
+    border-radius: 99px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+}
+.pj-ext-prog i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: #4f8cff;
+    transition: width 0.25s;
+}
+.pj-ext-res {
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+    word-break: break-all;
+}
+.pj-ext-res.ok { color: #3fbf6f; }
+.pj-ext-res.err { color: #ff5f6d; }
+
 .pj-new {
     padding: 0.45rem 0.9rem; border-radius: 10px;
     border: 1px solid rgba(120, 190, 255, .45);

@@ -39,6 +39,12 @@
 
         var head = el('div', 'pj-head');
         head.appendChild(el('div', 'pj-title', '工程'));
+        // v44 解压中心：新建左侧
+        var extBtn = el('button', 'pj-new pj-ext-btn', '🗜️ 解压');
+        extBtn.addEventListener('click', function () {
+            if (window.__extract) window.__extract.open();
+        });
+        head.appendChild(extBtn);
         var newBtn = el('button', 'pj-new', '＋ 新建');
         newBtn.addEventListener('click', function () { openNewDialog(); });
         head.appendChild(newBtn);

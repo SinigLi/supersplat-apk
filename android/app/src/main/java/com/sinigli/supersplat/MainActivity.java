@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // register before super.onCreate: BridgeActivity builds the bridge there
         registerPlugin(SaveImagePlugin.class);
+        registerPlugin(ExtractPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
