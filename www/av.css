@@ -1,10 +1,13 @@
-/* 摸鱼台 v45 —— AV 工作台样式（对齐 r6 定稿原型）
+/* 摸鱼台 v45b —— AV 工作台样式（对齐 r6 定稿原型布局，真机反馈 #6）
  *
- * J2 定稿参数：悬浮层 rgba 0.25/blur4、按钮本体 rgba 0.38 + 文字投影（亮画面可读）
- * G2：.av-page.imm 下隐藏顶栏/侧栏/控件层/播放条，点画面恢复
- * 布局：横屏 左 30% 列表 + 右 70% 播放；竖屏（<700px）侧栏变抽屉
+ * 反馈 #6：布局照抄 r6 原型——一行工具行（✂⤴▦ + 步进组 + fps）悬浮画面下方，
+ * 一行播放条（进度条 + ⏮⏯⏭），时间标签叠进度条左上角。
+ * J2 定稿参数：悬浮层 rgba 0.25/blur4、按钮本体 rgba 0.38 + 文字投影。
+ * 反馈 #4：av-danger = 游标命中已有标记的「移除」态（红）。
+ * 反馈 #1：进入工作台强制横屏（screen.orientation.lock），CSS 仍留竖屏兜底。
  */
 
+/* ===== 页面骨架 ===== */
 .av-page {
     display: none;
     position: fixed;
@@ -12,10 +15,11 @@
     z-index: 1550;   /* 盖过工程页 1500，低于对话框 1600/toast 1700 */
     background: #141414;
     flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .av-page.open { display: flex; }
 
-/* ---- 顶栏 ---- */
+/* ===== 顶栏 ===== */
 .av-top {
     display: flex;
     align-items: center;
@@ -47,14 +51,15 @@
     color: #fff;
 }
 
-/* ---- 主体 ---- */
+/* ===== 主体 ===== */
 .av-body {
     flex: 1;
     display: flex;
     min-height: 0;
+    position: relative;
 }
 
-/* 左侧列表（30%） */
+/* 左列表 30% */
 .av-side {
     width: 30%;
     min-width: 190px;
@@ -145,7 +150,7 @@
 }
 .av-handle.show { display: block; }
 
-/* 右播放区 */
+/* ===== 右播放区 ===== */
 .av-main {
     flex: 1;
     position: relative;
@@ -158,7 +163,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: contain;      /* 画面完整性优先；r6 原型的 cover 是模拟画面，真视频 contain 不裁内容 */
+    object-fit: contain;
     background: #000;
 }
 .av-audio { display: none; }
@@ -172,127 +177,128 @@
     font-size: 14px;
     white-space: pre-line;
     text-align: center;
+    pointer-events: none;
 }
 
-/* 点画面层（G2） */
+/* 点画面层（G2）：盖住播放区上部，点击切换沉浸 */
 .av-stage-hit {
     position: absolute;
-    inset: 0 0 84px 0;         /* 底部留播放条，避免误触 */
+    inset: 0 0 120px 0;
     z-index: 5;
 }
 
-/* ---- 悬浮控件层（J2 定稿：层 0.25/blur4、按钮 0.38+投影） ---- */
+/* ===== 工具行（反馈 #6：原型 v-tools 单行，悬浮播放条上方） ===== */
 .av-ovl {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    bottom: 96px;
+    bottom: 66px;
     z-index: 10;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px;
-    background: rgba(20, 20, 24, 0.25);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    border-radius: 14px;
-    max-width: calc(100% - 24px);
-}
-.av-ovl-row {
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 8px 10px;
+    background: rgba(11, 14, 20, 0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border-radius: 12px;
+    max-width: calc(100% - 16px);
     flex-wrap: wrap;
     justify-content: center;
 }
 .av-ovl-btn {
-    background: rgba(40, 40, 46, 0.38);
+    background: rgba(27, 34, 51, 0.38);
     color: #eee;
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(42, 50, 71, 0.4);
     border-radius: 9px;
-    padding: 7px 12px;
-    font-size: 13px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+    padding: 8px 11px;
+    font-size: 12px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
     white-space: nowrap;
 }
 .av-ovl-btn:active { background: rgba(70, 70, 80, 0.55); }
-.av-ovl-btn.av-sq { padding: 7px 10px; min-width: 34px; }
+.av-ovl-btn.av-sq { padding: 8px 10px; min-width: 36px; }
 .av-ovl-btn.av-accent { color: #9be29b; }
+.av-ovl-btn.av-multi { color: #b48cff; }
+/* 反馈 #4：游标命中已有标记 → 红「移除」态 */
+.av-ovl-btn.av-danger {
+    color: #ff7d7d;
+    border-color: rgba(220, 80, 80, 0.55);
+    background: rgba(120, 40, 40, 0.45);
+}
 .av-ovl-gap { width: 6px; }
 .av-ovl-input {
     width: 52px;
-    background: rgba(40, 40, 46, 0.38);
+    background: rgba(27, 34, 51, 0.38);
     color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(42, 50, 71, 0.4);
     border-radius: 8px;
-    padding: 6px 8px;
-    font-size: 13px;
+    padding: 6px 6px;
+    font-size: 12px;
     text-align: center;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
+.av-ovl-input.av-step { width: 48px; }
+.av-ovl-input.av-fps { width: 44px; }
 .av-ovl-fps {
     display: flex;
     align-items: center;
     gap: 4px;
     color: #aaa;
     font-size: 11px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
-}
-.av-ovl-fps .av-fps { width: 46px; }
-.av-ovl-pos {
-    color: #eee;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
-    min-width: 108px;
-    text-align: right;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
-/* ---- 播放条 ---- */
+/* ===== 播放条行（原型 v-playbar：进度条 + ⏮⏯⏭） ===== */
 .av-tl-wrap {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    height: 84px;
+    height: 58px;
     z-index: 8;
-    background: rgba(16, 16, 20, 0.25);
+    background: rgba(11, 14, 20, 0.25);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(42, 50, 71, 0.35);
 }
-.av-tl-ticks { position: absolute; inset: 0; pointer-events: none; }
+.av-tl-ticks { position: absolute; left: 0; right: 96px; top: 12px; bottom: 8px; pointer-events: none; }
 .av-tick {
     position: absolute;
-    top: 10px;
+    top: 0;
     width: 3px;
-    height: 18px;
+    height: 100%;
     border-radius: 2px;
     transform: translateX(-1.5px);
 }
 .av-tick-split { background: #6fdc8c; }
 .av-tick-multi { background: #b48cff; width: 5px; }
-.av-tl {
+/* 反馈 #3：时间标签叠进度条左上角（原型 ptime） */
+.av-tl-pos {
+    position: absolute;
+    top: 2px;
+    left: 12px;
+    z-index: 2;
+    color: #eee;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+    pointer-events: none;
+}
+.av-prow {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     height: 100%;
-    padding: 26px 14px 10px;
+    padding: 16px 12px 8px;
 }
-.av-tl-cur, .av-tl-dur {
-    color: #ddd;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
-    min-width: 44px;
-}
-.av-tl-dur { text-align: right; }
 .av-tl-range {
     flex: 1;
     -webkit-appearance: none;
-    height: 28px;
+    height: 30px;
     background: transparent;
+    min-width: 0;
 }
 .av-tl-range::-webkit-slider-runnable-track {
     height: 5px;
@@ -308,8 +314,10 @@
     background: #e8e8ec;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
+.av-prow .av-ovl-btn { flex: 0 0 auto; }
+.av-prow .av-play { min-width: 44px; }
 
-/* ---- G2 沉浸态：隐藏全部编辑层（点画面恢复） ---- */
+/* ===== G2 沉浸态：隐藏全部编辑层（点画面恢复） ===== */
 .av-page.imm .av-top,
 .av-page.imm .av-side,
 .av-page.imm .av-handle,
@@ -318,7 +326,7 @@
 .av-page.imm .av-stage-hit { inset: 0; }
 .av-page.imm .av-handle { display: none !important; }
 
-/* ---- 竖屏：<700px 侧栏抽屉化（横屏为主，竖屏可用） ---- */
+/* ===== 竖屏兜底（真机强制横屏后不会走到；桌面调试用） ===== */
 @media (max-width: 699px) {
     .av-side {
         position: absolute;
@@ -331,7 +339,5 @@
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
     }
     .av-side.closed { margin-left: -110%; }
+    .av-ovl { bottom: 76px; }
 }
-
-/* 键盘遮挡兜底（Android 输入法弹出时底部条不被顶走） */
-.av-page { padding-bottom: env(safe-area-inset-bottom, 0); }

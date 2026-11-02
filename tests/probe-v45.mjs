@@ -21,7 +21,8 @@ import path from 'node:path';
 
 const ROOT = path.resolve('www');
 const PORT = 4198;
-const CDP = 9259;
+// 每次随机 CDP 端口：固定端口会附到上一轮未死透的旧 Edge 页面（v45b 验证时踩过，四个假失败同源）
+const CDP = 9300 + Math.floor(Math.random() * 300);
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -38,9 +39,11 @@ async function getWs() {
 }
 
 const srv = spawn(process.execPath, ['tools/dev/staticsrv.cjs', ROOT, String(PORT)], { stdio: 'ignore' });
+// 每次独立 profile：避免 Edge 磁盘缓存服务旧版 av-ui（v45b 修复验证时踩过）
+const PROFILE = path.join(process.env.TEMP, 'edge_v45_profile_' + Date.now());
 const edge = spawn(EDGE, [
     `--remote-debugging-port=${CDP}`, '--headless=new', '--no-first-run', '--no-default-browser-check',
-    '--user-data-dir=' + path.join(process.env.TEMP, 'edge_v45_profile'),
+    '--user-data-dir=' + PROFILE,
     '--window-size=390,844',
     `http://127.0.0.1:${PORT}/index.html`
 ], { stdio: 'ignore' });
@@ -320,6 +323,42 @@ try {
     check('M4 merge 解除', markTests.mergeOff);
     check('M5 多帧参考(F3)', markTests.multi === '38,50', markTests.multi);
     check('M6 沉浸切换(G2)', markTests.imm && markTests.unimm);
+
+    // v45b 真机反馈修复专项
+    const fixTests = await evalJs(`
+        (async () => {
+            const out = {};
+            // F-#2 播放按钮存在且在播放条行内
+            const play = document.querySelector('.av-prow .av-play');
+            out.playBtn = !!play;
+            // 点击不抛异常（无真实流 → toast 兑底路径）
+            if (play) play.click();
+            await new Promise(r => setTimeout(r, 120));
+            // F-#4 游标命中已有标记 → 按钮变红「移除」态
+            window.__av._setFps(25);
+            window.__av._setVideoTime(2.0);
+            window.__av._markSplit();          // @帧50 加分割点
+            const bs = document.querySelector('.av-ovl-btn.av-accent');
+            out.dangerOn = bs.classList.contains('av-danger') && bs.textContent.includes('移除');
+            // 移走 → 恢复「分割点」态
+            window.__av._setVideoTime(3.0);
+            out.dangerOff = !bs.classList.contains('av-danger') && bs.textContent.includes('分割点');
+            // F-#5 无 fps 时多帧可用（effFps 兑底 25）
+            window.__av._setVideoTime(2.5);
+            window.__av._S.fps = null; window.__av._S.meta.fps = null; window.__av._S.meta.fpsSource = null;
+            window.__av._toggleMulti();
+            const mf2 = window.__av.marks().marks.find(m => m.type === 'multiframe_ref');
+            out.multiNoFps = !!mf2 && mf2.frames.length >= 1 && mf2.frames.includes(63);   // 2.5*25=62.5→round=63？frameAt=round→63？ floor(2.5*25)+? → frameAt 用 round(62.5)=63？看实现
+            // F-#1 强制横屏：open 后 page open（桌面无 orientation API 不抛错即过）
+            out.pageOpen = document.getElementById('avPage').classList.contains('open');
+            return out;
+        })()
+    `);
+    check('X1 播放按钮(反馈#2)', fixTests.playBtn);
+    check('X2 命中变移除态(反馈#4)', fixTests.dangerOn);
+    check('X3 移开恢复常态', fixTests.dangerOff);
+    check('X4 无fps多帧可用(反馈#5)', fixTests.multiNoFps);
+    check('X5 横屏调用不抛错(反馈#1)', fixTests.pageOpen);
 
     // 持久化 + 返回
     const persist = await evalJs(`

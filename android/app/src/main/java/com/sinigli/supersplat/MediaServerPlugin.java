@@ -257,6 +257,21 @@ public class MediaServerPlugin extends Plugin {
         if (call != null) call.resolve();
     }
 
+    /** v45b：工作台强制横屏（反馈 #1；screen.orientation.lock 在 WebView 可能被拒，Activity 级保证生效） */
+    @PluginMethod
+    public void lockLandscape(PluginCall call) {
+        Boolean on = call.getBoolean("on");
+        Activity a = getActivity();
+        if (a == null) { call.reject("no activity"); return; }
+        if (on == null) on = Boolean.TRUE;
+        a.setRequestedOrientation(Boolean.TRUE.equals(on)
+                ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
+        JSObject res = new JSObject();
+        res.put("ok", true);
+        call.resolve(res);
+    }
+
     @Override
     protected void handleOnDestroy() {
         stopInternal();
