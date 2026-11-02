@@ -341,6 +341,8 @@ public class ExtractPlugin extends Plugin {
             } else if (e instanceof NoClassDefFoundError || e instanceof NoSuchMethodError) {
                 msg = "解压组件缺失（版本安装不完整），请覆盖重装最新包；仍报错请导出日志发我";
                 dl("依赖错误: " + e.getClass().getName() + " | " + msg);
+            } else if (e instanceof NoClassDefFoundError || (msg != null && msg.contains("NoClassDefFoundError"))) {
+                msg = "解压组件缺失（安装包不完整），请卸载后重新安装最新版摸鱼台";
             } else if (msg != null && (msg.contains("Can't open archive") || msg.contains("Error opening"))) {
                 msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
             }
