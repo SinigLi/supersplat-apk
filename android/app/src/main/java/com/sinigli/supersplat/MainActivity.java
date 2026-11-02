@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         // register before super.onCreate: BridgeActivity builds the bridge there
         registerPlugin(SaveImagePlugin.class);
         registerPlugin(ExtractPlugin.class);
+        registerPlugin(DebugLogPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

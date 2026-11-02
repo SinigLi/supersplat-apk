@@ -45,6 +45,14 @@
             if (window.__extract) window.__extract.open();
         });
         head.appendChild(extBtn);
+        // v44 调试：真机排障日志（发 release 前置 window.__MOYUTAI_RELEASE=true 即隐藏）
+        var dbgBtn = el('button', 'pj-new pj-ext-btn', '🐞 日志');
+        dbgBtn.id = 'pjDebugBtn';
+        dbgBtn.addEventListener('click', function () {
+            if (window.__extract) window.__extract.debugOpen();
+        });
+        if (window.__MOYUTAI_RELEASE === true) dbgBtn.style.display = 'none';
+        head.appendChild(dbgBtn);
         var newBtn = el('button', 'pj-new', '＋ 新建');
         newBtn.addEventListener('click', function () { openNewDialog(); });
         head.appendChild(newBtn);

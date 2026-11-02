@@ -79,7 +79,15 @@ try {
     await evalJs(`(function(){
         const L = {};
         window.__mockEv = L;
-        window.Capacitor = { Plugins: { Extract: {
+        window.__mockLogText = 'mock-log-line-1';
+        window.Capacitor = { Plugins: {
+            DebugLog: {
+                append: async d => ({ ok: true, path: 'mock' }),
+                read: async () => ({ text: window.__mockLogText }),
+                clear: async () => ({}),
+                send: async () => ({ ok: true, dest: 'mock' })
+            },
+            Extract: {
             pick: async () => ({ files: window.__mockPick || [] }),
             extract: async (args) => {
                 window.__mockExtractArgs = args;
@@ -176,6 +184,16 @@ try {
         return { txt: res ? res.textContent : '', cls: res ? res.className : '' };
     })()`);
     check('error path shows message', /分卷不完整/.test(errShown.txt) && errShown.cls.includes('err'), JSON.stringify(errShown));
+
+    /* 15. 调试日志按钮 + 弹层 */
+    check('debug button exists', await evalJs(`!!document.querySelector('#pjDebugBtn')`));
+    await evalJs(`document.querySelector('#pjDebugBtn').click()`);
+    await sleep(150);
+    const dbg = await evalJs(`(() => { const m=[...document.querySelectorAll('.pj-dlg-mask.open')].find(m=>m.querySelector('.pj-dbg-log')); return {open:!!m, txt:m?m.querySelector('.pj-dbg-log').textContent:''}; })()`);
+    check('debug dialog shows log', dbg.open && dbg.txt.length > 0, JSON.stringify(dbg).slice(0, 80));
+    await evalJs(`(() => { const m=[...document.querySelectorAll('.pj-dlg-mask.open')].find(m=>m.querySelector('.pj-dbg-log')); [...m.querySelectorAll('.pj-dlg-btn')].find(b=>b.textContent.trim()==='关闭').click(); return true; })()`);
+    await sleep(120);
+    check('debug dialog closes', await evalJs(`![...document.querySelectorAll('.pj-dlg-mask.open')].some(m=>m.querySelector('.pj-dbg-log'))`));
 
     check('no page exceptions', exceptions.length === 0, exceptions.join(' | '));
 

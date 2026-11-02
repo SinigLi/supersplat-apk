@@ -220,3 +220,21 @@
                 animation: pj-spin .9s linear infinite; }
 .pj-wait-text { font-size: .85rem; color: #dbe4ee; text-align: center; }
 @keyframes pj-spin { to { transform: rotate(360deg); } }
+
+/* v44 调试日志弹层 */
+.pj-dbg-log {
+    max-height: 40vh;
+    overflow: auto;
+    background: #0d1117;
+    border: 1px solid #2a3247;
+    border-radius: 8px;
+    padding: 0.5rem;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: #c9d6f0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-bottom: 0.5rem;
+    scrollbar-width: none;
+}
+.pj-dbg-log::-webkit-scrollbar { display: none; }

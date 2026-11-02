@@ -177,5 +177,53 @@
         dlg.classList.add('open');
     }
 
-    window.__extract = { open: open };
+    /* ---------- 调试日志弹层（真机排障：查看/导出） ---------- */
+    var dbgDlg, dbgLog;
+    function buildDebug() {
+        dbgDlg = el('div', 'pj-dlg-mask');
+        var box = el('div', 'pj-dlg');
+        box.appendChild(el('div', 'pj-dlg-title', '🐞 调试日志'));
+        dbgLog = el('div', 'pj-dbg-log', '（空）');
+        box.appendChild(dbgLog);
+        var row = el('div', 'pj-dlg-row');
+        var rf = el('button', 'pj-dlg-btn', '刷新');
+        var cl = el('button', 'pj-dlg-btn', '清空');
+        var send = el('button', 'pj-dlg-btn pj-primary', '导出日志');
+        var closeBtn = el('button', 'pj-dlg-btn', '关闭');
+        row.appendChild(rf); row.appendChild(cl); row.appendChild(send); row.appendChild(closeBtn);
+        box.appendChild(row);
+        dbgDlg.appendChild(box);
+        document.body.appendChild(dbgDlg);
+        function close() { dbgDlg.classList.remove('open'); }
+        closeBtn.addEventListener('click', close);
+        dbgDlg.addEventListener('click', function (ev) { if (ev.target === dbgDlg) close(); });
+        function P() { var cap = window.Capacitor; return (cap && cap.Plugins && cap.Plugins.DebugLog) || null; }
+        async function refresh() {
+            var p = P();
+            if (!p) { dbgLog.textContent = '（DebugLog 插件不可用——请在 APK 内使用）'; return; }
+            try { var r = await p.read(); dbgLog.textContent = r.text || '（空）'; dbgLog.scrollTop = dbgLog.scrollHeight; }
+            catch (err) { dbgLog.textContent = '读取失败: ' + err; }
+        }
+        rf.addEventListener('click', refresh);
+        cl.addEventListener('click', async function () { var p = P(); if (p) { await p.clear(); await refresh(); } });
+        send.addEventListener('click', async function () {
+            var p = P();
+            if (!p) return;
+            try {
+                var r = await p.send();
+                if (r && r.cancelled) return;
+                dbgLog.textContent += '\n[已导出] ' + (r && r.dest || '') + ' (' + (r && r.bytes || 0) + ' B)\n把保存的 moyutai-debug.log 通过飞书发我。';
+                dbgLog.scrollTop = dbgLog.scrollHeight;
+            } catch (err) { dbgLog.textContent += '\n导出失败: ' + err; }
+        });
+        return refresh;
+    }
+    var dbgRefresh = null;
+    function debugOpen() {
+        if (!dbgDlg) dbgRefresh = buildDebug();
+        dbgDlg.classList.add('open');
+        if (dbgRefresh) dbgRefresh();
+    }
+
+    window.__extract = { open: open, debugOpen: debugOpen };
 })();

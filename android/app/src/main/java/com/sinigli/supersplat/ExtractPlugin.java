@@ -11,11 +11,14 @@ import android.os.Build;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
+import androidx.activity.result.ActivityResult;
+
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
@@ -28,6 +31,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -56,17 +62,15 @@ import java.util.regex.Pattern;
 @CapacitorPlugin(name = "Extract")
 public class ExtractPlugin extends Plugin {
 
-    private static final int REQ_PICK = 4401;
     private static final int BUF = 1 << 16;
     private static final String ROOT_DIR = "Download/摸鱼台/";
 
-    private PluginCall pendingPick;
-
-    /* ---------- 选文件 ---------- */
+    /* ---------- 选文件（Capacitor 7 @ActivityCallback 模式）
+     * v44 真机「选完无反应」根因：此前用旧版 handleOnActivityResult，C7 不触发，
+     * Promise 永不 resolve。SaveImagePlugin 的 @ActivityCallback 模式真机已验证可用。 ---------- */
     @PluginMethod
     public void pick(PluginCall call) {
-        pendingPick = call;
-        Activity act = bridge.getActivity();
+        dl("pick() 打开系统文件选择器");
         Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         it.addCategory(Intent.CATEGORY_OPENABLE);
         it.setType("*/*");
@@ -75,36 +79,53 @@ public class ExtractPlugin extends Plugin {
                 "application/zip", "application/x-zip-compressed", "application/x-7z-compressed",
                 "application/octet-stream"});
         try {
-            startActivityForResult(call, it, REQ_PICK);
+            startActivityForResult(call, it, "pickResult");
         } catch (Exception e) {
-            pendingPick = null;
+            dl("pick() 启动失败: " + e.getMessage());
             call.reject("no file picker: " + e.getMessage());
         }
     }
 
-    @Override
-    protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
-        super.handleOnActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK || pendingPick == null) return;
-        PluginCall call = pendingPick;
-        pendingPick = null;
+    @ActivityCallback
+    private void pickResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
         Context ctx = getContext();
+        Intent data = result != null ? result.getData() : null;
+        int rc = result != null ? result.getResultCode() : 0;
+        dl("pickResult: resultCode=" + rc);
         List<JSObject> files = new ArrayList<>();
-        if (resultCode == Activity.RESULT_OK && data != null) {
+        if (rc == Activity.RESULT_OK && data != null) {
             if (data.getClipData() != null) {
                 for (int i = 0; i < data.getClipData().getItemCount(); i++) {
                     Uri u = data.getClipData().getItemAt(i).getUri();
-                    files.add(fileInfo(ctx, u));
+                    JSObject f = fileInfo(ctx, u);
+                    files.add(f);
+                    dl("  卷[" + i + "] " + f.optString("name") + " " + f.optLong("size") + "B");
                 }
             } else if (data.getData() != null) {
-                files.add(fileInfo(ctx, data.getData()));
+                JSObject f = fileInfo(ctx, data.getData());
+                files.add(f);
+                dl("  单文件 " + f.optString("name") + " " + f.optLong("size") + "B");
             }
         }
+        if (files.isEmpty()) dl("  未选择文件或已取消");
         JSObject res = new JSObject();
         JSArray arr = new JSArray();
         for (JSObject f : files) arr.put(f);
         res.put("files", arr);
         call.resolve(res);
+    }
+
+    /** 调试日记（与 DebugLogPlugin 同一 cache/moyutai/debug.log，真机排障） */
+    private void dl(String msg) {
+        try {
+            File dir = new File(getContext().getCacheDir(), "moyutai");
+            if (!dir.exists()) dir.mkdirs();
+            FileOutputStream fos = new FileOutputStream(new File(dir, "debug.log"), true);
+            String line = new SimpleDateFormat("MM-dd HH:mm:ss.SSS").format(new Date()) + " [Extract] " + msg + "\n";
+            fos.write(line.getBytes(StandardCharsets.UTF_8));
+            fos.close();
+        } catch (Exception ignore) { }
     }
 
     private static JSObject fileInfo(Context ctx, Uri u) {
@@ -188,6 +209,7 @@ public class ExtractPlugin extends Plugin {
             final boolean is7z = lower.endsWith(".7z");
             final boolean isZip = lower.endsWith(".zip");
             if (!is7z && !isZip) throw new IllegalArgumentException("不支持的格式（仅 zip / 7z，含分卷）");
+            dl("解压开始: " + first + " → " + base + " (" + (is7z ? "7z" : "zip") + ", " + idx.size() + "卷)");
 
             // 1) 分卷拼接（或单卷复制）到缓存
             long totalIn = 0;
@@ -212,6 +234,7 @@ public class ExtractPlugin extends Plugin {
                     } finally { in.close(); }
                 }
             } finally { fos.close(); }
+            dl("卷拼接完成: " + (joined == null ? -1 : joined.length()) + " B");
 
             // 2) 目标目录名（_exp 冲突判定：查自家已解压条目）
             String relDir = ROOT_DIR + uniqueDirName(base);
@@ -260,6 +283,7 @@ public class ExtractPlugin extends Plugin {
             ok.put("files", files);
             ok.put("bytes", done);
             ok.put("volumes", idx.size());
+            dl("解压完成: " + files + " 个文件, " + done + " B, → " + ok.getString("dest"));
             notifyListeners("done", ok);
         } catch (Exception e) {
             JSObject err = new JSObject();
@@ -268,6 +292,7 @@ public class ExtractPlugin extends Plugin {
                 msg = "分卷不完整或损坏（缺卷/顺序错误？请全选 .001~.NNN）";
             }
             err.put("message", msg);
+            dl("解压失败: " + msg);
             notifyListeners("error", err);
         } finally {
             if (joined != null) joined.delete();
