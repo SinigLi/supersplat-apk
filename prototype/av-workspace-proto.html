@@ -63,6 +63,9 @@ input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid va
 #v-video #main,#v-audio #main{position:relative}
 #v-video #stage{overflow:hidden}
 .ovl{position:absolute;left:0;right:0;z-index:5;background:rgba(11,14,20,.45);backdrop-filter:blur(10px)}
+/* 悬浮层内的按钮/输入框本体也半透明，否则整层看起来仍不透明 */
+.ovl button{background:rgba(27,34,51,.58);border-color:rgba(42,50,71,.55)}
+.ovl input{background:rgba(27,34,51,.58);border-color:rgba(42,50,71,.55)}
 #v-tools{bottom:56px;border-top:1px solid rgba(42,50,71,.35);display:flex;gap:8px;padding:8px 10px;align-items:center;flex-wrap:wrap}
 #v-tools button{padding:8px 11px;font-size:12px;white-space:nowrap}
 #v-tools .grp{display:flex;align-items:center;gap:4px}
@@ -81,7 +84,7 @@ input{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid va
 #prow button{padding:7px 10px;font-size:12px;white-space:nowrap}
 #bar,#bar2{flex:1;min-width:0;height:34px;border-radius:8px;background:var(--panel2);position:relative;overflow:hidden;touch-action:none}
 #buf{position:absolute;inset:0}
-#buf::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#223055,#2b3c6b)}
+#buf::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(34,48,85,.5),rgba(43,60,107,.5))}
 #trackmarks,#trackmarks2{position:absolute;inset:0}
 #trackmarks .tm,#trackmarks2 .tm{position:absolute;top:0;bottom:0;width:3px;background:var(--mark);border-radius:2px}
 #trackmarks .tm.mrg,#trackmarks2 .tm.mrg{background:var(--ok);width:4px;left:0!important;border-radius:0 3px 3px 0}
@@ -464,8 +467,8 @@ const SNAP_PX = 12, HIT_PX = 8;
 function nearestMark(type) {
   const c = cur(); const f = curFile();
   const bar = st.mode === 'video' ? $('#bar') : $('#bar2');
-  /* 帧精确：视频命中阈值=半帧（步进 1 帧后状态必然翻转）；音频保持像素阈值 */
-  const thrSec = st.mode === 'video' ? (0.5 / fps) : Math.max(0.05, (HIT_PX / Math.max(60, bar.getBoundingClientRect().width)) * f.dur);
+  /* 帧精确（视频）/步长精确（音频）：阈值=半个步长，跨步必然翻转按钮状态 */
+  const thrSec = curStepSec() / 2 + 1e-9;
   let best = null;
   for (const m of marksOf(f)) {
     const at = m.type === 'merge_prev' ? 0 : m.at;
@@ -486,9 +489,9 @@ function snapT(x) {
     if (d <= thrSec && (best === null || d < Math.abs(best.at - x))) best = m;
   }
   if (best) return best.at;
-  /* 视频：非吸附时量化到帧网格，保证当前帧号确定 */
-  if (st.mode === 'video') return Math.max(0, Math.min(f.dur, Math.floor(x * fps + 1e-9) / fps));
-  return x;
+  /* 非吸附时量化到当前步长网格（视频默认 1 帧=1/25s，音频默认 0.05s），保证当前帧号/步序确定 */
+  const g = curStepSec();
+  return Math.max(0, Math.min(f.dur, Math.round(x / g) * g));
 }
 
 /* ---------- 标记操作 ---------- */
@@ -523,17 +526,19 @@ $('#v-mf').onclick = toggleMulti;
 $('#v-mrg').onclick = toggleMerge; $('#a-mrg').onclick = toggleMerge;
 
 /* ---------- 步进 ---------- */
+function curStepSec() {
+  const isV = st.mode === 'video';
+  const raw = $('#' + (isV ? 'v' : 'a') + '-step').value.trim();
+  if (isV) { const m = raw.match(/([\d.]+)\s*帧/); const n = m ? +m[1] : 1; return n / fps; }
+  const m = raw.match(/([\d.]+)\s*s/i); return m ? +m[1] : 0.05;
+}
 function bindStep(prefix, isVideo) {
-  const stepVal = () => {
-    const raw = $('#' + prefix + '-step').value.trim();
-    if (isVideo) { const m = raw.match(/([\d.]+)\s*帧/); const n = m ? +m[1] : 1; return n / fps; }
-    const m = raw.match(/([\d.]+)\s*s/i); return m ? +m[1] : 0.05;
-  };
   const jump = d => {
     const c = cur(); if (!c.loaded) return toast('先加载文件夹');
     c.playing = false;
-    c.t = Math.max(0, Math.min(curFile().dur, c.t + d * stepVal()));
-    if (st.mode === 'video') c.t = Math.round(c.t * fps) / fps;   /* 帧网格量化，步进帧号确定 */
+    c.t = Math.max(0, Math.min(curFile().dur, c.t + d * curStepSec()));
+    /* 量化到步长网格：跨步状态确定（视频=帧网格，音频=时间步长网格） */
+    c.t = Math.round(c.t / curStepSec()) * curStepSec();
     drawStage(); updateBar();
   };
   $('#' + prefix + '-sdn').onclick = () => jump(-1);

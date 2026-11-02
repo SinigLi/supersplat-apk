@@ -196,6 +196,10 @@ try {
     check('tap restores chrome', chromeBack.top !== 'none' && chromeBack.tools !== 'none', JSON.stringify(chromeBack));
     const ovlAlpha = await evalJs(`getComputedStyle(document.querySelector('#v-tools')).backgroundColor`);
     check('overlay translucency <=0.45', /rgba\(11, 14, 20, (0\.[0-4]\d*)\)/.test(ovlAlpha), ovlAlpha);
+    /* r4: 按钮本体也半透明 */
+    const btnAlpha = await evalJs(`getComputedStyle(document.querySelector('#v-cut')).backgroundColor`);
+    const btnA = btnAlpha.match(/rgba\(27, 34, 51, (0?\.?\d+)\)/);
+    check('overlay button translucent', btnA && parseFloat(btnA[1]) < 1, btnAlpha);
 
     /* 10. 导出 JSON（含 split，降序） */
     const json = await evalJs(`__test.buildJson()`);
@@ -222,6 +226,19 @@ try {
     await click('#a-sup'); const a1 = await evalJs(`__test.state().t`);
     await click('#a-sup'); const a2 = await evalJs(`__test.state().t`);
     check('audio step 0.05s', Math.abs((a2 - a1) - 0.05) < 1e-6, 'd=' + (a2 - a1).toFixed(4));
+    /* 12b. 音频步进网格 + 上下文翻转（同视频帧逻辑，网格=0.05s） */
+    await evalJs(`__test.toggleSplit()`);
+    const aArr0 = Object.values(await evalJs(`__test.state().marks`)).flat();
+    const aAt = aArr0.find(m => m.type === 'split').at;
+    check('audio seek quantized to step grid', Math.abs(aAt / 0.05 - Math.round(aAt / 0.05)) < 1e-6, 'at=' + aAt);
+    await click('#a-sdn');
+    let aCtx = await evalJs(`document.querySelector('#a-cut').textContent`);
+    check('audio step off mark → 分割点', aCtx.includes('分割点'), aCtx);
+    await click('#a-sup');
+    aCtx = await evalJs(`document.querySelector('#a-cut').textContent`);
+    check('audio step onto mark → 移除剪切点', aCtx.includes('移除剪切点'), aCtx);
+    await shot('10b-audio-context');
+    await click('#a-cut');   // 移除，恢复无标记状态
     const px = await evalJs(`(function(){ const cv=document.querySelector('#a-canvas'); const g=cv.getContext('2d'); const d=g.getImageData(0,40,cv.width,200).data; let n=0; for(let i=3;i<d.length;i+=4*997) if(d[i]>8) n++; return n; })()`);
     check('spectrogram painted', px > 50, 'n=' + px);
     /* 13. 音频播放条完整性（悬浮层同样适用） */
