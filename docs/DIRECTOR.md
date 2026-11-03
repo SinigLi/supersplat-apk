@@ -346,6 +346,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v45e | 热修：视频工程打不开 | 78f2016 | 老板 07:21 反馈：点视频工程只横屏、界面不出。桌面探针 39/39 全绿但真机静默失败 → 按既定排障链路：①open()/路由全链路 DebugLog 埋点（route AV/open meta/page open/listFiles/folder ERR/open FAIL）②全局 error/unhandledrejection 钩子落日志（静默失败终结者）③open 包 try/catch：异常时 toast 具体错误+退回工程列表，不再黑横屏 ④MediaServer.load() 在 Activity 重建时重置方向（进程未死重开 App 残留横屏请求的嫌疑消除）。下一轮老板复现后🐞导日志即可精确定位 |
 | v45f | 热修：日志空行+空态入口 | 08a84e6 | 老板 07:46 回报仍打不开。日志文件 8 行全空 → v45e 埋点传参错误：DebugLog.append 应传 {text:...} 而非裸字符串，原生 getString 全落空。修复：dlog/路由埋点改 {text:} 形态；toast 全部落日志；视频 error 事件落日志；空态加「重新授权目录」按钮（隔夜 SAF 授权失效为头号嫌疑）。38+39 探针全绿 |
 | v45g | 空态引导强化 | 3ee6554 | 老板 08:23 日志确诊：v45f 流程全通（route AV/open/page open 无错误、埋点有内容），folderUri=false = 工程从未绑定过视频文件夹，工作台已打开但停在空态（v45f 空态 block 布局把按钮顶到左上角不显眼，看起来像没反应）。v45g：空态改 flex 居中欢迎层（标题+说明+大按钮），区分「未关联文件夹」/「授权失效需重选」两种文案，pickFolder 选择→拿到 uri→刷新全程落日志。39/39 探针过 |
+| v45h | 真机证据双修 | ca2d8e1 | 老板 08:57 两张截图+完整日志坐实两个真机 bug：①「打开工程：读取数据…」转圈永久卡死（存储读取挂起→busy 死锁）→ 看门狗 6s 强制解锁+toast+storeTimeout 超时护栏；②日志 class 已加但屏幕仍是工程列表（.av-page 层叠未生效）→ open 时内联样式兜底（fixed/inset0/z1550/flex）+ 120ms 渲染取证日志（display/z/rect/sheets）。39/39 探针过 |
 
 ## 9. 已知边界 / 待办
 
