@@ -570,29 +570,43 @@ function build() {
         handleEl.classList.toggle('show', !open);
     }
 
-    /* v45m：首帧缩略图——隐藏 video 画到 0.1s 截帧；成功替换占位，失败静默保留占位 */
-    function mkThumb(f) {
-        var box = el('div', 'av-thumb');
-        var ph = el('div', 'av-thumb-ph', '▶');
-        box.appendChild(ph);
+    /* v45m：首帧缩略图——隐藏 video 画到 0.1s 截帧；成功替换占位，失败静默保留占位。
+     * 串行队列（并发 2）：Android WebView 解码器实例有限，几十个 <video> 同时拉流会集体失败。 */
+    var thumbQ = [];
+    var thumbActive = 0;
+    function thumbPump() {
+        while (thumbActive < 2 && thumbQ.length) {
+            var job = thumbQ.shift();
+            thumbActive++;
+            runThumbJob(job, function () {
+                thumbActive--;
+                setTimeout(thumbPump, 30);
+            });
+        }
+    }
+    function runThumbJob(job, done) {
+        var finished = false;
+        var finish = function () {
+            if (finished) return;
+            finished = true;
+            try { if (job.v) { job.v.removeAttribute('src'); job.v.load(); } } catch (e) { }
+            done();
+        };
         try {
+            if (!job.box.isConnected) { finish(); return; }   // 列表已重建：跳过
             var v = document.createElement('video');
+            job.v = v;
             v.muted = true;
             v.preload = 'auto';
             v.playsInline = true;
             v.crossOrigin = 'anonymous';
-            v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
-            var cleaned = false;
-            var cleanup = function () {
-                if (cleaned) return;
-                cleaned = true;
-                try { v.removeAttribute('src'); v.load(); } catch (e) { }
-            };
+            v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(job.name);
             v.addEventListener('loadeddata', function () {
-                try { v.currentTime = Math.min(0.1, (v.duration || 1) * 0.01); } catch (e) { cleanup(); }
+                try { v.currentTime = Math.min(0.1, (v.duration || 1) * 0.01); } catch (e) { finish(); }
             });
             v.addEventListener('seeked', function () {
                 try {
+                    if (!job.box.isConnected) { finish(); return; }
                     var c = document.createElement('canvas');
                     c.width = 96; c.height = 54;
                     c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
@@ -601,15 +615,24 @@ function build() {
                         var img = document.createElement('img');
                         img.className = 'av-thumb-img';
                         img.src = url;
-                        box.innerHTML = '';
-                        box.appendChild(img);
+                        job.box.innerHTML = '';
+                        job.box.appendChild(img);
                     }
-                } catch (e) { /* WebGL/流安全异常 → 保留占位 */ }
-                cleanup();
+                } catch (e) { /* 画布污染/流异常 → 保留占位 */ }
+                finish();
             });
-            v.addEventListener('error', cleanup);
-            setTimeout(cleanup, 8000);
-        } catch (e) { /* 保留占位 */ }
+            v.addEventListener('error', finish);
+            setTimeout(finish, 8000);
+        } catch (e) { finish(); }
+    }
+    function mkThumb(f) {
+        var box = el('div', 'av-thumb');
+        var ph = el('div', 'av-thumb-ph', '▶');
+        box.appendChild(ph);
+        if (S.serverPort > 0) {
+            thumbQ.push({ box: box, name: f.name });
+            thumbPump();
+        }
         return box;
     }
 
