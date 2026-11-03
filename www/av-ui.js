@@ -344,6 +344,14 @@
                 S.fps = m.fps;
                 saveAll(false);
                 renderPos();
+            } else if (S.meta.fpsSource === 'manual' && Math.abs(effFps() - m.fps) <= 0.5) {
+                // v45p：手填 24 vs 原生 23.976 这类「本质一致」→ 静默采用原生精确值，不再反复弹提示
+                S.meta.fps = m.fps;
+                S.meta.fpsSource = 'native';
+                S.fps = m.fps;
+                saveAll(false);
+                renderPos();
+                renderStepBox();
             } else if (Math.abs(effFps() - m.fps) > 0.4) {
                 toast('提示：手填帧率 ' + trim1(effFps()) + ' 与容器原生 ' + trim1(m.fps) + ' 不一致（点右上角 fps 可改）');
             }
@@ -996,6 +1004,12 @@ function build() {
             S.files = [];
             S.cur = -1;
             S.fps = S.meta.fps || null;
+            // v45p：一次性恢复缩略图（v45m/o 期间被误关+持久化；恢复这一次后，再手动关闭会被尊重）
+            if (S.meta.thumbs === false && S.meta.thumbsRev !== 'p1') {
+                S.meta.thumbs = true;
+                S.meta.thumbsRev = 'p1';
+                saveAll(false);
+            }
             setSide(true);
             renderStepBox();
             renderSideHead();
