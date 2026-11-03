@@ -1,11 +1,13 @@
-/* 摸鱼台 v45g —— AV 工作台 UI 层（视频工程，空态引导强化）
+/* 摸鱼台 v45i —— AV 工作台 UI 层（视频工程，样式表局部生效根治）
  *
- * v45g：08:23 老板日志确诊 —— v45f 流程全部正常（route/open/page open 无错误），
- *  但工程无 folderUri → 空态。强化：空态改 flex 居中欢迎层（v45f 的 block 布局
- *  把按钮顶到左上角不显眼），区分「未关联」/「授权失效」文案，pickFolder 全程落日志。
- *
+ * v45i：10:35 老板截图——av.css 只剩零碎规则生效（顶栏跑中间、列表悬半空、空态字飘在视频上），
+ *  根因是 WebView 对本地资源用了旧缓存样式表。三重防御：
+ *  ① 结构布局全部内联写死（applyLayoutGuard，不再信样式表）
+ *  ② 每次打开强制 fetch av.css 最新内容，内联 <style> 覆盖（refreshCriticalCss）
+ *  ③ 渲染取证日志升级（top/side rect 也回报）
+ * v45g：空态居中欢迎层/未关联 vs 授权失效文案。
  * v45f：dlog {text:} 形态修复 + toast/VIDEO-ERR 落日志。
- * v45h：内联样式兑底强制渲染 + 渲染取证日志（真机 08:56 class 已加但屏幕层叠未生效）。
+ * v45h：内联样式兑底强制渲染 + 渲染取证日志。
  * v45c 布局：右侧竖排控制栏/刻度同层/时间右上角/安全区/工具行序/去全屏/大按钮。
  * 继承 v45b：强制横屏、帧数常显、±半帧红色移除态、r6 交互语义。
  */
@@ -76,7 +78,7 @@
         return b + 'B';
     }
 
-    var page, topEl, sideEl, listEl, mainEl, videoEl,
+    var page, topEl, bodyEl, sideEl, listEl, mainEl, videoEl,
         ovlEl, btnSplit, btnMerge, btnMulti, stepVal, fpsBox,
         tlWrap, posEl, tlRange, ticksEl, btnPlay, btnPrev, btnNext,
         railEl, audioCv, emptyHint, emptyTitle, handleEl, toastTimer = null;
@@ -140,6 +142,58 @@
         [400, 1000, 2000].forEach(function (t) { setTimeout(read, t); });
     }
 
+    /* v45i：结构布局内郸兜底（真机 10:35 截图：样式表仅局部生效 → 顶栏跑中间、
+     * 列表悬半空）。关键布局不再依赖样式表解析，全部内联写死。 */
+    function applyLayoutGuard() {
+        if (!page || !topEl) return;
+        var put = function (elm, props) { for (var k in props) elm.style.setProperty(k, props[k]); };
+        put(page, {
+            position: 'fixed', inset: '0', zIndex: '1550', display: 'flex',
+            flexDirection: 'column', background: '#141414'
+        });
+        put(topEl, {
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
+            background: '#1d1d1f', borderBottom: '1px solid #333', minHeight: '44px',
+            flex: '0 0 auto', position: 'relative', zIndex: '2'
+        });
+        var tt = topEl.querySelector('.av-top-title');
+        if (tt) put(tt, { flex: '1', color: '#ddd', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
+        put(bodyEl, { flex: '1', display: 'flex', minHeight: '0', position: 'relative' });
+        put(sideEl, {
+            width: '30%', minWidth: '190px', maxWidth: '340px', flex: '0 0 auto',
+            background: '#181820', borderRight: '1px solid #2c2c34',
+            display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden'
+        });
+        put(mainEl, { flex: '1', position: 'relative', minWidth: '0', background: '#000', overflow: 'hidden' });
+        put(videoEl, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain', background: '#000' });
+        put(emptyHint, { position: 'absolute', inset: '0', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' });
+        put(railEl, { position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', zIndex: '10', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '10px' });
+        put(ovlEl, { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '64px', zIndex: '10', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px' });
+        put(tlWrap, { position: 'absolute', left: '16px', right: '16px', bottom: '10px', height: '40px', zIndex: '8' });
+        put(posEl, { position: 'absolute', top: '10px', right: '12px', zIndex: '12', color: '#eee', fontSize: '12px' });
+    }
+
+    /* v45i：av.css 缓存自愈——WebView 可能拿旧缓存样式表（无版本号引用），
+     * 每次打开工作台强制拉最新内容内联覆盖（追加在 head 末尾，同特异性后者胜）。 */
+    function refreshCriticalCss() {
+        fetch('av.css?v=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (txt) {
+            if (txt && txt.indexOf('.av-page') >= 0 && txt.indexOf('.av-empty-btn') >= 0) {
+                var st = document.getElementById('avCssFresh');
+                if (!st) {
+                    st = document.createElement('style');
+                    st.id = 'avCssFresh';
+                    document.head.appendChild(st);
+                }
+                if (st.textContent !== txt) {
+                    st.textContent = txt;
+                    dlog('css refreshed ' + txt.length + 'B');
+                }
+            } else {
+                dlog('css fetch suspicious len=' + (txt || '').length);
+            }
+        }).catch(function (e) { dlog('css fetch ERR ' + (e && e.message || e)); });
+    }
+
     function build() {
         if (S.built) return;
         S.built = true;
@@ -161,8 +215,8 @@
         topEl.appendChild(expBtn);
         page.appendChild(topEl);
 
-        var body = el('div', 'av-body');
-        page.appendChild(body);
+        bodyEl = el('div', 'av-body');
+        page.appendChild(bodyEl);
 
         // 左列表
         sideEl = el('div', 'av-side');
@@ -176,7 +230,7 @@
         sideEl.appendChild(sideHead);
         listEl = el('div', 'av-list');
         sideEl.appendChild(listEl);
-        body.appendChild(sideEl);
+        bodyEl.appendChild(sideEl);
 
         handleEl = el('button', 'av-handle', '▶');
         handleEl.addEventListener('click', function () { setSide(true); });
@@ -184,7 +238,7 @@
 
         // 右播放区
         mainEl = el('div', 'av-main');
-        body.appendChild(mainEl);
+        bodyEl.appendChild(mainEl);
 
         videoEl = el('video', 'av-video');
         videoEl.setAttribute('playsinline', '');
@@ -387,6 +441,8 @@
 
     function setSide(open) {
         sideEl.classList.toggle('closed', !open);
+        // v45i：margin 百分比在不同容器解析不确定 → 内联显式赋值（相对 .av-body 宽，-100% 必然全隐藏）
+        sideEl.style.marginLeft = open ? '0' : '-100%';
         handleEl.classList.toggle('show', !open);
     }
 
@@ -749,6 +805,9 @@
             page.style.inset = '0';
             page.style.zIndex = '1550';
             page.style.display = 'flex';
+            emptyHint.style.display = 'none';   // v45i：样式表异常时防空态常驻，显示由下方分支显式控制
+            applyLayoutGuard();     // v45i：结构布局内联兑底
+            refreshCriticalCss();   // v45i：av.css 缓存自愈
             lockLandscape();
             applySafeArea();      // #4：系统栏避让
             dlog('page open; folderUri=' + (S.meta.folderUri ? 'yes' : 'no'));
@@ -758,6 +817,8 @@
                     var cs = getComputedStyle(page);
                     dlog('forensics display=' + cs.display + ' z=' + cs.zIndex +
                         ' rect=' + JSON.stringify(page.getBoundingClientRect()) +
+                        ' top=' + JSON.stringify(topEl.getBoundingClientRect()) +
+                        ' side=' + JSON.stringify(sideEl.getBoundingClientRect()) +
                         ' sheets=' + document.styleSheets.length +
                         ' bodyT=' + (getComputedStyle(document.body).transform || 'none'));
                 } catch (e) { }
