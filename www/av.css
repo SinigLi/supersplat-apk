@@ -199,14 +199,15 @@
     text-align: center;
     pointer-events: auto;
 }
-.av-empty .av-empty-t { pointer-events: none; }
+.av-empty .av-empty-t { color: #aab4c4; font-size: 16px; font-weight: 600; pointer-events: none; }
+.av-empty .av-empty-s { color: #66707f; font-size: 12px; pointer-events: none; }
 .av-empty-btn {
     background: rgba(48, 98, 158, 0.9);
     color: #fff;
     border: 1px solid #3d6ea8;
-    border-radius: 10px;
-    padding: 12px 20px;
-    font-size: 15px;
+    border-radius: 12px;
+    padding: 14px 26px;
+    font-size: 16px;
 }
 
 /* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */

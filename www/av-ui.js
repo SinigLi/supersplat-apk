@@ -1,20 +1,11 @@
-/* 摸鱼台 v45f —— AV 工作台 UI 层（视频工程，打不开排障第二轮）
+/* 摸鱼台 v45g —— AV 工作台 UI 层（视频工程，空态引导强化）
  *
- * v45f 修复：
- *  a) v45e 埋点传参错误（裸字符串 vs {text:...}）→ 真机日志全是空行，本次修复后日志带内容
- *  b) toast() 全部落日志（提示 2.4s 消失，错过可查）
- *  c) 空态加「📂 重新授权目录」按钮（隔夜/重装后 SAF 授权可能失效，是最可能病因）
- *  d) video error 事件落日志 + 提示
+ * v45g：08:23 老板日志确诊 —— v45f 流程全部正常（route/open/page open 无错误），
+ *  但工程无 folderUri → 空态。强化：空态改 flex 居中欢迎层（v45f 的 block 布局
+ *  把按钮顶到左上角不显眼），区分「未关联」/「授权失效」文案，pickFolder 全程落日志。
  *
- * v45c 布局（2026-11-02 22:08 老板 7 条反馈）：
- *  1. ⏮⏯⏭ + ◀步进▶ 移到右侧中间竖排控制栏（大按钮）
- *  2. 标记刻度与播放条对齐
- *  3. 时间/帧数显示移到播放器右上角
- *  4. 顶栏/右栏避让系统栏与挖孔（原生 getSafeArea → CSS 变量）
- *  5. 工具行顺序：⤴并入前段 | ✂分割点 | ▦多帧点（+fps 框）
- *  6. 去掉单击视频切全屏
- *  7. 播放/上下集/步进按钮放大 50%
- *
+ * v45f：dlog {text:} 形态修复 + toast/VIDEO-ERR 落日志。
+ * v45c 布局：右侧竖排控制栏/刻度同层/时间右上角/安全区/工具行序/去全屏/大按钮。
  * 继承 v45b：强制横屏、帧数常显、±半帧红色移除态、r6 交互语义。
  */
 (function () {
@@ -87,7 +78,7 @@
     var page, topEl, sideEl, listEl, mainEl, videoEl,
         ovlEl, btnSplit, btnMerge, btnMulti, stepVal, fpsBox,
         tlWrap, posEl, tlRange, ticksEl, btnPlay, btnPrev, btnNext,
-        railEl, audioCv, emptyHint, handleEl, toastTimer = null;
+        railEl, audioCv, emptyHint, emptyTitle, handleEl, toastTimer = null;
 
     function toast(msg) {
         dlog('TOAST ' + msg);   // v45f：所有弹窗提示都落日志（toast 2.4s 自动消失，错过就查日志）
@@ -203,8 +194,10 @@
         mainEl.appendChild(audioCv);
 
         emptyHint = el('div', 'av-empty');
-        emptyHint.appendChild(el('div', 'av-empty-t', '先「📂 加载文件夹」'));
-        var reAuth = el('button', 'av-empty-btn', '📂 重新授权目录');
+        emptyTitle = el('div', 'av-empty-t', '还没关联视频文件夹');
+        emptyHint.appendChild(emptyTitle);
+        emptyHint.appendChild(el('div', 'av-empty-s', '文件列表由所选文件夹自动生成；已打的标记保存在本机不会丢'));
+        var reAuth = el('button', 'av-empty-btn', '📂 选择视频文件夹');
         reAuth.addEventListener('click', pickFolder);
         emptyHint.appendChild(reAuth);
         mainEl.appendChild(emptyHint);
@@ -431,12 +424,15 @@
     function pickFolder() {
         var p = ms();
         if (!p) { toast('MediaServer 插件不可用（请用 APK）'); return; }
+        dlog('pickFolder: 打开系统目录选择器');
         p.pickFolder().then(function (r) {
+            dlog('picked: ' + (r && r.name || '?') + ' uri=' + String(r && r.uri || '').slice(0, 48));
             S.meta.folderUri = r.uri;
             S.meta.folderName = r.name || '';
             saveAll(false);
             return refreshFolder();
         }).catch(function (e) {
+            dlog('pick ERR ' + (e && (e.message || e) || e));
             toast('选择目录失败：' + (e && e.message || e));
         });
     }
@@ -754,11 +750,14 @@
                     dlog('files=' + S.files.length + ' port=' + S.serverPort + ' cur=' + S.cur);
                 }).catch(function (e) {
                     dlog('refresh ERR ' + (e && (e.message || e) || e));
-                    emptyHint.style.display = 'block';
-                    toast('目录授权失效或不可读：请重新「📂 加载文件夹」');
+                    emptyTitle.textContent = S.meta.folderName ? '目录「' + S.meta.folderName + '」的授权已失效，重新选一次即可' : '还没关联视频文件夹';
+                    emptyHint.style.display = 'flex';
+                    toast('目录授权失效或不可读：请重新选择文件夹');
                 });
             } else {
-                emptyHint.style.display = 'block';
+                emptyTitle.textContent = S.meta.folderName ? '目录「' + S.meta.folderName + '」的授权已失效，重新选一次即可' : '还没关联视频文件夹';
+                emptyHint.style.display = 'flex';
+                dlog('empty ui shown (无关联文件夹)');
             }
         } catch (e) {
             // 静默失败终结者：打开过程任何异常都直接告诉老板 + 落日志
