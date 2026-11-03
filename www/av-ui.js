@@ -136,6 +136,11 @@
                 page.style.setProperty('--av-safe-right', cvt(r.right) + 'px');
                 page.style.setProperty('--av-safe-left', cvt(r.left) + 'px');
                 page.style.setProperty('--av-safe-bottom', cvt(r.bottom) + 'px');
+                // v45i：样式表可能被 WebView 旧缓存污染 → 避让 padding 直接内联，不依赖样式表消费变量
+                page.style.paddingTop = cvt(r.top) + 'px';
+                page.style.paddingRight = cvt(r.right) + 'px';
+                page.style.paddingLeft = cvt(r.left) + 'px';
+                page.style.paddingBottom = cvt(r.bottom) + 'px';
             }).catch(function () { });
         };
         read();
