@@ -521,12 +521,12 @@ public class MediaServerPlugin extends Plugin {
         }
     }
 
-    /* ---------- v45l：容器元数据探测（fps 真值来自容器，不再靠网页播放采样猜） ---------- */
+    /* ---------- v45o：容器元数据（精确 fps）+ 首帧缩略图（原生解码，不再依赖 WebView） ---------- */
 
     /**
-     * probeMeta：用 MediaExtractor 读取视频容器轨道格式。
-     * 返回 fps（KEY_FRAME_RATE，int/float 兼容）、width/height、rotation、durationMs。
-     * 只读容器头信息，不做解码，毫秒级返回。
+     * probeMeta：读取视频容器轨道格式 + 样本迭代计算精确帧率。
+     * KEY_FRAME_RATE 对 23.976fps 源会整数截断成 23（24000/1001 取整），
+     * 因此用 (样本数-1)/(末样本-首样本) 计算精确值；失败退回 KEY_FRAME_RATE。
      */
     @PluginMethod
     public void probeMeta(PluginCall call) {
@@ -541,31 +541,80 @@ public class MediaServerPlugin extends Plugin {
             JSObject res = new JSObject();
             res.put("ok", false);
             int n = ex.getTrackCount();
+            int videoTrack = -1;
+            android.media.MediaFormat f = null;
             for (int i = 0; i < n; i++) {
-                android.media.MediaFormat f = ex.getTrackFormat(i);
-                String mime = f.getString(android.media.MediaFormat.KEY_MIME);
-                if (mime == null || !mime.startsWith("video/")) continue;
+                android.media.MediaFormat fm = ex.getTrackFormat(i);
+                String mime = fm.getString(android.media.MediaFormat.KEY_MIME);
+                if (mime != null && mime.startsWith("video/")) { videoTrack = i; f = fm; break; }
+            }
+            if (videoTrack >= 0) {
                 res.put("ok", true);
                 res.put("width", f.containsKey(android.media.MediaFormat.KEY_WIDTH) ? f.getInteger(android.media.MediaFormat.KEY_WIDTH) : 0);
                 res.put("height", f.containsKey(android.media.MediaFormat.KEY_HEIGHT) ? f.getInteger(android.media.MediaFormat.KEY_HEIGHT) : 0);
                 if (f.containsKey("rotation-degrees")) res.put("rotation", f.getInteger("rotation-degrees"));
-                if (f.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
-                    try {
-                        res.put("fps", f.getInteger(android.media.MediaFormat.KEY_FRAME_RATE));
-                    } catch (ClassCastException ce) {
-                        res.put("fps", f.getFloat(android.media.MediaFormat.KEY_FRAME_RATE));
-                    }
-                }
                 if (f.containsKey(android.media.MediaFormat.KEY_DURATION)) {
                     res.put("durationMs", f.getLong(android.media.MediaFormat.KEY_DURATION) / 1000);
                 }
-                break;
+                // 精确 fps：样本迭代（上限 20 万样本，防超长文件拖时间）
+                ex.selectTrack(videoTrack);
+                ex.seekTo(0, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+                int count = 0;
+                long first = -1, last = -1;
+                while (count < 200000 && ex.advance()) {
+                    long t = ex.getSampleTime();
+                    if (t < 0) break;
+                    if (first < 0) first = t;
+                    last = t;
+                    count++;
+                }
+                float fps = -1;
+                if (count > 1 && last > first) {
+                    fps = (count - 1) * 1000000f / (last - first);
+                }
+                if (fps <= 0 && f.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
+                    try { fps = f.getInteger(android.media.MediaFormat.KEY_FRAME_RATE); }
+                    catch (Exception ce) { fps = f.getFloat(android.media.MediaFormat.KEY_FRAME_RATE); }
+                }
+                if (fps > 0) res.put("fps", Math.round(fps * 1000f) / 1000f);
             }
             call.resolve(res);
         } catch (Exception e) {
             call.reject("probeMeta 失败: " + e.getMessage());
         } finally {
             try { ex.release(); } catch (Exception ignored) { }
+        }
+    }
+
+    /**
+     * thumb：原生抽取首帧 JPEG（base64）。MediaMetadataRetriever 直接解码，
+     * 不经 WebView 视频管线（真机 WebView 解码/画布路径不可靠，v45n 实证），也不受解码器实例上限约束。
+     */
+    @PluginMethod
+    public void thumb(PluginCall call) {
+        String name = call.getString("name");
+        if (name == null || name.isEmpty() || port < 0) { call.reject("缺少 name 或媒体服务未启动"); return; }
+        Uri doc = index.get(name);
+        if (doc == null) { call.reject("文件不在已授权目录: " + name); return; }
+        android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+        try {
+            android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
+            r.setDataSource(pfd.getFileDescriptor());
+            android.graphics.Bitmap bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            if (bmp == null) { call.reject("无法解码首帧"); return; }
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, bo);
+            int w = bmp.getWidth(), h = bmp.getHeight();
+            bmp.recycle();
+            JSObject res = new JSObject();
+            res.put("jpeg", android.util.Base64.encodeToString(bo.toByteArray(), android.util.Base64.NO_WRAP));
+            res.put("width", w);
+            res.put("height", h);
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("thumb 失败: " + e.getMessage());
+        } finally {
+            try { r.release(); } catch (Exception ignored) { }
         }
     }
 }

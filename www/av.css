@@ -88,13 +88,6 @@
     flex-direction: column;
     transition: margin-left 0.18s ease;
 }
-.av-side.closed { margin-left: -100%; }
-.av-side-head {
-    display: flex;
-    gap: 6px;
-    padding: 8px;
-    border-bottom: 1px solid #2c2c34;
-}
 .av-side-load {
     flex: 1;
     background: #26262e;
@@ -104,14 +97,7 @@
     padding: 7px 10px;
     font-size: 13px;
 }
-.av-side-coll {
-    width: 32px;
-    background: #26262e;
-    color: #aaa;
-    border: 1px solid #3a3a44;
-    border-radius: 8px;
-}
-.av-list { flex: 1; overflow-y: auto; padding: 6px; }
+ flex: 1; overflow-y: auto; padding: 6px; }
 .av-item {
     display: flex;
     align-items: center;
@@ -133,13 +119,17 @@
     padding: 3px 4px;
 }
 .av-item-info { flex: 1; min-width: 0; }
+/* v45o：文件名横向滚动看全名（老板 21:31） */
 .av-item-name {
     color: #ddd;
     font-size: 12px;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
 }
+.av-item-name::-webkit-scrollbar { display: none; }
 .av-item-sub { color: #777; font-size: 10px; margin-top: 2px; }
 .av-item-badge {
     color: #ffd37a;
@@ -149,24 +139,6 @@
     padding: 2px 5px;
 }
 .av-item-badge.av-b-split { color: #9be29b; background: rgba(50, 140, 70, 0.3); }
-
-/* 收起把手 */
-.av-handle {
-    display: none;
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 65;
-    width: 26px;
-    height: 56px;
-    background: rgba(30, 30, 38, 0.85);
-    color: #bbb;
-    border: 1px solid #3a3a44;
-    border-left: none;
-    border-radius: 0 10px 10px 0;
-}
-.av-handle.show { display: block; }
 
 /* ===== 右播放区 ===== */
 .av-main {
@@ -423,7 +395,6 @@
         max-width: 320px;
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
     }
-    .av-side.closed { margin-left: -110%; }
     .av-rail { right: 8px; }
 }
 

@@ -239,6 +239,8 @@ try {
             const calls = [];
             window.Capacitor = window.Capacitor || { Plugins: {} };
             window.Capacitor.Plugins.MediaServer = {
+        thumb: (args) => Promise.resolve({ jpeg: '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwcJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPDIzNP/AABEIAAEAAQMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscHRJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/aAAwDAQACEQMRAD8A9/oooooA//9k=', width: 96, height: 54 }),
+        probeMeta: (args) => Promise.resolve({ ok: true, fps: 25, width: 1280, height: 720, rotation: 0 }),
                 pickFolder: async () => { calls.push('pick'); return { uri: 'content://tree/x', name: 'mock_split' }; },
                 listFiles: async () => ({ files: [
                     { name: 'shot2.mp4', size: 1000, docId: 'd2' },
@@ -359,9 +361,12 @@ try {
                 chipEl.click();
                 await new Promise(r => setTimeout(r, 120));
                 out.off = document.querySelectorAll('.av-thumb').length;
-                chipEl.click();   // 恢复开启
+                const chip2 = document.querySelector('.av-thumb-toggle');   // renderPos 重建过 DOM，必须重取
+                if (chip2) chip2.click();   // 恢复开启
                 await new Promise(r => setTimeout(r, 120));
                 out.state = window.__av._S.meta.thumbs;
+                out.thumbImg = document.querySelectorAll('.av-thumb-img').length;
+                out.noColl = !document.querySelector('.av-side-coll');
             }
             return out;
         })()
@@ -409,6 +414,8 @@ try {
     check('L3 列表缩略图容器(v45m)', markTests.thumbCount === 3, String(markTests.thumbCount));
     check('N1 🖼 开关关闭即清空(v45n)', toggleTests.off === 0, 'off=' + toggleTests.off);
     check('N2 🖼 开关chip存在(v45n)', toggleTests.chip === true);
+    check('N3 收起按钮已移除(v45o)', toggleTests.noColl === true);
+    check('N4 原生缩略图直出(v45o)', toggleTests.thumbImg >= 1, 'img=' + toggleTests.thumbImg);
 
     // 持久化 + 返回
     const persist = await evalJs(`
