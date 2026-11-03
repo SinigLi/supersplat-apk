@@ -520,4 +520,52 @@ public class MediaServerPlugin extends Plugin {
             default: return "";
         }
     }
+
+    /* ---------- v45l：容器元数据探测（fps 真值来自容器，不再靠网页播放采样猜） ---------- */
+
+    /**
+     * probeMeta：用 MediaExtractor 读取视频容器轨道格式。
+     * 返回 fps（KEY_FRAME_RATE，int/float 兼容）、width/height、rotation、durationMs。
+     * 只读容器头信息，不做解码，毫秒级返回。
+     */
+    @PluginMethod
+    public void probeMeta(PluginCall call) {
+        String name = call.getString("name");
+        if (name == null || name.isEmpty() || port < 0) { call.reject("缺少 name 或媒体服务未启动"); return; }
+        Uri doc = index.get(name);
+        if (doc == null) { call.reject("文件不在已授权目录: " + name); return; }
+        android.media.MediaExtractor ex = new android.media.MediaExtractor();
+        try {
+            android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
+            ex.setDataSource(pfd.getFileDescriptor());
+            JSObject res = new JSObject();
+            res.put("ok", false);
+            int n = ex.getTrackCount();
+            for (int i = 0; i < n; i++) {
+                android.media.MediaFormat f = ex.getTrackFormat(i);
+                String mime = f.getString(android.media.MediaFormat.KEY_MIME);
+                if (mime == null || !mime.startsWith("video/")) continue;
+                res.put("ok", true);
+                res.put("width", f.containsKey(android.media.MediaFormat.KEY_WIDTH) ? f.getInteger(android.media.MediaFormat.KEY_WIDTH) : 0);
+                res.put("height", f.containsKey(android.media.MediaFormat.KEY_HEIGHT) ? f.getInteger(android.media.MediaFormat.KEY_HEIGHT) : 0);
+                if (f.containsKey("rotation-degrees")) res.put("rotation", f.getInteger("rotation-degrees"));
+                if (f.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
+                    try {
+                        res.put("fps", f.getInteger(android.media.MediaFormat.KEY_FRAME_RATE));
+                    } catch (ClassCastException ce) {
+                        res.put("fps", f.getFloat(android.media.MediaFormat.KEY_FRAME_RATE));
+                    }
+                }
+                if (f.containsKey(android.media.MediaFormat.KEY_DURATION)) {
+                    res.put("durationMs", f.getLong(android.media.MediaFormat.KEY_DURATION) / 1000);
+                }
+                break;
+            }
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("probeMeta 失败: " + e.getMessage());
+        } finally {
+            try { ex.release(); } catch (Exception ignored) { }
+        }
+    }
 }

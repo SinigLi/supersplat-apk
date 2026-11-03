@@ -329,6 +329,12 @@ try {
             out.railBigBtns = document.querySelectorAll('.av-rail .av-ovl-btn.av-big').length;   // ⏮⏯⏭◀▶ 5 个
             // #3：时间标签悬浮右上角（.av-pos-top）
             out.posTop = !!document.querySelector('.av-pos-top');
+            // v45l：fps 芯片进右上角信息条；工具行横排且不再含 fps 输入框
+            const pos2 = document.querySelector('.av-pos-top');
+            out.fpsChip = !!pos2 && !!pos2.querySelector('.av-fps-chip');
+            const ovl2 = document.querySelector('.av-ovl');
+            out.ovlNoFps = !ovl2 || !ovl2.querySelector('.av-fps');
+            out.ovlRow = !!ovl2 && getComputedStyle(ovl2).flexDirection === 'row';
             return out;
         })()
     `);
@@ -376,6 +382,8 @@ try {
     check('X5 横屏调用不抛错(反馈#1)', fixTests.pageOpen);
     check('C1 右侧竖排控制栏(v45c#1)', markTests.railExists && markTests.railBigBtns === 5, 'big=' + markTests.railBigBtns);
     check('C2 时间标签右上角(v45c#3)', markTests.posTop);
+    check('L1 fps 芯片右上角(v45l)', markTests.fpsChip);
+    check('L2 工具行横排无fps输入(v45l)', markTests.ovlNoFps && markTests.ovlRow);
 
     // 持久化 + 返回
     const persist = await evalJs(`
