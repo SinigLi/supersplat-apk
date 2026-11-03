@@ -600,31 +600,47 @@ public class MediaServerPlugin extends Plugin {
      * thumb：原生抽取首帧 JPEG（base64）。MediaMetadataRetriever 直接解码，
      * 不经 WebView 视频管线（真机 WebView 解码/画布路径不可靠，v45n 实证），也不受解码器实例上限约束。
      */
+    /* v45r：缩略图专用单线程池——绝不占用 Capacitor 桥线程（v45p 实证：58 个 MMR 整帧解码把桥堵死，
+     * 日志/存储/媒体服务全部排队饿死 → 空日志+转圈圈+占位不出图）。队列超限快速拒绝，JS 侧会重试。 */
+    private final java.util.concurrent.ExecutorService thumbPool =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "moyutai-thumb");
+                t.setDaemon(true);
+                return t;
+            });
+
     @PluginMethod
     public void thumb(PluginCall call) {
         String name = call.getString("name");
         if (name == null || name.isEmpty() || port < 0) { call.reject("缺少 name 或媒体服务未启动"); return; }
         Uri doc = index.get(name);
         if (doc == null) { call.reject("文件不在已授权目录: " + name); return; }
-        android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
-        try {
-            android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
-            r.setDataSource(pfd.getFileDescriptor());
-            android.graphics.Bitmap bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-            if (bmp == null) { call.reject("无法解码首帧"); return; }
-            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
-            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, bo);
-            int w = bmp.getWidth(), h = bmp.getHeight();
-            bmp.recycle();
-            JSObject res = new JSObject();
-            res.put("jpeg", android.util.Base64.encodeToString(bo.toByteArray(), android.util.Base64.NO_WRAP));
-            res.put("width", w);
-            res.put("height", h);
-            call.resolve(res);
-        } catch (Exception e) {
-            call.reject("thumb 失败: " + e.getMessage());
-        } finally {
-            try { r.release(); } catch (Exception ignored) { }
-        }
+        if (thumbPool.getQueue().size() > 12) { call.reject("缩略图队列繁忙"); return; }
+        thumbPool.execute(() -> {
+            android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+            try {
+                android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
+                r.setDataSource(pfd.getFileDescriptor());
+                android.graphics.Bitmap bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                if (bmp == null) { call.reject("无法解码首帧"); return; }
+                int tw = 192;   // 列表 96x54 的 2 倍余量；整帧解码后立即缩小，压缩和 base64 都小
+                int th = Math.max(1, Math.round(bmp.getHeight() * tw / (float) bmp.getWidth()));
+                android.graphics.Bitmap sc = android.graphics.Bitmap.createScaledBitmap(bmp, tw, th, true);
+                if (sc != bmp) bmp.recycle();
+                java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                sc.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, bo);
+                int w = sc.getWidth(), h = sc.getHeight();
+                sc.recycle();
+                JSObject res = new JSObject();
+                res.put("jpeg", android.util.Base64.encodeToString(bo.toByteArray(), android.util.Base64.NO_WRAP));
+                res.put("width", w);
+                res.put("height", h);
+                call.resolve(res);
+            } catch (Exception e) {
+                call.reject("thumb 失败: " + e.getMessage());
+            } finally {
+                try { r.release(); } catch (Exception ignored) { }
+            }
+        });
     }
 }

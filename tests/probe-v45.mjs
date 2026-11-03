@@ -363,9 +363,12 @@ try {
                 out.off = document.querySelectorAll('.av-thumb').length;
                 const chip2 = document.querySelector('.av-thumb-toggle');   // renderPos 重建过 DOM，必须重取
                 if (chip2) chip2.click();   // 恢复开启
-                await new Promise(r => setTimeout(r, 120));
+                // v45r：缩略图改为异步泵，轮询等 img 上墙（最长 6s）
+                for (let z = 0; z < 40 && document.querySelectorAll('.av-thumb-img').length === 0; z++) {
+                    await new Promise(r => setTimeout(r, 150));
+                }
                 out.state = window.__av._S.meta.thumbs;
-                out.thumbImg = document.querySelectorAll('.av-thumb-img').length;
+                out.thumbImg = document.querySelectorAll('.av-thumb-img').length; out.q = (window.__av && window.__av._thumbState ? JSON.stringify(window.__av._thumbState()) : 'n/a');
                 out.noColl = !document.querySelector('.av-side-coll');
                 var listEl0 = document.querySelector('.av-list');
                 var sideEl0 = document.querySelector('.av-side');
@@ -420,7 +423,7 @@ try {
     check('N1 🖼 开关关闭即清空(v45n)', toggleTests.off === 0, 'off=' + toggleTests.off);
     check('N2 🖼 开关chip存在(v45n)', toggleTests.chip === true);
     check('N3 收起按钮已移除(v45o)', toggleTests.noColl === true);
-    check('N4 原生缩略图直出(v45o)', toggleTests.thumbImg >= 1, 'img=' + toggleTests.thumbImg);
+    check('N4 原生缩略图直出(v45o)', toggleTests.thumbImg >= 1, 'img=' + toggleTests.thumbImg + ' q=' + toggleTests.q + ' state=' + toggleTests.state);
     check('N5 列表可滚动布局(v45p)', toggleTests.listOverflowY === 'auto' && toggleTests.sideDisplay === 'flex', toggleTests.listOverflowY + '/' + toggleTests.sideDisplay);
 
     // 持久化 + 返回

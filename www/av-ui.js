@@ -600,24 +600,44 @@ function build() {
 
     /* v45o：首帧缩略图——原生 MediaServer.thumb 直接解码首帧 JPEG（base64）。
      * v45n 的 WebView 视频管线方案在真机不可靠（解码懒加载/画布路径），原生一次到位。 */
-    function mkThumb(f) {
-        var box = el('div', 'av-thumb');
-        box.appendChild(el('div', 'av-thumb-ph', '▶'));
-        try {
-            var cap = window.Capacitor;
-            var p = cap && cap.Plugins && cap.Plugins.MediaServer;
-            if (p && p.thumb) {
-                p.thumb({ name: f.name }).then(function (r) {
-                    if (r && r.jpeg && String(r.jpeg).length > 50 && box.isConnected) {
+    /* v45r：JS 侧缩略图泵（并发2 + 30ms 间隔）。配合原生独立线程池，桥上永远只有少量在途调用。 */
+    var thumbJobs = [];
+    var thumbLive = 0;
+    function thumbEnqueue(f, box) {
+        thumbJobs.push({ f: f, box: box });
+        thumbDrain();
+    }
+    function thumbDrain() {
+        while (thumbLive < 2 && thumbJobs.length) {
+            var job = thumbJobs.shift();
+            // v45r-2：不在出队时查 isConnected——入队瞬间容器还没挂 DOM，查必 false，任务会被整批吞掉
+            thumbLive++;
+            (function (job) {
+                var cap = window.Capacitor;
+                var p = cap && cap.Plugins && cap.Plugins.MediaServer;
+                if (!p || !p.thumb) { thumbLive--; return; }
+                p.thumb({ name: job.f.name }).then(function (r) {
+                    thumbLive--;
+                    if (r && r.jpeg && String(r.jpeg).length > 50 && job.box.isConnected) {
                         var img = document.createElement('img');
                         img.className = 'av-thumb-img';
                         img.src = 'data:image/jpeg;base64,' + r.jpeg;
-                        box.innerHTML = '';
-                        box.appendChild(img);
+                        job.box.innerHTML = '';
+                        job.box.appendChild(img);
                     }
-                }).catch(function (e) { dlog('thumb fail ' + f.name + ': ' + (e && e.message || e)); });
-            }
-        } catch (e) { /* 保留占位 */ }
+                    setTimeout(thumbDrain, 30);
+                }).catch(function (e) {
+                    thumbLive--;
+                    dlog('thumb fail ' + job.f.name + ': ' + (e && e.message || e));
+                    setTimeout(thumbDrain, 30);
+                });
+            })(job);
+        }
+    }
+    function mkThumb(f) {
+        var box = el('div', 'av-thumb');
+        box.appendChild(el('div', 'av-thumb-ph', '▶'));
+        try { thumbEnqueue(f, box); } catch (e) { /* 保留占位 */ }
         return box;
     }
 
@@ -1065,6 +1085,8 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
+        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive }; },
+        _refreshFolder: refreshFolder,
         open: open,
         back: back,
         state: function () {

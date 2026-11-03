@@ -458,6 +458,8 @@
                 if (mm && (mm.mode === 'video' || mm.mode === 'audio')) {
                     if (window.__av) {
                         pjDlog('route AV ' + name + ' mode=' + mm.mode);
+                        hideWait();     // v45r：AV 路由立刻收起等待框并复位 busy（此前靠 6s 看门狗，工作台上假弹「操作超时」）
+                        busy = false;
                         window.__av.open(name);
                         return;
                     }
