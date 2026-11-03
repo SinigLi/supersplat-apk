@@ -88,6 +88,12 @@
     flex-direction: column;
     transition: margin-left 0.18s ease;
 }
+.av-side-head {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid #2c2c34;
+}
 .av-side-load {
     flex: 1;
     background: #26262e;
@@ -97,7 +103,7 @@
     padding: 7px 10px;
     font-size: 13px;
 }
- flex: 1; overflow-y: auto; padding: 6px; }
+.av-list { flex: 1; overflow-y: auto; padding: 6px; }
 .av-item {
     display: flex;
     align-items: center;
@@ -119,7 +125,7 @@
     padding: 3px 4px;
 }
 .av-item-info { flex: 1; min-width: 0; }
-/* v45o：文件名横向滚动看全名（老板 21:31） */
+/* v45o：文件名横向滚动看全名（老板 21:31），滚动条隐藏 */
 .av-item-name {
     color: #ddd;
     font-size: 12px;

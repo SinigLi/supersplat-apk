@@ -367,6 +367,11 @@ try {
                 out.state = window.__av._S.meta.thumbs;
                 out.thumbImg = document.querySelectorAll('.av-thumb-img').length;
                 out.noColl = !document.querySelector('.av-side-coll');
+                var listEl0 = document.querySelector('.av-list');
+                var sideEl0 = document.querySelector('.av-side');
+                out.listOverflowY = listEl0 ? getComputedStyle(listEl0).overflowY : 'missing';
+                out.sideDisplay = sideEl0 ? getComputedStyle(sideEl0).display : 'missing';
+                out.hasListCss = !!(window.__av && window.__av._css && window.__av._css.includes('.av-list {'));
             }
             return out;
         })()
@@ -416,6 +421,7 @@ try {
     check('N2 🖼 开关chip存在(v45n)', toggleTests.chip === true);
     check('N3 收起按钮已移除(v45o)', toggleTests.noColl === true);
     check('N4 原生缩略图直出(v45o)', toggleTests.thumbImg >= 1, 'img=' + toggleTests.thumbImg);
+    check('N5 列表可滚动布局(v45p)', toggleTests.listOverflowY === 'auto' && toggleTests.sideDisplay === 'flex', toggleTests.listOverflowY + '/' + toggleTests.sideDisplay);
 
     // 持久化 + 返回
     const persist = await evalJs(`

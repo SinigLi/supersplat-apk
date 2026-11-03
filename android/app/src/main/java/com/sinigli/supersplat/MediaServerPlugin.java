@@ -557,20 +557,30 @@ public class MediaServerPlugin extends Plugin {
                     res.put("durationMs", f.getLong(android.media.MediaFormat.KEY_DURATION) / 1000);
                 }
                 // 精确 fps：样本迭代（上限 20 万样本，防超长文件拖时间）
+                // v45p：排序 PTS 取相邻间隔中位数（抗 B 帧解码乱序；v45o 的首尾相除法对乱序流完全失真）
                 ex.selectTrack(videoTrack);
                 ex.seekTo(0, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+                java.util.ArrayList<Long> ts = new java.util.ArrayList<Long>();
                 int count = 0;
-                long first = -1, last = -1;
-                while (count < 200000 && ex.advance()) {
+                while (count < 5000 && ex.advance()) {
                     long t = ex.getSampleTime();
                     if (t < 0) break;
-                    if (first < 0) first = t;
-                    last = t;
+                    ts.add(t);
                     count++;
                 }
                 float fps = -1;
-                if (count > 1 && last > first) {
-                    fps = (count - 1) * 1000000f / (last - first);
+                if (ts.size() > 3) {
+                    java.util.Collections.sort(ts);
+                    java.util.ArrayList<Long> deltas = new java.util.ArrayList<Long>();
+                    for (int i = 1; i < ts.size(); i++) {
+                        long d = ts.get(i) - ts.get(i - 1);
+                        if (d > 1000) deltas.add(d);   // 忽略 <1ms 的重复帧间隔
+                    }
+                    if (!deltas.isEmpty()) {
+                        java.util.Collections.sort(deltas);
+                        long med = deltas.get(deltas.size() / 2);
+                        fps = 1000000f / med;
+                    }
                 }
                 if (fps <= 0 && f.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
                     try { fps = f.getInteger(android.media.MediaFormat.KEY_FRAME_RATE); }
