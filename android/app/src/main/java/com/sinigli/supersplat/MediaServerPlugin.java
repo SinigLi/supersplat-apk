@@ -602,8 +602,8 @@ public class MediaServerPlugin extends Plugin {
      */
     /* v45r：缩略图专用单线程池——绝不占用 Capacitor 桥线程（v45p 实证：58 个 MMR 整帧解码把桥堵死，
      * 日志/存储/媒体服务全部排队饿死 → 空日志+转圈圈+占位不出图）。队列超限快速拒绝，JS 侧会重试。 */
-    private final java.util.concurrent.ExecutorService thumbPool =
-            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+    private final java.util.concurrent.ThreadPoolExecutor thumbPool =
+            (java.util.concurrent.ThreadPoolExecutor) java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "moyutai-thumb");
                 t.setDaemon(true);
                 return t;
