@@ -178,9 +178,13 @@
         put(posEl, { position: 'absolute', top: '10px', right: '12px', zIndex: '12', color: '#eee', fontSize: '12px' });
     }
 
-    /* v45i：av.css 缓存自愈——WebView 可能拿旧缓存样式表（无版本号引用），
-     * 每次打开工作台强制拉最新内容内联覆盖（追加在 head 末尾，同特异性后者胜）。 */
+    /* v45i/v45k：av.css 缓存自愈——WebView 可能拿旧缓存样式表（真机 12:28 截图实锤：
+     * 顶栏飘中间/列表贴右缘，新 DOM+旧样式缝合体）。每次打开：①删掉旧 <link>（旧规则
+     * 不再参与层叠）②fetch 最新内容内联注入。 */
     function refreshCriticalCss() {
+        try {
+            [].slice.call(document.querySelectorAll('link[rel="stylesheet"][href*="av.css"]')).forEach(function (l) { l.parentNode.removeChild(l); });
+        } catch (e) { }
         fetch('av.css?v=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (txt) {
             if (txt && txt.indexOf('.av-page') >= 0 && txt.indexOf('.av-empty-btn') >= 0) {
                 var st = document.getElementById('avCssFresh');
