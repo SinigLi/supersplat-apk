@@ -14,6 +14,10 @@
 (function () {
     'use strict';
 
+    /* v45k：av.css 全量内嵌（WebView 本地缓存不可控，不再 link 外部样式表） */
+    var AV_CSS = "/* 摸鱼台 v45c —— AV 工作台样式（真机反馈第二轮 · 老板 7 条布局决议）\n *\n *  1. ⏮⏯⏭ + ◀步进▶ → 右侧中间竖排控制栏 .av-rail（大按钮 .av-big）\n *  2. 标记刻度与进度条同层（.av-range-wrap 内绝对定位，按拇指半径内缩对齐）\n *  3. 时间/帧数 → 播放器右上角悬浮标签 .av-pos-top\n *  4. 系统栏/挖孔避让：JS 把原生 insets 写进 --av-safe-* 变量，页面四向消费\n *     （Android 15 edge-to-edge 下 env(safe-area-inset) 不可靠，见 MediaServer.getSafeArea）\n *  5. 工具行顺序 ⤴|✂|▦|fps（DOM 顺序即视觉顺序，CSS 只管样式）\n *  6. 单击视频切全屏已删（stage-hit/imm 相关样式全部移除）\n *  7. .av-big = v45b 按钮放大 50%\n *\n * 继承 v45b：悬浮层 0.25/blur4、按钮 0.38+文字投影、av-danger 红「移除」态、\n * 强制横屏（JS 层，CSS 竖屏规则仅桌面调试兜底）。\n * v45d 热修：安全区由 .av-page padding 统一承担，内层元素不再重复消费\n *      （23:18 截图：原生物理 px 未换算 + 旋转过渡期脏值 → 整页被撑出大黑边）\n */\n */\n\n/* ===== 页面骨架（#4 安全区四向消费） ===== */\n.av-page {\n    --av-safe-top: 0px;\n    --av-safe-right: 0px;\n    --av-safe-bottom: 0px;\n    --av-safe-left: 0px;\n\n    display: none;\n    position: fixed;\n    inset: 0;\n    z-index: 1550;   /* 盖过工程页 1500，低于对话框 1600/toast 1700 */\n    background: #141414;\n    flex-direction: column;\n    padding-top: var(--av-safe-top);\n    padding-right: var(--av-safe-right);\n    padding-bottom: var(--av-safe-bottom);\n    padding-left: var(--av-safe-left);\n}\n.av-page.open { display: flex; }\n\n/* ===== 顶栏 ===== */\n.av-top {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 6px 10px;\n    background: #1d1d1f;\n    border-bottom: 1px solid #333;\n    min-height: 44px;\n    flex: 0 0 auto;\n}\n.av-top-title {\n    flex: 1;\n    color: #ddd;\n    font-size: 13px;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n}\n.av-top-btn {\n    background: #2a2a2e;\n    color: #ddd;\n    border: 1px solid #3a3a3e;\n    border-radius: 8px;\n    padding: 6px 12px;\n    font-size: 13px;\n}\n.av-top-btn.av-primary {\n    background: rgba(48, 98, 158, 0.9);\n    border-color: #3d6ea8;\n    color: #fff;\n}\n\n/* ===== 主体 ===== */\n.av-body {\n    flex: 1;\n    display: flex;\n    min-height: 0;\n    position: relative;\n}\n\n/* 左列表 30% */\n.av-side {\n    width: 30%;\n    min-width: 190px;\n    max-width: 340px;\n    background: #181820;\n    border-right: 1px solid #2c2c34;\n    display: flex;\n    flex-direction: column;\n    transition: margin-left 0.18s ease;\n}\n.av-side.closed { margin-left: -100%; }\n.av-side-head {\n    display: flex;\n    gap: 6px;\n    padding: 8px;\n    border-bottom: 1px solid #2c2c34;\n}\n.av-side-load {\n    flex: 1;\n    background: #26262e;\n    color: #ddd;\n    border: 1px solid #3a3a44;\n    border-radius: 8px;\n    padding: 7px 10px;\n    font-size: 13px;\n}\n.av-side-coll {\n    width: 32px;\n    background: #26262e;\n    color: #aaa;\n    border: 1px solid #3a3a44;\n    border-radius: 8px;\n}\n.av-list { flex: 1; overflow-y: auto; padding: 6px; }\n.av-item {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 8px;\n    border-radius: 8px;\n    cursor: pointer;\n    margin-bottom: 2px;\n}\n.av-item.on { background: rgba(48, 98, 158, 0.35); }\n.av-item-no {\n    min-width: 34px;\n    text-align: center;\n    color: #9fb6d8;\n    font-size: 12px;\n    font-weight: 600;\n    background: rgba(60, 90, 140, 0.25);\n    border-radius: 6px;\n    padding: 3px 4px;\n}\n.av-item-info { flex: 1; min-width: 0; }\n.av-item-name {\n    color: #ddd;\n    font-size: 12px;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n}\n.av-item-sub { color: #777; font-size: 10px; margin-top: 2px; }\n.av-item-badge {\n    color: #ffd37a;\n    font-size: 11px;\n    background: rgba(180, 130, 40, 0.3);\n    border-radius: 5px;\n    padding: 2px 5px;\n}\n.av-item-badge.av-b-split { color: #9be29b; background: rgba(50, 140, 70, 0.3); }\n\n/* 收起把手 */\n.av-handle {\n    display: none;\n    position: absolute;\n    left: 0;\n    top: 50%;\n    transform: translateY(-50%);\n    z-index: 65;\n    width: 26px;\n    height: 56px;\n    background: rgba(30, 30, 38, 0.85);\n    color: #bbb;\n    border: 1px solid #3a3a44;\n    border-left: none;\n    border-radius: 0 10px 10px 0;\n}\n.av-handle.show { display: block; }\n\n/* ===== 右播放区 ===== */\n.av-main {\n    flex: 1;\n    position: relative;\n    min-width: 0;\n    background: #000;\n    overflow: hidden;\n}\n.av-video {\n    position: absolute;\n    inset: 0;\n    width: 100%;\n    height: 100%;\n    object-fit: contain;\n    background: #000;\n}\n.av-audio { display: none; }\n.av-empty {\n    position: absolute;\n    inset: 0;\n    display: none;\n    flex-direction: column;\n    align-items: center;\n    justify-content: center;\n    gap: 14px;\n    color: #666;\n    font-size: 14px;\n    white-space: pre-line;\n    text-align: center;\n    pointer-events: auto;\n}\n.av-empty .av-empty-t { color: #aab4c4; font-size: 16px; font-weight: 600; pointer-events: none; }\n.av-empty .av-empty-s { color: #66707f; font-size: 12px; pointer-events: none; }\n.av-empty-btn {\n    background: rgba(48, 98, 158, 0.9);\n    color: #fff;\n    border: 1px solid #3d6ea8;\n    border-radius: 12px;\n    padding: 14px 26px;\n    font-size: 16px;\n}\n\n/* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */\n.av-rail {\n    position: absolute;\n    right: 12px;    /* v45d：安全区由 .av-page padding 统一承担 */\n    top: 50%;\n    transform: translateY(-50%);\n    z-index: 10;\n    display: flex;\n    flex-direction: column;\n    align-items: center;\n    gap: 10px;\n    padding: 10px;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border-radius: 14px;\n}\n.av-rail-row {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n}\n\n/* ===== 通用按钮（v45b 透明定稿） ===== */\n.av-ovl-btn {\n    background: rgba(27, 34, 51, 0.38);\n    color: #eee;\n    border: 1px solid rgba(42, 50, 71, 0.4);\n    border-radius: 9px;\n    padding: 8px 11px;\n    font-size: 12px;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n    white-space: nowrap;\n}\n.av-ovl-btn:active { background: rgba(70, 70, 80, 0.55); }\n.av-ovl-btn.av-sq { padding: 8px 10px; min-width: 36px; }\n.av-ovl-btn.av-accent { color: #9be29b; }\n.av-ovl-btn.av-multi { color: #b48cff; }\n/* 游标命中已有标记 → 红「移除」态 */\n.av-ovl-btn.av-danger {\n    color: #ff7d7d;\n    border-color: rgba(220, 80, 80, 0.55);\n    background: rgba(120, 40, 40, 0.45);\n}\n/* #7 播放/上下集/步进放大 50%（v45b 基准 12px/8x11 → 18px/12x16） */\n.av-ovl-btn.av-big {\n    font-size: 18px;\n    padding: 12px 15px;\n    min-width: 52px;\n}\n.av-ovl-btn.av-big.av-play { min-width: 62px; }\n\n.av-ovl-input {\n    width: 52px;\n    background: rgba(27, 34, 51, 0.38);\n    color: #fff;\n    border: 1px solid rgba(42, 50, 71, 0.4);\n    border-radius: 8px;\n    padding: 6px 6px;\n    font-size: 12px;\n    text-align: center;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n}\n.av-ovl-input.av-step { width: 56px; font-size: 13px; padding: 8px 6px; }\n.av-ovl-input.av-fps { width: 44px; }\n.av-ovl-fps {\n    display: flex;\n    align-items: center;\n    gap: 4px;\n    color: #aaa;\n    font-size: 11px;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n}\n\n/* ===== #5 工具行（⤴|✂|▦|fps，悬浮底部居中） ===== */\n.av-ovl {\n    position: absolute;\n    left: 50%;\n    transform: translateX(-50%);\n    bottom: 64px;   /* v45d：内层不重复消费安全区 */\n    z-index: 10;\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 8px 10px;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border-radius: 12px;\n    max-width: calc(100% - 16px);\n    flex-wrap: wrap;\n    justify-content: center;\n}\n\n/* ===== #3 时间/帧数悬浮右上角 ===== */\n.av-pos-top {\n    position: absolute;\n    top: 10px;      /* v45d：内层不重复消费安全区 */\n    right: 12px;\n    z-index: 12;\n    color: #eee;\n    font-size: 12px;\n    font-variant-numeric: tabular-nums;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    padding: 4px 9px;\n    border-radius: 8px;\n    pointer-events: none;\n}\n\n/* ===== #2 播放条：刻度与进度条同层 ===== */\n.av-tl-wrap {\n    position: absolute;\n    left: 16px;     /* v45d：内层不重复消费安全区 */\n    right: 16px;\n    bottom: 10px;\n    height: 40px;\n    z-index: 8;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border: 1px solid rgba(42, 50, 71, 0.35);\n    border-radius: 12px;\n}\n/* 刻度容器与 range 轨道对齐：内缩半个拇指宽（thumb 20px → 10px） */\n.av-range-wrap {\n    position: relative;\n    width: 100%;\n    height: 100%;\n}\n.av-tl-ticks {\n    position: absolute;\n    left: 10px;\n    right: 10px;\n    top: 8px;\n    bottom: 8px;\n    pointer-events: none;\n}\n.av-tick {\n    position: absolute;\n    top: 0;\n    width: 3px;\n    height: 100%;\n    border-radius: 2px;\n    transform: translateX(-1.5px);\n}\n.av-tick-split { background: #6fdc8c; }\n.av-tick-multi { background: #b48cff; width: 5px; }\n.av-tl-range {\n    position: absolute;\n    inset: 0;\n    width: 100%;\n    height: 100%;\n    -webkit-appearance: none;\n    background: transparent;\n    margin: 0;\n}\n.av-tl-range::-webkit-slider-runnable-track {\n    height: 5px;\n    background: rgba(255, 255, 255, 0.22);\n    border-radius: 3px;\n}\n.av-tl-range::-webkit-slider-thumb {\n    -webkit-appearance: none;\n    width: 20px;\n    height: 20px;\n    margin-top: -8px;\n    border-radius: 50%;\n    background: #e8e8ec;\n    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);\n}\n\n/* ===== 竖屏兜底（真机强制横屏后不会走到；桌面调试用） ===== */\n@media (max-width: 699px) {\n    .av-side {\n        position: absolute;\n        left: 0;\n        top: 44px;\n        bottom: 0;\n        z-index: 30;\n        width: 62%;\n        max-width: 320px;\n        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);\n    }\n    .av-side.closed { margin-left: -110%; }\n    .av-rail { right: 8px; }\n}\n";
+
+
     var L = window.__avLogic;
     if (!L) { console.error('[av] __avLogic 未加载'); return; }
 
@@ -147,63 +151,69 @@
         [400, 1000, 2000].forEach(function (t) { setTimeout(read, t); });
     }
 
-    /* v45i：结构布局内郸兜底（真机 10:35 截图：样式表仅局部生效 → 顶栏跑中间、
-     * 列表悬半空）。关键布局不再依赖样式表解析，全部内联写死。 */
+    /* v45k：结构布局内联兜底 v2——v45i 版用 setProperty + 驼峰键（'flexDirection'），
+ * 而 setProperty 只认 kebab-case，驼峰键全部被浏览器静默忽略 → 兜底实际没生效
+ * （老板 12:08 截图的横排乱布局正是 flex-direction 缺省 row 的形态）。
+ * 改用 style.xxx IDL 赋值，驼峰合法、与 CSS 语义一致。 */
     function applyLayoutGuard() {
-        if (!page || !topEl) return;
-        var put = function (elm, props) { for (var k in props) elm.style.setProperty(k, props[k]); };
-        put(page, {
-            position: 'fixed', inset: '0', zIndex: '1550', display: 'flex',
-            flexDirection: 'column', background: '#141414'
-        });
-        put(topEl, {
-            display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
-            background: '#1d1d1f', borderBottom: '1px solid #333', minHeight: '44px',
-            flex: '0 0 auto', position: 'relative', zIndex: '2'
-        });
-        var tt = topEl.querySelector('.av-top-title');
-        if (tt) put(tt, { flex: '1', color: '#ddd', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
-        put(bodyEl, { flex: '1', display: 'flex', minHeight: '0', position: 'relative' });
-        put(sideEl, {
-            width: '30%', minWidth: '190px', maxWidth: '340px', flex: '0 0 auto',
-            background: '#181820', borderRight: '1px solid #2c2c34',
-            display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden'
-        });
-        put(mainEl, { flex: '1', position: 'relative', minWidth: '0', background: '#000', overflow: 'hidden' });
-        put(videoEl, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain', background: '#000' });
-        put(emptyHint, { position: 'absolute', inset: '0', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' });
-        put(railEl, { position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', zIndex: '10', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '10px' });
-        put(ovlEl, { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '64px', zIndex: '10', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px' });
-        put(tlWrap, { position: 'absolute', left: '16px', right: '16px', bottom: '10px', height: '40px', zIndex: '8' });
-        put(posEl, { position: 'absolute', top: '10px', right: '12px', zIndex: '12', color: '#eee', fontSize: '12px' });
+        if (!page || !topEl || !bodyEl) return;
+        var pg = page.style;
+        pg.position = 'fixed'; pg.top = '0'; pg.right = '0'; pg.bottom = '0'; pg.left = '0';
+        pg.zIndex = '1550'; pg.display = 'flex'; pg.flexDirection = 'column'; pg.background = '#141414';
+        var tt = topEl.style;
+        tt.display = 'flex'; tt.alignItems = 'center'; tt.gap = '8px'; tt.padding = '6px 10px';
+        tt.background = '#1d1d1f'; tt.borderBottom = '1px solid #333'; tt.minHeight = '44px';
+        tt.flex = '0 0 auto'; tt.position = 'relative'; tt.zIndex = '2'; tt.boxSizing = 'border-box'; tt.width = '100%';
+        var t1 = topEl.querySelector('.av-top-title');
+        if (t1) {
+            t1.style.flex = '1'; t1.style.minWidth = '0'; t1.style.color = '#ddd'; t1.style.fontSize = '13px';
+            t1.style.whiteSpace = 'nowrap'; t1.style.overflow = 'hidden'; t1.style.textOverflow = 'ellipsis';
+        }
+        var bs = bodyEl.style;
+        bs.flex = '1'; bs.display = 'flex'; bs.flexDirection = 'row'; bs.minHeight = '0'; bs.position = 'relative'; bs.width = '100%';
+        var ss = sideEl.style;
+        ss.width = '30%'; ss.minWidth = '190px'; ss.maxWidth = '340px'; ss.flex = '0 0 auto';
+        ss.background = '#181820'; ss.borderRight = '1px solid #2c2c34';
+        ss.display = 'flex'; ss.flexDirection = 'column'; ss.position = 'relative'; ss.overflow = 'hidden';
+        var ms = mainEl.style;
+        ms.flex = '1'; ms.position = 'relative'; ms.minWidth = '0'; ms.background = '#000'; ms.overflow = 'hidden';
+        var vs = videoEl.style;
+        vs.position = 'absolute'; vs.top = '0'; vs.left = '0'; vs.width = '100%'; vs.height = '100%';
+        vs.objectFit = 'contain'; vs.background = '#000';
+        var es = emptyHint.style;
+        es.position = 'absolute'; es.top = '0'; es.right = '0'; es.bottom = '0'; es.left = '0';
+        es.flexDirection = 'column'; es.alignItems = 'center'; es.justifyContent = 'center'; es.gap = '14px';
+        var rs = railEl.style;
+        rs.position = 'absolute'; rs.right = '12px'; rs.top = '50%'; rs.transform = 'translateY(-50%)';
+        rs.zIndex = '10'; rs.display = 'flex'; rs.flexDirection = 'column'; rs.alignItems = 'center'; rs.gap = '10px'; rs.padding = '10px';
+        var os = ovlEl.style;
+        os.position = 'absolute'; os.left = '50%'; os.transform = 'translateX(-50%)'; os.bottom = '64px';
+        os.zIndex = '10'; os.display = 'flex'; os.alignItems = 'center'; os.gap = '8px'; os.padding = '8px 10px';
+        var ts = tlWrap.style;
+        ts.position = 'absolute'; ts.left = '16px'; ts.right = '16px'; ts.bottom = '10px'; ts.height = '40px'; ts.zIndex = '8';
+        var ps = posEl.style;
+        ps.position = 'absolute'; ps.top = '10px'; ps.right = '12px'; ps.zIndex = '12'; ps.color = '#eee'; ps.fontSize = '12px';
     }
 
-    /* v45i/v45k：av.css 缓存自愈——WebView 可能拿旧缓存样式表（真机 12:28 截图实锤：
-     * 顶栏飘中间/列表贴右缘，新 DOM+旧样式缝合体）。每次打开：①删掉旧 <link>（旧规则
-     * 不再参与层叠）②fetch 最新内容内联注入。 */
-    function refreshCriticalCss() {
+    /* v45k：av.css 内嵌注入——不再依赖外部样式表加载（WebView 缓存不可控），
+     * 每次打开工作台同步注入全量样式；APK 换版必然带最新样式。 */
+    function embedAvCss() {
         try {
             [].slice.call(document.querySelectorAll('link[rel="stylesheet"][href*="av.css"]')).forEach(function (l) { l.parentNode.removeChild(l); });
         } catch (e) { }
-        fetch('av.css?v=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (txt) {
-            if (txt && txt.indexOf('.av-page') >= 0 && txt.indexOf('.av-empty-btn') >= 0) {
-                var st = document.getElementById('avCssFresh');
-                if (!st) {
-                    st = document.createElement('style');
-                    st.id = 'avCssFresh';
-                    document.head.appendChild(st);
-                }
-                if (st.textContent !== txt) {
-                    st.textContent = txt;
-                    dlog('css refreshed ' + txt.length + 'B');
-                }
-            } else {
-                dlog('css fetch suspicious len=' + (txt || '').length);
-            }
-        }).catch(function (e) { dlog('css fetch ERR ' + (e && e.message || e)); });
+        var st = document.getElementById('avCssEmbed');
+        if (!st) {
+            st = document.createElement('style');
+            st.id = 'avCssEmbed';
+            document.head.appendChild(st);
+        }
+        if (st.textContent !== AV_CSS) {
+            st.textContent = AV_CSS;
+            dlog('av.css embedded ' + AV_CSS.length + 'B');
+        }
     }
 
-    function build() {
+function build() {
         if (S.built) return;
         S.built = true;
 
@@ -816,7 +826,7 @@
             page.style.display = 'flex';
             emptyHint.style.display = 'none';   // v45i：样式表异常时防空态常驻，显示由下方分支显式控制
             applyLayoutGuard();     // v45i：结构布局内联兑底
-            refreshCriticalCss();   // v45i：av.css 缓存自愈
+            embedAvCss();   // v45i：av.css 缓存自愈
             lockLandscape();
             applySafeArea();      // #4：系统栏避让
             dlog('page open; folderUri=' + (S.meta.folderUri ? 'yes' : 'no'));
