@@ -348,6 +348,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v45g | 空态引导强化 | 3ee6554 | 老板 08:23 日志确诊：v45f 流程全通（route AV/open/page open 无错误、埋点有内容），folderUri=false = 工程从未绑定过视频文件夹，工作台已打开但停在空态（v45f 空态 block 布局把按钮顶到左上角不显眼，看起来像没反应）。v45g：空态改 flex 居中欢迎层（标题+说明+大按钮），区分「未关联文件夹」/「授权失效需重选」两种文案，pickFolder 选择→拿到 uri→刷新全程落日志。39/39 探针过 |
 | v45h | 真机证据双修 | ca2d8e1 | 老板 08:57 两张截图+完整日志坐实两个真机 bug：①「打开工程：读取数据…」转圈永久卡死（存储读取挂起→busy 死锁）→ 看门狗 6s 强制解锁+toast+storeTimeout 超时护栏；②日志 class 已加但屏幕仍是工程列表（.av-page 层叠未生效）→ open 时内联样式兜底（fixed/inset0/z1550/flex）+ 120ms 渲染取证日志（display/z/rect/sheets）。39/39 探针过 |
 | v45i | 样式表局部生效根治 | b4799d5 | 老板 10:35 截图：工作台已能打开（v45h 内联兜底生效）但 av.css 只剩零碎规则起作用——顶栏跑到画面中间、左列表悬半空、空态文字飘在视频上、右侧竖排栏叠着工具行。根因判断：WebView 对本地 av.css 用了旧缓存（无版本号引用，service worker 已清但 HTTP 缓存仍在）。三重防御：①applyLayoutGuard 结构布局全部内联写死 ②每次打开 fetch av.css?v=时间戳 no-store，内容一致才内联为覆盖 style ③空态显隐改 JS 控制+取证日志加 top/side rect。39/39 探针过 |
+| v45j | 避让内联 | b830724 | 老板 10:36 确认能进去但布局乱+顶部未避让（坐实 v45i 旧缓存样式表判断）。追补：getSafeArea 回调里避让 padding 同步内联写入（cvt 换算/脏值钳制后直接 page.style.padding*），不再依赖样式表消费 --av-safe-* 变量。39/39 探针过 |
 
 ## 9. 已知边界 / 待办
 
