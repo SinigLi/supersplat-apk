@@ -351,6 +351,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v45j | 避让内联 | b830724 | 老板 10:36 确认能进去但布局乱+顶部未避让（坐实 v45i 旧缓存样式表判断）。追补：getSafeArea 回调里避让 padding 同步内联写入（cvt 换算/脏值钳制后直接 page.style.padding*），不再依赖样式表消费 --av-safe-* 变量。39/39 探针过 |
 | v45k | 内联兜底真正生效 | c10124f | 老板 12:08/12:28 两张截图：58 段数据链路全通但布局横排乱铺（顶栏竖条居左内容垂直居中/列表贴右缘/右侧控件全叠）。根因（自查出）：v45i 的 applyLayoutGuard 用 style.setProperty(驼峰键)——setProperty 只认 kebab-case，驼峰键静默无效 → 兜底从未生效，flex-direction 缺省 row 即截图形态；且 fetch av.css?v= 在 Capacitor 本地服务不可靠（缓存自愈两轮无效果的原因）。修：①布局兜底改 style.xxx IDL 赋值 ②av.css 全量内嵌 AV_CSS 常量，打开时移除旧 link+注入 style（换版必带新样式，缓存变量消灭）③探针 39/39 |
 | v45l | fps 容器真值+布局微调 | 5b87515 | 老板 19:00 三条：①fps 不该手改——新增 MediaServer.probeMeta（MediaExtractor 读容器 KEY_FRAME_RATE，毫秒级），打开文件即取真值并落库，来源标『原生』；仍保留手填（部分容器无此字段/网页采样估错时兜底），手填与原生冲突会提示 ②工具行(并入/分割/多帧)横排移到进度条左上角，避开右侧竖排按钮 ③fps 移到右上角信息条与帧/时间同排，点芯片编辑；probe-v45 41/41 |
+| v45m | 首帧缩略图+导出 v2+同帧互斥 | b5b0339 | 老板 20:01 四条：①列表选中视频画首帧缩略图（隐藏 video 画到 0.1s 截帧，失败留占位）②导出改一视频一节点：{target, split_at_frame/split_at_seconds, multiframe_refs[], merge_prev, note}，schema 升 moyutai.marks.v2，仍按段号降序 ③分割点与多帧点同帧互斥（UI 互吸：分割吃掉同帧多帧参考、多帧点吃掉同帧分割）④导出层兜底剔除与分割同帧的参考帧；probe-v45 43/43 |
 | v45k | 本地资源缓存击穿 | d383828 | 老板 12:28 截图实锤缓存病根：标题/列表数据全对（58 段）但顶栏飘中间、列表贴右缘——新 DOM+旧样式的缝合体，且每版表现都不同（新 DOM 每版变、旧 CSS 固定）。根因：index.html 引用本地资源无版本号，WebView 跨版本安装持续吃 HTTP 缓存。修：所有本地 js/css 引用加 ?v=45k（发版即换键）+ refreshCriticalCss 打开时物理删除旧 av.css link 再内联注入最新。39/39 探针过 |
 
 ## 9. 已知边界 / 待办
