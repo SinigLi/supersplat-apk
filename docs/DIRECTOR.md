@@ -344,6 +344,7 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v45c | 真机反馈二轮 7 条 | d3c18bf | ①⏮⏯⏭+◀步进▶ 移右侧中间竖排栏（av-rail，按钮放大 50%）②标记刻度挪进进度条同层（av-range-wrap 内缩对齐）③时间/帧数悬浮播放器右上角（av-pos-top）④原生 getSafeArea（WindowInsetsCompat）→CSS 变量四向避让系统栏/挖孔（Android 15 edge-to-edge env() 不可靠）⑤工具行顺序 ⤴并入/✂分割/▦多帧/fps ⑥删单击视频切全屏（stage-hit）⑦按钮放大。probe-v45 扩 38 项 |
 | v45d | 热修：整页大黑边 | 155086d | 老板 23:18 截图：工作台内容被挤到右下角、顶部/左侧大黑带、控件堆叠。根因=v45c getSafeArea 直接把原生物理 px 当 CSS px 用（未 ÷ devicePixelRatio，放大 2~3 倍）且旋转过渡期读到竖屏旧值（top≈460 物理px）。修：换算 DPR + 超 48css px 视为脏值归零 + 400/1000/2000ms 延迟重读 + resize/orientationchange 自愈 + 内层元素不再重复消费安全区变量（统一 .av-page padding）。probe-v45 39 项（C3 换算/钳制断言）|
 | v45e | 热修：视频工程打不开 | 78f2016 | 老板 07:21 反馈：点视频工程只横屏、界面不出。桌面探针 39/39 全绿但真机静默失败 → 按既定排障链路：①open()/路由全链路 DebugLog 埋点（route AV/open meta/page open/listFiles/folder ERR/open FAIL）②全局 error/unhandledrejection 钩子落日志（静默失败终结者）③open 包 try/catch：异常时 toast 具体错误+退回工程列表，不再黑横屏 ④MediaServer.load() 在 Activity 重建时重置方向（进程未死重开 App 残留横屏请求的嫌疑消除）。下一轮老板复现后🐞导日志即可精确定位 |
+| v45f | 热修：日志空行+空态入口 | 08a84e6 | 老板 07:46 回报仍打不开。日志文件 8 行全空 → v45e 埋点传参错误：DebugLog.append 应传 {text:...} 而非裸字符串，原生 getString 全落空。修复：dlog/路由埋点改 {text:} 形态；toast 全部落日志；视频 error 事件落日志；空态加「重新授权目录」按钮（隔夜 SAF 授权失效为头号嫌疑）。38+39 探针全绿 |
 
 ## 9. 已知边界 / 待办
 
