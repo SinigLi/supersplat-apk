@@ -1,17 +1,19 @@
-/* 摸鱼台 v45d —— AV 工作台 UI 层（视频工程，真机反馈第二轮+热修）
+/* 摸鱼台 v45f —— AV 工作台 UI 层（视频工程，打不开排障第二轮）
+ *
+ * v45f 修复：
+ *  a) v45e 埋点传参错误（裸字符串 vs {text:...}）→ 真机日志全是空行，本次修复后日志带内容
+ *  b) toast() 全部落日志（提示 2.4s 消失，错过可查）
+ *  c) 空态加「📂 重新授权目录」按钮（隔夜/重装后 SAF 授权可能失效，是最可能病因）
+ *  d) video error 事件落日志 + 提示
  *
  * v45c 布局（2026-11-02 22:08 老板 7 条反馈）：
  *  1. ⏮⏯⏭ + ◀步进▶ 移到右侧中间竖排控制栏（大按钮）
- *  2. 标记刻度与播放条对齐（刻度挪进进度条同层，占位不再被播放按钮挤偏）
- *  3. 时间/帧数显示移到播放器右上角（悬浮标签）
+ *  2. 标记刻度与播放条对齐
+ *  3. 时间/帧数显示移到播放器右上角
  *  4. 顶栏/右栏避让系统栏与挖孔（原生 getSafeArea → CSS 变量）
  *  5. 工具行顺序：⤴并入前段 | ✂分割点 | ▦多帧点（+fps 框）
- *  6. 去掉单击视频切全屏（stage-hit 层删除）
+ *  6. 去掉单击视频切全屏
  *  7. 播放/上下集/步进按钮放大 50%
- *
- * v45d 热修（23:19 老板截图：整页大黑边、控件挤叠）：
- *  applySafeArea 物理px→CSS 换算 + 超过 48px 视为旋转过渡期脏值归零 +
- *  旋转稳定后延迟重读 3 次 + resize/orientationchange 自愈。
  *
  * 继承 v45b：强制横屏、帧数常显、±半帧红色移除态、r6 交互语义。
  */
@@ -29,7 +31,8 @@
             var cap = window.Capacitor;
             var p = cap && cap.Plugins && cap.Plugins.DebugLog;
             if (p && p.append) {
-                var r = p.append('[av] ' + msg);
+                // v45f 修复：v45e 传了裸字符串，原生 call.getString("text") 拿到空 → 日志全是空行
+                var r = p.append({ text: '[av] ' + msg });
                 if (r && r.catch) r.catch(function () { });
             }
         } catch (e) { }
@@ -87,13 +90,14 @@
         railEl, audioCv, emptyHint, handleEl, toastTimer = null;
 
     function toast(msg) {
+        dlog('TOAST ' + msg);   // v45f：所有弹窗提示都落日志（toast 2.4s 自动消失，错过就查日志）
         var t = document.querySelector('.pj-toast');
         if (!t) { t = el('div', 'pj-toast'); document.body.appendChild(t); }
         t.textContent = msg;
         t.classList.add('show');
         clearTimeout(toastTimer);
         toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
-    }
+ }
 
     /* ---------- 横屏（v45b） + 安全区（v45c #4） ---------- */
 
@@ -198,7 +202,11 @@
         audioCv = el('canvas', 'av-audio');
         mainEl.appendChild(audioCv);
 
-        emptyHint = el('div', 'av-empty', '先「📂 加载文件夹」');
+        emptyHint = el('div', 'av-empty');
+        emptyHint.appendChild(el('div', 'av-empty-t', '先「📂 加载文件夹」'));
+        var reAuth = el('button', 'av-empty-btn', '📂 重新授权目录');
+        reAuth.addEventListener('click', pickFolder);
+        emptyHint.appendChild(reAuth);
         mainEl.appendChild(emptyHint);
 
         // ===== 右侧竖排控制栏（#1 位置 + #7 放大）=====
@@ -308,6 +316,12 @@
         videoEl.addEventListener('timeupdate', renderPos);
         videoEl.addEventListener('seeked', renderPos);
         videoEl.addEventListener('loadedmetadata', function () { renderPos(); });
+        videoEl.addEventListener('error', function () {
+            // v45f：视频流加载失败必须留痕（code 4=格式/网络不可用等）
+            var ec = videoEl.error && videoEl.error.code;
+            dlog('VIDEO-ERR code=' + ec + ' src=' + String(videoEl.src || '').slice(0, 60));
+            toast('视频加载失败（code=' + ec + '），试试重新选目录或换文件');
+        });
         videoEl.addEventListener('play', function () { btnPlay.textContent = '⏸'; startFpsSample(); });
         videoEl.addEventListener('pause', function () { btnPlay.textContent = '▶'; });
         videoEl.addEventListener('ended', function () { btnPlay.textContent = '▶'; renderPos(); });
@@ -678,6 +692,7 @@
     }
 
     function back() {
+        dlog('back() cur=' + S.cur);
         saveAll(false);
         stopServer();
         unlockOrientation();

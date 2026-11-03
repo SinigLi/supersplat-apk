@@ -189,13 +189,24 @@
     position: absolute;
     inset: 0;
     display: none;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 14px;
     color: #666;
     font-size: 14px;
     white-space: pre-line;
     text-align: center;
-    pointer-events: none;
+    pointer-events: auto;
+}
+.av-empty .av-empty-t { pointer-events: none; }
+.av-empty-btn {
+    background: rgba(48, 98, 158, 0.9);
+    color: #fff;
+    border: 1px solid #3d6ea8;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 15px;
 }
 
 /* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */

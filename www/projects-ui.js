@@ -427,7 +427,7 @@
                         // v45e 排障：路由进 AV 前先落日志（真机静默失败终结者）
                         try {
                             var dp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.DebugLog;
-                            if (dp && dp.append) dp.append('[pj] route AV ' + name + ' mode=' + mm.mode);
+                            if (dp && dp.append) dp.append({ text: '[pj] route AV ' + name + ' mode=' + mm.mode });   // v45f：{text:} 形态
                         } catch (e) { }
                         window.__av.open(name);
                         return;
