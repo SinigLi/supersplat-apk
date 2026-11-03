@@ -151,11 +151,12 @@ const tests = `
     const exp = A.buildExport(meta, marks, files);
     out.exportTargets = exp.marks.map(m => m.target).join(',');
     // 降序：shot10(10) → shot003(3) → shot2(2)；同段内 split 先于 merge? 需求只说按段降序
-    out.exportSchema = exp.schema === 'moyutai.marks.v2' && exp.mode === 'video' && exp.fps === 25;
-    out.exportFrame = exp.marks.find(m => m.target === 'shot10')?.split_at_frame === 51; // 2.04*25=51
-    out.exportMulti = exp.marks.find(m => m.target === 'shot2')?.multiframe_refs?.join(',') === '5,9';
-    out.exportMutex = exp.marks.find(m => m.target === 'shot10')?.multiframe_refs?.join(',') === '77';   // 帧51因分割点被剔除
-    out.exportOk = out.exportTargets === 'shot10,shot003,shot2' && out.exportSchema && out.exportFrame && out.exportMulti;   // v45m：一视频一节点 → 3 个
+    out.exportSchema = exp.schema === 'moyutai.marks.v3' && exp.mode === 'video' && exp.fps === 25;
+    out.exportFrame = exp.marks.find(m => m.target === 'shot10')?.points?.find(pt => pt.type === 'split')?.at_frame === 51; // 2.04*25=51
+    out.exportSec = exp.marks.find(m => m.target === 'shot10')?.points?.find(pt => pt.type === 'split')?.at_seconds === 2.04;
+    out.exportMulti = exp.marks.find(m => m.target === 'shot2')?.points?.filter(pt => pt.type === 'multiframe').map(pt => pt.at_frame).join(',') === '5,9';
+    out.exportMutex = exp.marks.find(m => m.target === 'shot10')?.points?.filter(pt => pt.type === 'multiframe').map(pt => pt.at_frame).join(',') === '77';   // 帧51因分割点被剔除
+    out.exportOk = out.exportTargets === 'shot10,shot003,shot2' && out.exportSchema && out.exportFrame && out.exportMulti && out.exportSec;   // v45n：v3 点列表
 
     // merge_prev 的 target 也在导出里
     out.mergeExport = exp.marks.some(m => m.target === 'shot003' && m.merge_prev === true);
@@ -349,6 +350,23 @@ try {
     check('M5 多帧参考(F3)', markTests.multi === '38,50', markTests.multi);
     check('M6 全屏层已删(反馈#6)', markTests.noStageHit);
 
+    const toggleTests = await evalJs(`
+        (async () => {
+            const out = {};
+            const chipEl = document.querySelector('.av-thumb-toggle');
+            out.chip = !!chipEl;
+            if (chipEl) {
+                chipEl.click();
+                await new Promise(r => setTimeout(r, 120));
+                out.off = document.querySelectorAll('.av-thumb').length;
+                chipEl.click();   // 恢复开启
+                await new Promise(r => setTimeout(r, 120));
+                out.state = window.__av._S.meta.thumbs;
+            }
+            return out;
+        })()
+    `);
+
     // v45b 真机反馈修复专项
     const fixTests = await evalJs(`
         (async () => {
@@ -389,6 +407,8 @@ try {
     check('L1 fps 芯片右上角(v45l)', markTests.fpsChip);
     check('L2 工具行横排无fps输入(v45l)', markTests.ovlNoFps && markTests.ovlRow);
     check('L3 列表缩略图容器(v45m)', markTests.thumbCount === 3, String(markTests.thumbCount));
+    check('N1 🖼 开关关闭即清空(v45n)', toggleTests.off === 0, 'off=' + toggleTests.off);
+    check('N2 🖼 开关chip存在(v45n)', toggleTests.chip === true);
 
     // 持久化 + 返回
     const persist = await evalJs(`
@@ -400,7 +420,7 @@ try {
             out.saved = !!saved && saved.includes('multiframe_ref');
             // 导出结构最终检查
             const exp = window.__av._exportJson();
-            out.schema = exp.schema === 'moyutai.marks.v2';
+            out.schema = exp.schema === 'moyutai.marks.v3';
             out.desc = exp.marks.map(m => m.target).join(',');
             // 返回
             window.__av.back();

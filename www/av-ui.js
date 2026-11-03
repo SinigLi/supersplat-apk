@@ -238,6 +238,20 @@
         return chip;
     }
 
+    function mkThumbToggle() {
+        var chip = document.createElement('span');
+        chip.className = 'av-fps-chip av-thumb-toggle';
+        chip.textContent = (S.meta.thumbs === false ? '🖼 关' : '🖼 开');
+        return chip;
+    }
+
+    function toggleThumbs() {
+        S.meta.thumbs = (S.meta.thumbs === false);   // 默认开
+        saveAll(false);
+        renderList();
+        renderPos();
+    }
+
     function startFpsEdit() {
         if (S.meta.mode !== 'video' || fpsEditing) return;
         fpsEditing = true;
@@ -470,6 +484,7 @@ function build() {
         posEl = el('div', 'av-pos-top');
         posEl.addEventListener('click', function (e) {
             if (S.meta.mode !== 'video') return;
+            if (e.target && e.target.classList && e.target.classList.contains('av-thumb-toggle')) { toggleThumbs(); return; }
             if (e.target && e.target.classList && e.target.classList.contains('av-fps-chip')) startFpsEdit();
         });
         mainEl.appendChild(posEl);
@@ -486,7 +501,12 @@ function build() {
 
         videoEl.addEventListener('timeupdate', renderPos);
         videoEl.addEventListener('seeked', renderPos);
-        videoEl.addEventListener('loadedmetadata', function () { renderPos(); });
+        videoEl.addEventListener('loadedmetadata', function () {
+            // v45n：选中即显示第一帧——部分 WebView loadedmetadata 后画面区仍是黑屏占位，
+            // seek 微量触发解码器出第一帧，不用点播放/下一帧
+            if ((videoEl.currentTime || 0) === 0) { try { videoEl.currentTime = 0.001; } catch (e) { } }
+            renderPos();
+        });
         videoEl.addEventListener('error', function () {
             // v45f：视频流加载失败必须留痕（code 4=格式/网络不可用等）
             var ec = videoEl.error && videoEl.error.code;
@@ -584,6 +604,25 @@ function build() {
             });
         }
     }
+    function drawThumb(job, v) {
+        try {
+            if (!job.box.isConnected) return true;   // 列表已重建：视为完成
+            var c = document.createElement('canvas');
+            c.width = 96; c.height = 54;
+            c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+            var url = c.toDataURL('image/jpeg', 0.6);
+            if (url && url.length > 200) {
+                var img = document.createElement('img');
+                img.className = 'av-thumb-img';
+                img.src = url;
+                job.box.innerHTML = '';
+                job.box.appendChild(img);
+                return true;
+            }
+        } catch (e) { /* 画布污染/流异常 → 保留占位 */ }
+        return false;
+    }
+
     function runThumbJob(job, done) {
         var finished = false;
         var finish = function () {
@@ -602,24 +641,13 @@ function build() {
             v.crossOrigin = 'anonymous';
             v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(job.name);
             v.addEventListener('loadeddata', function () {
-                try { v.currentTime = Math.min(0.1, (v.duration || 1) * 0.01); } catch (e) { finish(); }
+                // v45n：loadeddata 时当前帧就是第 1 帧，直接画（旧版 seek 0.1s 画到的是第 3 帧——错图根因）
+                if (!drawThumb(job, v)) {
+                    try { v.currentTime = 0.001; } catch (e) { finish(); }
+                }
             });
             v.addEventListener('seeked', function () {
-                try {
-                    if (!job.box.isConnected) { finish(); return; }
-                    var c = document.createElement('canvas');
-                    c.width = 96; c.height = 54;
-                    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-                    var url = c.toDataURL('image/jpeg', 0.6);
-                    if (url && url.length > 200) {
-                        var img = document.createElement('img');
-                        img.className = 'av-thumb-img';
-                        img.src = url;
-                        job.box.innerHTML = '';
-                        job.box.appendChild(img);
-                    }
-                } catch (e) { /* 画布污染/流异常 → 保留占位 */ }
-                finish();
+                if (!drawThumb(job, v)) finish();
             });
             v.addEventListener('error', finish);
             setTimeout(finish, 8000);
@@ -642,8 +670,8 @@ function build() {
             var card = el('div', 'av-item' + (i === S.cur ? ' on' : ''));
             var noEl = el('div', 'av-item-no', f.label);
             card.appendChild(noEl);
-            if (S.serverPort > 0 && S.meta.mode === 'video') {
-                noEl.appendChild(mkThumb(f));          // v45m：首帧缩略图贴在序号下
+            if (S.serverPort > 0 && S.meta.mode === 'video' && S.meta.thumbs !== false) {
+                noEl.appendChild(mkThumb(f));          // 首帧缩略图贴在序号下（🖼 开关可关）
             }
             var info = el('div', 'av-item-info');
             info.appendChild(el('div', 'av-item-name', f.name));
@@ -773,6 +801,7 @@ function build() {
                 posEl.innerHTML = '';
                 posEl.appendChild(mkPosMain(t, d));
                 posEl.appendChild(mkFpsChip());
+                posEl.appendChild(mkThumbToggle());
             }
             renderTicks();
             renderBtnStates();

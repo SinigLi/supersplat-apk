@@ -241,58 +241,50 @@
      * @param {Array} files 清单（用于 target 解析与校验）
      */
     function buildExport(meta, marks, files) {
+        /* v45n：moyutai.marks.v3——老板定稿结构：
+         * 一视频一节点 { target, merge_prev?, points[] }；
+         * points = 统一的点列表，split 与 multiframe 同级同构（type 区分），
+         * split 多带 at_seconds（切点时刻，供秒级消费方），multiframe 只记帧号；
+         * points 按 at_frame 升序，marks 按段号降序（从后往前切编号不移位）；
+         * 同帧互斥兜底：split 优先，剔除同帧 multiframe。 */
         var byLabel = {};
         (files || []).forEach(function (f) { byLabel[f.label] = f; });
-        /* v45m：一视频一节点。节点字段：
-         *   target          视频名（去扩展名）
-         *   split_at_frame / split_at_seconds   分割点（每段至多一个，帧为权威）
-         *   multiframe_refs 多帧参考帧号列表（升序去重）
-         *   merge_prev      该段并入前段标记
-         * 同帧互斥：split 与 multiframe_refs 不共存于同一帧（UI 层已互斥，导出层再兜底）
-         * 列表按段号降序（导出后从后往前切，前面的段编号不发生平移）
-         */
-        var bySeg = {};
-        var order = [];                          // 保持首次出现顺序之外，还要能按 seq 排
+        var fps = meta.fps || 25;
+        var nodes = {};
+        var order = [];
         (marks.marks || []).forEach(function (m) {
             var f = byLabel[m.seg];
-            if (!f) return;                      // 清单已变的标记：导出时剔除
+            if (!f) return;
             var name = f.name.replace(/\.[^.]+$/, '');
-            var node = bySeg[name];
+            var node = nodes[name];
             if (!node) {
-                node = { target: name, note: m.note || '' };
-                bySeg[name] = node;
+                node = nodes[name] = { target: name, points: [] };
                 order.push(node);
             }
-            if (!node.note && m.note) node.note = m.note;
+            if (m.note && !node.note) node.note = m.note;
+            if (m.type === 'merge_prev') { node.merge_prev = true; return; }
             if (m.type === 'split') {
-                var fr = frameAt(m.at, meta.fps);
-                // 同段多 split 不可能（UI 单点互斥），但兜底取最早帧
-                if (node.split_at_frame == null || (fr != null && fr < node.split_at_frame)) {
-                    node.split_at_frame = fr;
-                    node.split_at_seconds = Number(m.at.toFixed(2));
-                }
-            }
-            if (m.type === 'multiframe_ref') {
-                var set = node.multiframe_refs || (node.multiframe_refs = []);
-                (m.frames || []).forEach(function (fr2) {
-                    if (set.indexOf(fr2) < 0) set.push(fr2);
+                node.points.push({ type: 'split', at_frame: frameAt(m.at, fps), at_seconds: Number(m.at.toFixed(2)) });
+            } else if (m.type === 'multiframe_ref') {
+                (m.frames || []).forEach(function (fr) {
+                    node.points.push({ type: 'multiframe', at_frame: fr });
                 });
             }
-            if (m.type === 'merge_prev') node.merge_prev = true;
         });
         order.forEach(function (node) {
-            if (node.split_at_frame == null) { delete node.split_at_frame; delete node.split_at_seconds; }
-            if (node.multiframe_refs) {
-                node.multiframe_refs.sort(function (a, b) { return a - b; });
-                // 同帧互斥兜底：若与分割点同帧，剔除该参考帧
-                if (node.split_at_frame != null) {
-                    var i = node.multiframe_refs.indexOf(node.split_at_frame);
-                    if (i >= 0) node.multiframe_refs.splice(i, 1);
-                }
-                if (!node.multiframe_refs.length) delete node.multiframe_refs;
-            }
             if (!node.merge_prev) delete node.merge_prev;
             if (!node.note) delete node.note;
+            node.points.sort(function (a, b) { return a.at_frame - b.at_frame; });
+            var splitFrames = {};
+            node.points.forEach(function (pt) { if (pt.type === 'split') splitFrames[pt.at_frame] = true; });
+            var seen = {};
+            node.points = node.points.filter(function (pt) {
+                if (pt.type === 'multiframe' && splitFrames[pt.at_frame]) return false;   // 同帧互斥兜底
+                var k = pt.type + ':' + pt.at_frame;
+                if (seen[k]) return false;
+                seen[k] = true;
+                return true;
+            });
         });
         var seqOf = function (name) {
             var f = (files || []).filter(function (x) { return x.name.replace(/\.[^.]+$/, '') === name; })[0];
@@ -300,10 +292,10 @@
         };
         order.sort(function (a, b) { return seqOf(b.target) - seqOf(a.target); });
         return {
-            schema: 'moyutai.marks.v2',
+            schema: 'moyutai.marks.v3',
             mode: meta.mode,
             source_dir: meta.folderName || '',
-            fps: meta.mode === 'video' ? (meta.fps || null) : undefined,
+            fps: meta.mode === 'video' ? fps : undefined,
             based_on: 'moyutai v45',
             marks: order
         };
