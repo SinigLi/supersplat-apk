@@ -144,19 +144,21 @@ const tests = `
     // ---- 3. 导出（降序 + 结构） ----
     marks.marks.push({ id: 'm3', type: 'split', seg: '10', at: 2.04, note: 'test' });
     marks.marks.push({ id: 'm4', type: 'multiframe_ref', seg: '2', frames: [5, 9], note: '' });
+    marks.marks.push({ id: 'm5', type: 'multiframe_ref', seg: '10', frames: [51, 77], note: '' });   // v45m：帧 51 与分割点冲突 → 导出应剔除
     const meta = A.loadMeta('v45probe');
     meta.fps = 25;
     meta.folderName = 'test_split';
     const exp = A.buildExport(meta, marks, files);
     out.exportTargets = exp.marks.map(m => m.target).join(',');
     // 降序：shot10(10) → shot003(3) → shot2(2)；同段内 split 先于 merge? 需求只说按段降序
-    out.exportSchema = exp.schema === 'moyutai.marks.v1' && exp.mode === 'video' && exp.fps === 25;
-    out.exportFrame = exp.marks.find(m => m.target === 'shot10')?.at_frame === 51; // 2.04*25=51
-    out.exportMulti = exp.marks.find(m => m.target === 'shot2' && m.action === 'multiframe_ref')?.frames?.join(',') === '5,9';
-    out.exportOk = out.exportTargets === 'shot10,shot003,shot2,shot2' && out.exportSchema && out.exportFrame && out.exportMulti;
+    out.exportSchema = exp.schema === 'moyutai.marks.v2' && exp.mode === 'video' && exp.fps === 25;
+    out.exportFrame = exp.marks.find(m => m.target === 'shot10')?.split_at_frame === 51; // 2.04*25=51
+    out.exportMulti = exp.marks.find(m => m.target === 'shot2')?.multiframe_refs?.join(',') === '5,9';
+    out.exportMutex = exp.marks.find(m => m.target === 'shot10')?.multiframe_refs?.join(',') === '77';   // 帧51因分割点被剔除
+    out.exportOk = out.exportTargets === 'shot10,shot003,shot2' && out.exportSchema && out.exportFrame && out.exportMulti;   // v45m：一视频一节点 → 3 个
 
     // merge_prev 的 target 也在导出里
-    out.mergeExport = exp.marks.some(m => m.action === 'merge_prev' && m.target === 'shot003');
+    out.mergeExport = exp.marks.some(m => m.target === 'shot003' && m.merge_prev === true);
     return out;
 })()
 `;
@@ -218,6 +220,7 @@ try {
     check('S9 merge 互斥查找', logic.mergeOk);
     check('S10 导出降序+结构', logic.exportOk, logic.exportTargets);   // 4 条按段降序，同段稳定序：10→3→2(split)→2(multi)
     check('S11 merge_prev 进导出', logic.mergeExport);
+    check('S12 同帧互斥剔除(v45m)', logic.exportMutex);
 
     // UI 流程
     const ui = await evalJs(uiTests);
@@ -335,6 +338,7 @@ try {
             const ovl2 = document.querySelector('.av-ovl');
             out.ovlNoFps = !ovl2 || !ovl2.querySelector('.av-fps');
             out.ovlRow = !!ovl2 && getComputedStyle(ovl2).flexDirection === 'row';
+            out.thumbCount = document.querySelectorAll('.av-thumb').length;   // v45m：首帧缩略图容器
             return out;
         })()
     `);
@@ -384,6 +388,7 @@ try {
     check('C2 时间标签右上角(v45c#3)', markTests.posTop);
     check('L1 fps 芯片右上角(v45l)', markTests.fpsChip);
     check('L2 工具行横排无fps输入(v45l)', markTests.ovlNoFps && markTests.ovlRow);
+    check('L3 列表缩略图容器(v45m)', markTests.thumbCount === 3, String(markTests.thumbCount));
 
     // 持久化 + 返回
     const persist = await evalJs(`
@@ -395,7 +400,7 @@ try {
             out.saved = !!saved && saved.includes('multiframe_ref');
             // 导出结构最终检查
             const exp = window.__av._exportJson();
-            out.schema = exp.schema === 'moyutai.marks.v1';
+            out.schema = exp.schema === 'moyutai.marks.v2';
             out.desc = exp.marks.map(m => m.target).join(',');
             // 返回
             window.__av.back();

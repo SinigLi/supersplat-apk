@@ -426,3 +426,19 @@
     .av-side.closed { margin-left: -110%; }
     .av-rail { right: 8px; }
 }
+
+/* ===== v45m：列表首帧缩略图 ===== */
+.av-thumb {
+    width: 96px;
+    height: 54px;
+    margin-top: 4px;
+    border-radius: 6px;
+    background: #101016;
+    border: 1px solid #2c2c34;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.av-thumb-ph { color: #4a4a55; font-size: 20px; }
+.av-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }

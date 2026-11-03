@@ -243,36 +243,71 @@
     function buildExport(meta, marks, files) {
         var byLabel = {};
         (files || []).forEach(function (f) { byLabel[f.label] = f; });
-        var list = (marks.marks || []).map(function (m) {
+        /* v45m：一视频一节点。节点字段：
+         *   target          视频名（去扩展名）
+         *   split_at_frame / split_at_seconds   分割点（每段至多一个，帧为权威）
+         *   multiframe_refs 多帧参考帧号列表（升序去重）
+         *   merge_prev      该段并入前段标记
+         * 同帧互斥：split 与 multiframe_refs 不共存于同一帧（UI 层已互斥，导出层再兜底）
+         * 列表按段号降序（导出后从后往前切，前面的段编号不发生平移）
+         */
+        var bySeg = {};
+        var order = [];                          // 保持首次出现顺序之外，还要能按 seq 排
+        (marks.marks || []).forEach(function (m) {
             var f = byLabel[m.seg];
-            if (!f) return null;                    // 清单已变的标记：导出时剔除
-            var out = { action: m.type, target: f.name.replace(/\.[^.]+$/, ''), note: m.note || '' };
+            if (!f) return;                      // 清单已变的标记：导出时剔除
+            var name = f.name.replace(/\.[^.]+$/, '');
+            var node = bySeg[name];
+            if (!node) {
+                node = { target: name, note: m.note || '' };
+                bySeg[name] = node;
+                order.push(node);
+            }
+            if (!node.note && m.note) node.note = m.note;
             if (m.type === 'split') {
-                out.at_seconds = Number(m.at.toFixed(2));
                 var fr = frameAt(m.at, meta.fps);
-                if (fr != null) out.at_frame = fr;
+                // 同段多 split 不可能（UI 单点互斥），但兜底取最早帧
+                if (node.split_at_frame == null || (fr != null && fr < node.split_at_frame)) {
+                    node.split_at_frame = fr;
+                    node.split_at_seconds = Number(m.at.toFixed(2));
+                }
             }
             if (m.type === 'multiframe_ref') {
-                out.frames = (m.frames || []).slice();
+                var set = node.multiframe_refs || (node.multiframe_refs = []);
+                (m.frames || []).forEach(function (fr2) {
+                    if (set.indexOf(fr2) < 0) set.push(fr2);
+                });
             }
-            return out;
-        }).filter(Boolean);
-        // split 按目标段号降序；merge_prev 不影响切分顺序，跟随其段排序
-        var seqOf = function (o) {
-            var f = (files || []).filter(function (x) { return x.name.replace(/\.[^.]+$/, '') === o.target; })[0];
+            if (m.type === 'merge_prev') node.merge_prev = true;
+        });
+        order.forEach(function (node) {
+            if (node.split_at_frame == null) { delete node.split_at_frame; delete node.split_at_seconds; }
+            if (node.multiframe_refs) {
+                node.multiframe_refs.sort(function (a, b) { return a - b; });
+                // 同帧互斥兜底：若与分割点同帧，剔除该参考帧
+                if (node.split_at_frame != null) {
+                    var i = node.multiframe_refs.indexOf(node.split_at_frame);
+                    if (i >= 0) node.multiframe_refs.splice(i, 1);
+                }
+                if (!node.multiframe_refs.length) delete node.multiframe_refs;
+            }
+            if (!node.merge_prev) delete node.merge_prev;
+            if (!node.note) delete node.note;
+        });
+        var seqOf = function (name) {
+            var f = (files || []).filter(function (x) { return x.name.replace(/\.[^.]+$/, '') === name; })[0];
             return f ? (f.seq != null ? f.seq : -1) : -1;
         };
-        list.sort(function (a, b) { return seqOf(b) - seqOf(a); });
+        order.sort(function (a, b) { return seqOf(b.target) - seqOf(a.target); });
         return {
-            schema: 'moyutai.marks.v1',
+            schema: 'moyutai.marks.v2',
             mode: meta.mode,
             source_dir: meta.folderName || '',
             fps: meta.mode === 'video' ? (meta.fps || null) : undefined,
             based_on: 'moyutai v45',
-            marks: list
+            marks: order
         };
     }
-
     /* ---------- 校验工程名（复用 3D 侧规则） ---------- */
 
     function validateProjectName(name) {
