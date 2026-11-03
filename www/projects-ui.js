@@ -412,35 +412,67 @@
             msg.indexOf('not found') >= 0;
     }
 
+    /* v45h：真机 08:57 截图——「打开工程：读取数据…」转圈永久卡死（存储挂起→busy 死锁）。
+     * 看门狗 + 存储超时护栏，任何挂起 6s 内强制解锁并提示。 */
+    function pjDlog(msg) {
+        try {
+            var cap = window.Capacitor;
+            var p = cap && cap.Plugins && cap.Plugins.DebugLog;
+            if (p && p.append) { var r = p.append({ text: '[pj] ' + msg }); if (r && r.catch) r.catch(function () { }); }
+        } catch (e) { }
+    }
+    var waitTimer = null;
+    function armWaitWatchdog(label) {
+        if (waitTimer) clearTimeout(waitTimer);
+        waitTimer = setTimeout(function () {
+            waitTimer = null;
+            var stuck = waitEl && waitEl.classList.contains('show');
+            if (stuck) {
+                hideWait();
+                busy = false;
+                pjDlog('WATCHDOG ' + label + ' 等待框超 6s，强制解锁');
+                toast('操作超时已取消，请重试');
+            }
+        }, 6000);
+    }
+    function storeTimeout(pr, ms, label) {
+        var t = new Promise(function (_, rej) {
+            setTimeout(function () { rej(new Error(label + ' 超时')); }, ms);
+        });
+        return Promise.race([Promise.resolve(pr), t]);
+    }
+
     async function openProject(name) {
         if (busy) return;
         busy = true;
         try {
+            pjDlog('openProject(' + name + ') start');
+            armWaitWatchdog('openProject');
             showWait('打开工程：读取数据…');
             var p = L.pathsFor(name);
             // v45 模式路由：AV 工程走 AV 工作台（媒体不进包，无 project.json）
             try {
-                var mb = await store().read(p.meta);
+                var mb = await storeTimeout(store().read(p.meta), 4000, '读取工程数据');
+                pjDlog('meta read ok ' + (mb && mb.byteLength || 0) + 'B');
                 var mm = JSON.parse(new TextDecoder().decode(mb));
                 if (mm && (mm.mode === 'video' || mm.mode === 'audio')) {
                     if (window.__av) {
-                        // v45e 排障：路由进 AV 前先落日志（真机静默失败终结者）
-                        try {
-                            var dp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.DebugLog;
-                            if (dp && dp.append) dp.append({ text: '[pj] route AV ' + name + ' mode=' + mm.mode });   // v45f：{text:} 形态
-                        } catch (e) { }
+                        pjDlog('route AV ' + name + ' mode=' + mm.mode);
                         window.__av.open(name);
                         return;
                     }
                     toast('AV 工作台模块未加载');
                     return;
                 }
-            } catch (e) { /* 无 meta/读取失败：按 3D 工程走 */ }
+            } catch (e) {
+                pjDlog('meta read miss/err: ' + (e && e.message || e));
+                /* 无 meta/读取失败/超时：按 3D 工程走 */
+            }
             var state, files = {}, recovered = false, migrated = false;
 
             try {
                 // v29：先读纯状态（几 KB）。读不到再着 legacy zip 迁移。
-                var stateBytes = await store().read(p.state);
+                var stateBytes = await storeTimeout(store().read(p.state), 6000, '读取工程状态');
                 state = JSON.parse(new TextDecoder().decode(stateBytes));
             } catch (v29Err) {
                 var legacy = await store().stat(p.proj);

@@ -5,6 +5,7 @@
  *  把按钮顶到左上角不显眼），区分「未关联」/「授权失效」文案，pickFolder 全程落日志。
  *
  * v45f：dlog {text:} 形态修复 + toast/VIDEO-ERR 落日志。
+ * v45h：内联样式兑底强制渲染 + 渲染取证日志（真机 08:56 class 已加但屏幕层叠未生效）。
  * v45c 布局：右侧竖排控制栏/刻度同层/时间右上角/安全区/工具行序/去全屏/大按钮。
  * 继承 v45b：强制横屏、帧数常显、±半帧红色移除态、r6 交互语义。
  */
@@ -693,6 +694,7 @@
         stopServer();
         unlockOrientation();
         page.classList.remove('open');
+        page.style.display = 'none';   // v45h：内联兑底样式同步隐藏
         var pj = document.getElementById('pjPage');
         if (pj) pj.classList.add('open');
         if (window.__projects && window.__projects.list) window.__projects.list();
@@ -742,9 +744,24 @@
             renderList();
             renderPos();
             page.classList.add('open');
+            // v45h 兑底：真机 08:56 日志 class 已加但屏幕仍是工程列表（层叠未生效）→ 内联样式强制铺满置顶
+            page.style.position = 'fixed';
+            page.style.inset = '0';
+            page.style.zIndex = '1550';
+            page.style.display = 'flex';
             lockLandscape();
             applySafeArea();      // #4：系统栏避让
             dlog('page open; folderUri=' + (S.meta.folderUri ? 'yes' : 'no'));
+            // 渲染取证：120ms 后回报计算样式（若再异常，日志直接给出层叠真相）
+            setTimeout(function () {
+                try {
+                    var cs = getComputedStyle(page);
+                    dlog('forensics display=' + cs.display + ' z=' + cs.zIndex +
+                        ' rect=' + JSON.stringify(page.getBoundingClientRect()) +
+                        ' sheets=' + document.styleSheets.length +
+                        ' bodyT=' + (getComputedStyle(document.body).transform || 'none'));
+                } catch (e) { }
+            }, 120);
             if (S.meta.folderUri) {
                 refreshFolder().then(function () {
                     dlog('files=' + S.files.length + ' port=' + S.serverPort + ' cur=' + S.cur);
@@ -764,7 +781,7 @@
             var m = e && (e.stack || e.message) || String(e);
             dlog('open FAIL ' + m);
             toast('打开视频工作台失败：' + (e && e.message || e));
-            try { page.classList.remove('open'); var pj = document.getElementById('pjPage'); if (pj) pj.classList.add('open'); } catch (e2) { }
+            try { page.classList.remove('open'); page.style.display = 'none'; var pj = document.getElementById('pjPage'); if (pj) pj.classList.add('open'); } catch (e2) { }
         }
     }
 
