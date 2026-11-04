@@ -238,6 +238,55 @@
         return chip;
     }
 
+    /* v45w：页面内视频捕获——隐藏 <video> 走本地 Range 服务（与主播放同一条解码栈），
+     * seek 到 0.4s 后 canvas 截 192px 帧。并发 1、10s 总超时、失败静默留占位。 */
+    function videoThumbPump() {
+        if (videoThumbBusy || !videoThumbQueue.length) return;
+        if (S.serverPort <= 0) { videoThumbQueue.length = 0; return; }
+        videoThumbBusy = true;
+        var job = videoThumbQueue.shift();
+        var v = document.createElement('video');
+        var done = false;
+        var timer = setTimeout(function () { finish(null, 'capture timeout'); }, 10000);
+        function finish(jpeg, err) {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            videoThumbBusy = false;
+            try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) { }
+            if (jpeg && job.box.isConnected) {
+                thumbApply(job.box, jpeg);
+                thumbOkCount++;
+            } else {
+                thumbFailCount++;
+                thumbFailCache[job.name] = 'video capture: ' + (err || 'unknown');
+                if (!thumbFailSample) thumbFailSample = job.name + '(video capture fail)';
+            }
+            if (!thumbJobs.length && !thumbLive && !videoThumbQueue.length) thumbSummary();
+            setTimeout(videoThumbPump, 60);
+        }
+        try {
+            v.muted = true;
+            v.playsInline = true;
+            v.preload = 'auto';
+            v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(job.name);
+            v.addEventListener('loadeddata', function () {
+                try { v.currentTime = Math.min(0.4, (v.duration || 1) * 0.1); } catch (e) { finish(null, 'seek err'); }
+            });
+            v.addEventListener('seeked', function () {
+                try {
+                    var c = document.createElement('canvas');
+                    c.width = 192;
+                    c.height = Math.max(1, Math.round(v.videoHeight * 192 / (v.videoWidth || 192)));
+                    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+                    var jpeg = c.toDataURL('image/jpeg', 0.7).split(',')[1];
+                    finish(jpeg && jpeg.length > 50 ? jpeg : null, jpeg ? null : 'empty capture');
+                } catch (e) { finish(null, 'canvas err: ' + (e && e.message || e)); }
+            });
+            v.addEventListener('error', function () { finish(null, 'video load err'); });
+        } catch (e) { finish(null, 'setup err'); }
+    }
+
     function mkThumbToggle() {
         var chip = document.createElement('span');
         chip.className = 'av-fps-chip av-thumb-toggle';
@@ -609,6 +658,11 @@ function build() {
     var thumbCache = {};      // name -> jpeg(base64)
     var thumbPending = {};    // name -> true（在途，防重）
     var thumbFailCache = {};  // v45t：name -> 失败原因（会话内不再重试，省电省解码器）
+    // v45w：页面内视频捕获降级（原生解码栈失败时的第二通道）
+    var videoThumbQueue = [];     // { name, box }
+    var videoThumbBusy = false;
+    var videoThumbTried = {};     // name -> true（每个文件只降级一次）
+    var videoThumbLogCount = 0;
     var thumbFailLogged = 0;  // 只详细记录前 3 条失败（够定位，不刷屏）
     var thumbFailSample = ''; // 汇总里带的第一条失败样例
     var thumbOkCount = 0, thumbFailCount = 0, thumbSummarized = true;
@@ -665,11 +719,19 @@ function build() {
                 }).catch(function (e) {
                     thumbLive--;
                     delete thumbPending[job.f.name];
-                    thumbFailCount++;
                     var msg = e && e.message || String(e);
-                    thumbFailCache[job.f.name] = msg;
-                    if (thumbFailLogged < 3) { thumbFailLogged++; dlog('thumb fail ' + job.f.name + ': ' + msg); }
-                    if (!thumbFailSample) thumbFailSample = job.f.name + '(' + msg + ')';
+                    // v45w：原生解不出 → 降级「页面内视频捕获」（与播放同一条解码栈）
+                    if (!videoThumbTried[job.f.name]) {
+                        videoThumbTried[job.f.name] = true;
+                        if (videoThumbQueue.length < 40) videoThumbQueue.push({ name: job.f.name, box: job.box });
+                        if (videoThumbLogCount < 3) { videoThumbLogCount++; dlog('thumb native fail -> video capture ' + job.f.name); }
+                        setTimeout(videoThumbPump, 50);
+                    } else {
+                        thumbFailCount++;
+                        thumbFailCache[job.f.name] = msg;
+                        if (thumbFailLogged < 3) { thumbFailLogged++; dlog('thumb fail ' + job.f.name + ': ' + msg); }
+                        if (!thumbFailSample) thumbFailSample = job.f.name + '(' + msg + ')';
+                    }
                     if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
                 });
@@ -1027,6 +1089,7 @@ function build() {
         dlog('back() cur=' + S.cur);
         saveAll(false);
         thumbFlush();   // v45s：退出即清缩略图队列，残留任务不再空转刷日志
+        videoThumbQueue.length = 0;   // v45w：退出同步清视频捕获队列
         stopServer();
         unlockOrientation();
         page.classList.remove('open');
@@ -1065,7 +1128,7 @@ function build() {
 
     function open(projectName) {
         try {
-            dlog('build v45v');   // 每次打开打版本号：日志与包版本永远对得上
+            dlog('build v45w');   // 每次打开打版本号：日志与包版本永远对得上
             dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
                 ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
             build();
@@ -1136,7 +1199,7 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
-        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls }; },
+        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy }; },
         _refreshFolder: refreshFolder,
         open: open,
         back: back,
