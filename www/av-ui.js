@@ -600,35 +600,66 @@ function build() {
 
     /* v45o：首帧缩略图——原生 MediaServer.thumb 直接解码首帧 JPEG（base64）。
      * v45n 的 WebView 视频管线方案在真机不可靠（解码懒加载/画布路径），原生一次到位。 */
-    /* v45r：JS 侧缩略图泵（并发2 + 30ms 间隔）。配合原生独立线程池，桥上永远只有少量在途调用。 */
+    /* v45s：缩略图缓存 + 泵（并发2 + 30ms 间隔）。
+     * 会话级缓存：每个文件只解码一次，renderList 重绘直接命中贴图，不再重复打原生。
+     * 清队：back()/renderList 时清待处理队列（旧容器已作废），在途的让它们自然结束（结果按 isConnected 丢弃）。
+     * 日志：不再逐条刷 thumb fail（58 条×N 遍），队列排空后汇总一条 ok=N fail=M。 */
     var thumbJobs = [];
     var thumbLive = 0;
+    var thumbCache = {};      // name -> jpeg(base64)
+    var thumbPending = {};    // name -> true（在途，防重）
+    var thumbOkCount = 0, thumbFailCount = 0, thumbSummarized = true;
+    function thumbFlush() {
+        thumbJobs.length = 0;
+    }
+    function thumbApply(box, jpeg) {
+        var img = document.createElement('img');
+        img.className = 'av-thumb-img';
+        img.src = 'data:image/jpeg;base64,' + jpeg;
+        box.innerHTML = '';
+        box.appendChild(img);
+    }
+    function thumbSummary() {
+        if (thumbSummarized) return;
+        thumbSummarized = true;
+        if (thumbOkCount || thumbFailCount) dlog('thumbs done ok=' + thumbOkCount + ' fail=' + thumbFailCount);
+        thumbOkCount = 0;
+        thumbFailCount = 0;
+    }
     function thumbEnqueue(f, box) {
+        var hit = thumbCache[f.name];
+        if (hit) { thumbApply(box, hit); return; }
+        if (thumbPending[f.name]) return;   // 在途，等结果（结果回调会按 isConnected 决定是否贴图）
         thumbJobs.push({ f: f, box: box });
+        thumbSummarized = false;
         thumbDrain();
     }
     function thumbDrain() {
         while (thumbLive < 2 && thumbJobs.length) {
             var job = thumbJobs.shift();
-            // v45r-2：不在出队时查 isConnected——入队瞬间容器还没挂 DOM，查必 false，任务会被整批吞掉
             thumbLive++;
+            thumbPending[job.f.name] = true;
             (function (job) {
                 var cap = window.Capacitor;
                 var p = cap && cap.Plugins && cap.Plugins.MediaServer;
-                if (!p || !p.thumb) { thumbLive--; return; }
+                if (!p || !p.thumb) { thumbLive--; delete thumbPending[job.f.name]; thumbSummary(); return; }
                 p.thumb({ name: job.f.name }).then(function (r) {
                     thumbLive--;
-                    if (r && r.jpeg && String(r.jpeg).length > 50 && job.box.isConnected) {
-                        var img = document.createElement('img');
-                        img.className = 'av-thumb-img';
-                        img.src = 'data:image/jpeg;base64,' + r.jpeg;
-                        job.box.innerHTML = '';
-                        job.box.appendChild(img);
+                    delete thumbPending[job.f.name];
+                    if (r && r.jpeg && String(r.jpeg).length > 50) {
+                        thumbCache[job.f.name] = r.jpeg;
+                        if (job.box.isConnected) thumbApply(job.box, r.jpeg);
+                        thumbOkCount++;
+                    } else {
+                        thumbFailCount++;
                     }
+                    if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
                 }).catch(function (e) {
                     thumbLive--;
-                    dlog('thumb fail ' + job.f.name + ': ' + (e && e.message || e));
+                    delete thumbPending[job.f.name];
+                    thumbFailCount++;
+                    if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
                 });
             })(job);
@@ -642,6 +673,7 @@ function build() {
     }
 
     function renderList() {
+        thumbFlush();   // v45s：列表即将重建，旧队列任务引用的容器已作废
         listEl.innerHTML = '';
         S.files.forEach(function (f, i) {
             var card = el('div', 'av-item' + (i === S.cur ? ' on' : ''));
@@ -977,6 +1009,7 @@ function build() {
     function back() {
         dlog('back() cur=' + S.cur);
         saveAll(false);
+        thumbFlush();   // v45s：退出即清缩略图队列，残留任务不再空转刷日志
         stopServer();
         unlockOrientation();
         page.classList.remove('open');
@@ -1085,7 +1118,7 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
-        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive }; },
+        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount }; },
         _refreshFolder: refreshFolder,
         open: open,
         back: back,
