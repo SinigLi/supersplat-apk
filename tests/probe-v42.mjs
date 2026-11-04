@@ -193,23 +193,43 @@ try {
         await new Promise(r2 => setTimeout(r2, 600));
         const el = document.querySelector('.sd-shot-frame3d');
         const grab = () => {
-            if (!el || el.style.display === 'none') return null;
-            const box = el.querySelector('.sd-sf-box');
+            const cur = document.querySelector('.sd-shot-frame3d');   // v45x：每次重查——updateShot 可能重建 overlay，旧引用会读到脱离文档的陈旧框
+            if (!cur || cur.style.display === 'none') return null;
+            const box = cur.querySelector('.sd-sf-box');
             return box ? [box.offsetWidth, box.offsetHeight] : null;
         };
-        const f169 = grab();
+        // v45x：轮询等帧框比例稳定（连续 2 次命中期望即确认，最多 5s）——替代脆弱的固定 sleep
+        const ratioOfLocal = v => Array.isArray(v) && v[1] > 0 ? v[0] / v[1] : -1;
+        const waitForStable = async (lo, hi) => {
+            let last = null, hits = 0;
+            for (let z = 0; z < 42; z++) {
+                await new Promise(r2 => setTimeout(r2, 120));
+                const g = grab();
+                if (g) {
+                    last = g;
+                    const rr = ratioOfLocal(g);
+                    if (rr > lo && rr < hi) { hits++; if (hits >= 2) return g; }
+                    else hits = 0;
+                }
+            }
+            return last;
+        };
+        const barsNow = () => {
+            const cur = document.querySelector('.sd-shot-frame3d');
+            return !!cur && ['sd-sf-t', 'sd-sf-b', 'sd-sf-l', 'sd-sf-r'].every(c2 => !!cur.querySelector('.' + c2));
+        };
+        const f169 = await waitForStable(16 / 9 - 0.05, 16 / 9 + 0.05);
+        const bars = barsNow();   // v45x：可见期采样（退出后帧已移除，必 false）
         const camFov169 = Math.round(window.scene.camera.fov);
         d.updateShot(s.id, { aspect: '9:21' });
-        await new Promise(r2 => setTimeout(r2, 700));   // v45w：连跑高压下 400ms 偶发不足（时序敏感测试加固）
-        const f921 = grab();
+        const f921 = await waitForStable(9 / 21 - 0.04, 9 / 21 + 0.04);   // v45x：轮询替代固定 sleep，容差=断言
         d.updateShot(s.id, { aspect: '1:1' });
-        await new Promise(r2 => setTimeout(r2, 700));   // v45w：同上加固
-        const f11 = grab();
+        const f11 = await waitForStable(0.94, 1.06);
         const exitR = d.exitShotView(false);
         await new Promise(r2 => setTimeout(r2, 200));
         const gone = !document.querySelector('.sd-shot-frame3d');
         d.listShots().slice().forEach(x => d.removeShot(x.id));
-        const bars = ['sd-sf-t', 'sd-sf-b', 'sd-sf-l', 'sd-sf-r'].every(c2 => !!el.querySelector('.' + c2));
+
         return { enterR, sw, sh, shotFov: Math.round(shotFov), camFov169, f169, f921, f11, exitR, gone, bars };
     })()`);
     const ratioOf = v => Array.isArray(v) && v[1] > 0 ? v[0] / v[1] : -1;
