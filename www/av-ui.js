@@ -15,7 +15,7 @@
     'use strict';
 
     /* v45k：av.css 全量内嵌（WebView 本地缓存不可控，不再 link 外部样式表） */
-    var AV_CSS = "/* 摸鱼台 v45c —— AV 工作台样式（真机反馈第二轮 · 老板 7 条布局决议）\n *\n *  1. ⏮⏯⏭ + ◀步进▶ → 右侧中间竖排控制栏 .av-rail（大按钮 .av-big）\n *  2. 标记刻度与进度条同层（.av-range-wrap 内绝对定位，按拇指半径内缩对齐）\n *  3. 时间/帧数 → 播放器右上角悬浮标签 .av-pos-top\n *  4. 系统栏/挖孔避让：JS 把原生 insets 写进 --av-safe-* 变量，页面四向消费\n *     （Android 15 edge-to-edge 下 env(safe-area-inset) 不可靠，见 MediaServer.getSafeArea）\n *  5. 工具行顺序 ⤴|✂|▦|fps（DOM 顺序即视觉顺序，CSS 只管样式）\n *  6. 单击视频切全屏已删（stage-hit/imm 相关样式全部移除）\n *  7. .av-big = v45b 按钮放大 50%\n *\n * 继承 v45b：悬浮层 0.25/blur4、按钮 0.38+文字投影、av-danger 红「移除」态、\n * 强制横屏（JS 层，CSS 竖屏规则仅桌面调试兜底）。\n * v45d 热修：安全区由 .av-page padding 统一承担，内层元素不再重复消费\n *      （23:18 截图：原生物理 px 未换算 + 旋转过渡期脏值 → 整页被撑出大黑边）\n */\n */\n\n/* ===== 页面骨架（#4 安全区四向消费） ===== */\n.av-page {\n    --av-safe-top: 0px;\n    --av-safe-right: 0px;\n    --av-safe-bottom: 0px;\n    --av-safe-left: 0px;\n\n    display: none;\n    position: fixed;\n    inset: 0;\n    z-index: 1550;   /* 盖过工程页 1500，低于对话框 1600/toast 1700 */\n    background: #141414;\n    flex-direction: column;\n    padding-top: var(--av-safe-top);\n    padding-right: var(--av-safe-right);\n    padding-bottom: var(--av-safe-bottom);\n    padding-left: var(--av-safe-left);\n}\n.av-page.open { display: flex; }\n\n/* ===== 顶栏 ===== */\n.av-top {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 6px 10px;\n    background: #1d1d1f;\n    border-bottom: 1px solid #333;\n    min-height: 44px;\n    flex: 0 0 auto;\n}\n.av-top-title {\n    flex: 1;\n    color: #ddd;\n    font-size: 13px;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n}\n.av-top-btn {\n    background: #2a2a2e;\n    color: #ddd;\n    border: 1px solid #3a3a3e;\n    border-radius: 8px;\n    padding: 6px 12px;\n    font-size: 13px;\n}\n.av-top-btn.av-primary {\n    background: rgba(48, 98, 158, 0.9);\n    border-color: #3d6ea8;\n    color: #fff;\n}\n\n/* ===== 主体 ===== */\n.av-body {\n    flex: 1;\n    display: flex;\n    min-height: 0;\n    position: relative;\n}\n\n/* 左列表 30% */\n.av-side {\n    width: 30%;\n    min-width: 190px;\n    max-width: 340px;\n    background: #181820;\n    border-right: 1px solid #2c2c34;\n    display: flex;\n    flex-direction: column;\n    transition: margin-left 0.18s ease;\n}\n.av-side-head {\n    display: flex;\n    gap: 6px;\n    padding: 8px;\n    border-bottom: 1px solid #2c2c34;\n}\n.av-side-load {\n    flex: 1;\n    background: #26262e;\n    color: #ddd;\n    border: 1px solid #3a3a44;\n    border-radius: 8px;\n    padding: 7px 10px;\n    font-size: 13px;\n}\n.av-list { flex: 1; overflow-y: auto; padding: 6px; }\n.av-item {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 8px;\n    border-radius: 8px;\n    cursor: pointer;\n    margin-bottom: 2px;\n}\n.av-item.on { background: rgba(48, 98, 158, 0.35); }\n.av-item-no {\n    min-width: 34px;\n    text-align: center;\n    color: #9fb6d8;\n    font-size: 12px;\n    font-weight: 600;\n    background: rgba(60, 90, 140, 0.25);\n    border-radius: 6px;\n    padding: 3px 4px;\n}\n.av-item-info { flex: 1; min-width: 0; }\n/* v45o：文件名横向滚动看全名（老板 21:31），滚动条隐藏 */\n.av-item-name {\n    color: #ddd;\n    font-size: 12px;\n    white-space: nowrap;\n    overflow-x: auto;\n    overflow-y: hidden;\n    -webkit-overflow-scrolling: touch;\n    scrollbar-width: none;\n}\n.av-item-name::-webkit-scrollbar { display: none; }\n.av-item-sub { color: #777; font-size: 10px; margin-top: 2px; }\n.av-item-badge {\n    color: #ffd37a;\n    font-size: 11px;\n    background: rgba(180, 130, 40, 0.3);\n    border-radius: 5px;\n    padding: 2px 5px;\n}\n.av-item-badge.av-b-split { color: #9be29b; background: rgba(50, 140, 70, 0.3); }\n\n/* ===== 右播放区 ===== */\n.av-main {\n    flex: 1;\n    position: relative;\n    min-width: 0;\n    background: #000;\n    overflow: hidden;\n}\n.av-video {\n    position: absolute;\n    inset: 0;\n    width: 100%;\n    height: 100%;\n    object-fit: contain;\n    background: #000;\n}\n.av-audio { display: none; }\n.av-empty {\n    position: absolute;\n    inset: 0;\n    display: none;\n    flex-direction: column;\n    align-items: center;\n    justify-content: center;\n    gap: 14px;\n    color: #666;\n    font-size: 14px;\n    white-space: pre-line;\n    text-align: center;\n    pointer-events: auto;\n}\n.av-empty .av-empty-t { color: #aab4c4; font-size: 16px; font-weight: 600; pointer-events: none; }\n.av-empty .av-empty-s { color: #66707f; font-size: 12px; pointer-events: none; }\n.av-empty-btn {\n    background: rgba(48, 98, 158, 0.9);\n    color: #fff;\n    border: 1px solid #3d6ea8;\n    border-radius: 12px;\n    padding: 14px 26px;\n    font-size: 16px;\n}\n\n/* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */\n.av-rail {\n    position: absolute;\n    right: 12px;    /* v45d：安全区由 .av-page padding 统一承担 */\n    top: 50%;\n    transform: translateY(-50%);\n    z-index: 10;\n    display: flex;\n    flex-direction: column;\n    align-items: center;\n    gap: 10px;\n    padding: 10px;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border-radius: 14px;\n}\n.av-rail-row {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n}\n\n/* ===== 通用按钮（v45b 透明定稿） ===== */\n.av-ovl-btn {\n    background: rgba(27, 34, 51, 0.38);\n    color: #eee;\n    border: 1px solid rgba(42, 50, 71, 0.4);\n    border-radius: 9px;\n    padding: 8px 11px;\n    font-size: 12px;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n    white-space: nowrap;\n}\n.av-ovl-btn:active { background: rgba(70, 70, 80, 0.55); }\n.av-ovl-btn.av-sq { padding: 8px 10px; min-width: 36px; }\n.av-ovl-btn.av-accent { color: #9be29b; }\n.av-ovl-btn.av-multi { color: #b48cff; }\n/* 游标命中已有标记 → 红「移除」态 */\n.av-ovl-btn.av-danger {\n    color: #ff7d7d;\n    border-color: rgba(220, 80, 80, 0.55);\n    background: rgba(120, 40, 40, 0.45);\n}\n/* #7 播放/上下集/步进放大 50%（v45b 基准 12px/8x11 → 18px/12x16） */\n.av-ovl-btn.av-big {\n    font-size: 18px;\n    padding: 12px 15px;\n    min-width: 52px;\n}\n.av-ovl-btn.av-big.av-play { min-width: 62px; }\n\n.av-ovl-input {\n    width: 52px;\n    background: rgba(27, 34, 51, 0.38);\n    color: #fff;\n    border: 1px solid rgba(42, 50, 71, 0.4);\n    border-radius: 8px;\n    padding: 6px 6px;\n    font-size: 12px;\n    text-align: center;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n}\n.av-ovl-input.av-step { width: 56px; font-size: 13px; padding: 8px 6px; }\n.av-ovl-input.av-fps { width: 44px; }\n.av-ovl-fps {\n    display: flex;\n    align-items: center;\n    gap: 4px;\n    color: #aaa;\n    font-size: 11px;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n}\n\n/* ===== #5 工具行（⤴|✂|▦|fps，悬浮底部居中） ===== */\n/* v45l：工具行 = 进度条上方左下角横排（并入前段 | 分割点 | 多帧点；fps 已移右上角信息条） */\n.av-ovl {\n    position: absolute;\n    left: 16px;\n    bottom: 58px;\n    z-index: 10;\n    display: flex;\n    flex-direction: row;\n    align-items: center;\n    gap: 8px;\n    padding: 6px 8px;\n    border-radius: 10px;\n    background: rgba(20, 20, 24, 0.55);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n}\n\n\n/* ===== #3 时间/帧数悬浮右上角 ===== */\n/* v45l：右上角信息条 = 帧/时间 + fps 芯片（点芯片改 fps） */\n.av-pos-top {\n    position: absolute;\n    top: 10px;\n    right: 12px;\n    z-index: 12;\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 8px;\n    border-radius: 8px;\n    background: rgba(20, 20, 24, 0.55);\n    color: #eee;\n    font-size: 12px;\n    pointer-events: auto;\n}\n.av-fps-chip {\n    padding: 2px 7px;\n    border-radius: 6px;\n    background: rgba(72, 118, 168, 0.35);\n    border: 1px solid rgba(110, 160, 215, 0.4);\n    color: #bcd6f5;\n    font-size: 12px;\n}\n.av-fps-chip:active { background: rgba(72, 118, 168, 0.6); }\n.av-fps-input {\n    width: 52px;\n    font-size: 12px;\n    padding: 2px 6px;\n    border-radius: 6px;\n    border: 1px solid #3a5a80;\n    background: #101014;\n    color: #eee;\n}\n.av-fps-hint { color: #8a8a92; font-size: 11px; }\n.av-fps-native {\n    font-size: 11px;\n    padding: 2px 7px;\n    border-radius: 6px;\n    border: 1px solid #3d6ea8;\n    background: #22405e;\n    color: #dcebff;\n}\n\n\n/* ===== #2 播放条：刻度与进度条同层 ===== */\n.av-tl-wrap {\n    position: absolute;\n    left: 16px;     /* v45d：内层不重复消费安全区 */\n    right: 16px;\n    bottom: 10px;\n    height: 40px;\n    z-index: 8;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border: 1px solid rgba(42, 50, 71, 0.35);\n    border-radius: 12px;\n}\n/* 刻度容器与 range 轨道对齐：内缩半个拇指宽（thumb 20px → 10px） */\n.av-range-wrap {\n    position: relative;\n    width: 100%;\n    height: 100%;\n}\n.av-tl-ticks {\n    position: absolute;\n    left: 10px;\n    right: 10px;\n    top: 8px;\n    bottom: 8px;\n    pointer-events: none;\n}\n.av-tick {\n    position: absolute;\n    top: 0;\n    width: 3px;\n    height: 100%;\n    border-radius: 2px;\n    transform: translateX(-1.5px);\n}\n.av-tick-split { background: #6fdc8c; }\n.av-tick-multi { background: #b48cff; width: 5px; }\n.av-tl-range {\n    position: absolute;\n    inset: 0;\n    width: 100%;\n    height: 100%;\n    -webkit-appearance: none;\n    background: transparent;\n    margin: 0;\n}\n.av-tl-range::-webkit-slider-runnable-track {\n    height: 5px;\n    background: rgba(255, 255, 255, 0.22);\n    border-radius: 3px;\n}\n.av-tl-range::-webkit-slider-thumb {\n    -webkit-appearance: none;\n    width: 20px;\n    height: 20px;\n    margin-top: -8px;\n    border-radius: 50%;\n    background: #e8e8ec;\n    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);\n}\n\n/* ===== 竖屏兜底（真机强制横屏后不会走到；桌面调试用） ===== */\n@media (max-width: 699px) {\n    .av-side {\n        position: absolute;\n        left: 0;\n        top: 44px;\n        bottom: 0;\n        z-index: 30;\n        width: 62%;\n        max-width: 320px;\n        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);\n    }\n    .av-rail { right: 8px; }\n}\n\n/* ===== v45m：列表首帧缩略图 ===== */\n.av-thumb {\n    width: 96px;\n    height: 54px;\n    margin-top: 4px;\n    border-radius: 6px;\n    background: #101016;\n    border: 1px solid #2c2c34;\n    overflow: hidden;\n    display: flex;\n    align-items: center;\n    justify-content: center;\n}\n.av-thumb-ph { color: #4a4a55; font-size: 20px; }\n.av-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }\n";
+    var AV_CSS = "/* 摸鱼台 v45c —— AV 工作台样式（真机反馈第二轮 · 老板 7 条布局决议）\n *\n *  1. ⏮⏯⏭ + ◀步进▶ → 右侧中间竖排控制栏 .av-rail（大按钮 .av-big）\n *  2. 标记刻度与进度条同层（.av-range-wrap 内绝对定位，按拇指半径内缩对齐）\n *  3. 时间/帧数 → 播放器右上角悬浮标签 .av-pos-top\n *  4. 系统栏/挖孔避让：JS 把原生 insets 写进 --av-safe-* 变量，页面四向消费\n *     （Android 15 edge-to-edge 下 env(safe-area-inset) 不可靠，见 MediaServer.getSafeArea）\n *  5. 工具行顺序 ⤴|✂|▦|fps（DOM 顺序即视觉顺序，CSS 只管样式）\n *  6. 单击视频切全屏已删（stage-hit/imm 相关样式全部移除）\n *  7. .av-big = v45b 按钮放大 50%\n *\n * 继承 v45b：悬浮层 0.25/blur4、按钮 0.38+文字投影、av-danger 红「移除」态、\n * 强制横屏（JS 层，CSS 竖屏规则仅桌面调试兜底）。\n * v45d 热修：安全区由 .av-page padding 统一承担，内层元素不再重复消费\n *      （23:18 截图：原生物理 px 未换算 + 旋转过渡期脏值 → 整页被撑出大黑边）\n */\n */\n\n/* ===== 页面骨架（#4 安全区四向消费） ===== */\n.av-page {\n    --av-safe-top: 0px;\n    --av-safe-right: 0px;\n    --av-safe-bottom: 0px;\n    --av-safe-left: 0px;\n\n    display: none;\n    position: fixed;\n    inset: 0;\n    z-index: 1550;   /* 盖过工程页 1500，低于对话框 1600/toast 1700 */\n    background: #141414;\n    flex-direction: column;\n    padding-top: var(--av-safe-top);\n    padding-right: var(--av-safe-right);\n    padding-bottom: var(--av-safe-bottom);\n    padding-left: var(--av-safe-left);\n}\n.av-page.open { display: flex; }\n\n/* ===== 顶栏 ===== */\n.av-top {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 6px 10px;\n    background: #1d1d1f;\n    border-bottom: 1px solid #333;\n    min-height: 44px;\n    flex: 0 0 auto;\n}\n.av-top-title {\n    flex: 1;\n    color: #ddd;\n    font-size: 13px;\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n}\n.av-top-btn {\n    background: #2a2a2e;\n    color: #ddd;\n    border: 1px solid #3a3a3e;\n    border-radius: 8px;\n    padding: 6px 12px;\n    font-size: 13px;\n}\n.av-top-btn.av-primary {\n    background: rgba(48, 98, 158, 0.9);\n    border-color: #3d6ea8;\n    color: #fff;\n}\n\n/* ===== 主体 ===== */\n.av-body {\n    flex: 1;\n    display: flex;\n    min-height: 0;\n    position: relative;\n}\n\n/* 左列表 30% */\n.av-side {\n    width: 30%;\n    min-width: 190px;\n    max-width: 340px;\n    background: #181820;\n    border-right: 1px solid #2c2c34;\n    display: flex;\n    flex-direction: column;\n    transition: margin-left 0.18s ease;\n}\n.av-side-head {\n    display: flex;\n    gap: 6px;\n    padding: 8px;\n    border-bottom: 1px solid #2c2c34;\n}\n.av-side-load {\n    flex: 1;\n    background: #26262e;\n    color: #ddd;\n    border: 1px solid #3a3a44;\n    border-radius: 8px;\n    padding: 7px 10px;\n    font-size: 13px;\n}\n.av-list { flex: 1; overflow-y: auto; padding: 6px; }\n.av-item {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 8px;\n    border-radius: 8px;\n    cursor: pointer;\n    margin-bottom: 2px;\n}\n.av-item.on { background: rgba(48, 98, 158, 0.35); }\n.av-item-no {\n    min-width: 34px;\n    text-align: center;\n    color: #9fb6d8;\n    font-size: 12px;\n    font-weight: 600;\n    background: rgba(60, 90, 140, 0.25);\n    border-radius: 6px;\n    padding: 3px 4px;\n}\n.av-item-info { flex: 1; min-width: 0; }\n/* v45o：文件名横向滚动看全名（老板 21:31），滚动条隐藏 */\n.av-item-name {\n    color: #ddd;\n    font-size: 12px;\n    white-space: nowrap;\n    overflow-x: auto;\n    overflow-y: hidden;\n    -webkit-overflow-scrolling: touch;\n    scrollbar-width: none;\n}\n.av-item-name::-webkit-scrollbar { display: none; }\n.av-item-sub { color: #777; font-size: 10px; margin-top: 2px; }\n.av-item-badge {\n    color: #ffd37a;\n    font-size: 11px;\n    background: rgba(180, 130, 40, 0.3);\n    border-radius: 5px;\n    padding: 2px 5px;\n}\n.av-item-badge.av-b-split { color: #9be29b; background: rgba(50, 140, 70, 0.3); }\n\n/* ===== 右播放区 ===== */\n.av-main {\n    flex: 1;\n    position: relative;\n    min-width: 0;\n    background: #000;\n    overflow: hidden;\n}\n.av-video {\n    position: absolute;\n    inset: 0;\n    width: 100%;\n    height: 100%;\n    object-fit: contain;\n    background: #000;\n}\n.av-audio { position: absolute; inset: 0; width: 100%; height: 100%; display: none; background: #fff; }\n.av-empty {\n    position: absolute;\n    inset: 0;\n    display: none;\n    flex-direction: column;\n    align-items: center;\n    justify-content: center;\n    gap: 14px;\n    color: #666;\n    font-size: 14px;\n    white-space: pre-line;\n    text-align: center;\n    pointer-events: auto;\n}\n.av-empty .av-empty-t { color: #aab4c4; font-size: 16px; font-weight: 600; pointer-events: none; }\n.av-empty .av-empty-s { color: #66707f; font-size: 12px; pointer-events: none; }\n.av-empty-btn {\n    background: rgba(48, 98, 158, 0.9);\n    color: #fff;\n    border: 1px solid #3d6ea8;\n    border-radius: 12px;\n    padding: 14px 26px;\n    font-size: 16px;\n}\n\n/* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */\n.av-rail {\n    position: absolute;\n    right: 12px;    /* v45d：安全区由 .av-page padding 统一承担 */\n    top: 50%;\n    transform: translateY(-50%);\n    z-index: 10;\n    display: flex;\n    flex-direction: column;\n    align-items: center;\n    gap: 10px;\n    padding: 10px;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border-radius: 14px;\n}\n.av-rail-row {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n}\n\n/* ===== 通用按钮（v45b 透明定稿） ===== */\n.av-ovl-btn {\n    background: rgba(27, 34, 51, 0.38);\n    color: #eee;\n    border: 1px solid rgba(42, 50, 71, 0.4);\n    border-radius: 9px;\n    padding: 8px 11px;\n    font-size: 12px;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n    white-space: nowrap;\n}\n.av-ovl-btn:active { background: rgba(70, 70, 80, 0.55); }\n.av-ovl-btn.av-sq { padding: 8px 10px; min-width: 36px; }\n.av-ovl-btn.av-accent { color: #9be29b; }\n.av-ovl-btn.av-multi { color: #b48cff; }\n/* 游标命中已有标记 → 红「移除」态 */\n.av-ovl-btn.av-danger {\n    color: #ff7d7d;\n    border-color: rgba(220, 80, 80, 0.55);\n    background: rgba(120, 40, 40, 0.45);\n}\n/* #7 播放/上下集/步进放大 50%（v45b 基准 12px/8x11 → 18px/12x16） */\n.av-ovl-btn.av-big {\n    font-size: 18px;\n    padding: 12px 15px;\n    min-width: 52px;\n}\n.av-ovl-btn.av-big.av-play { min-width: 62px; }\n\n.av-ovl-input {\n    width: 52px;\n    background: rgba(27, 34, 51, 0.38);\n    color: #fff;\n    border: 1px solid rgba(42, 50, 71, 0.4);\n    border-radius: 8px;\n    padding: 6px 6px;\n    font-size: 12px;\n    text-align: center;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n}\n.av-ovl-input.av-step { width: 56px; font-size: 13px; padding: 8px 6px; }\n.av-ovl-input.av-fps { width: 44px; }\n.av-ovl-fps {\n    display: flex;\n    align-items: center;\n    gap: 4px;\n    color: #aaa;\n    font-size: 11px;\n    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);\n}\n\n/* ===== #5 工具行（⤴|✂|▦|fps，悬浮底部居中） ===== */\n/* v45l：工具行 = 进度条上方左下角横排（并入前段 | 分割点 | 多帧点；fps 已移右上角信息条） */\n.av-ovl {\n    position: absolute;\n    left: 16px;\n    bottom: 58px;\n    z-index: 10;\n    display: flex;\n    flex-direction: row;\n    align-items: center;\n    gap: 8px;\n    padding: 6px 8px;\n    border-radius: 10px;\n    background: rgba(20, 20, 24, 0.55);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n}\n\n\n/* ===== #3 时间/帧数悬浮右上角 ===== */\n/* v45l：右上角信息条 = 帧/时间 + fps 芯片（点芯片改 fps） */\n.av-pos-top {\n    position: absolute;\n    top: 10px;\n    right: 12px;\n    z-index: 12;\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 8px;\n    border-radius: 8px;\n    background: rgba(20, 20, 24, 0.55);\n    color: #eee;\n    font-size: 12px;\n    pointer-events: auto;\n}\n.av-fps-chip {\n    padding: 2px 7px;\n    border-radius: 6px;\n    background: rgba(72, 118, 168, 0.35);\n    border: 1px solid rgba(110, 160, 215, 0.4);\n    color: #bcd6f5;\n    font-size: 12px;\n}\n.av-fps-chip:active { background: rgba(72, 118, 168, 0.6); }\n.av-fps-input {\n    width: 52px;\n    font-size: 12px;\n    padding: 2px 6px;\n    border-radius: 6px;\n    border: 1px solid #3a5a80;\n    background: #101014;\n    color: #eee;\n}\n.av-fps-hint { color: #8a8a92; font-size: 11px; }\n.av-fps-native {\n    font-size: 11px;\n    padding: 2px 7px;\n    border-radius: 6px;\n    border: 1px solid #3d6ea8;\n    background: #22405e;\n    color: #dcebff;\n}\n\n\n/* ===== #2 播放条：刻度与进度条同层 ===== */\n.av-tl-wrap {\n    position: absolute;\n    left: 16px;     /* v45d：内层不重复消费安全区 */\n    right: 16px;\n    bottom: 10px;\n    height: 40px;\n    z-index: 8;\n    background: rgba(11, 14, 20, 0.25);\n    backdrop-filter: blur(4px);\n    -webkit-backdrop-filter: blur(4px);\n    border: 1px solid rgba(42, 50, 71, 0.35);\n    border-radius: 12px;\n}\n/* 刻度容器与 range 轨道对齐：内缩半个拇指宽（thumb 20px → 10px） */\n.av-range-wrap {\n    position: relative;\n    width: 100%;\n    height: 100%;\n}\n.av-tl-ticks {\n    position: absolute;\n    left: 10px;\n    right: 10px;\n    top: 8px;\n    bottom: 8px;\n    pointer-events: none;\n}\n.av-tick {\n    position: absolute;\n    top: 0;\n    width: 3px;\n    height: 100%;\n    border-radius: 2px;\n    transform: translateX(-1.5px);\n}\n.av-tick-split { background: #6fdc8c; }\n.av-tick-multi { background: #b48cff; width: 5px; }\n.av-tl-range {\n    position: absolute;\n    inset: 0;\n    width: 100%;\n    height: 100%;\n    -webkit-appearance: none;\n    background: transparent;\n    margin: 0;\n}\n.av-tl-range::-webkit-slider-runnable-track {\n    height: 5px;\n    background: rgba(255, 255, 255, 0.22);\n    border-radius: 3px;\n}\n.av-tl-range::-webkit-slider-thumb {\n    -webkit-appearance: none;\n    width: 20px;\n    height: 20px;\n    margin-top: -8px;\n    border-radius: 50%;\n    background: #e8e8ec;\n    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);\n}\n\n/* ===== 竖屏兜底（真机强制横屏后不会走到；桌面调试用） ===== */\n@media (max-width: 699px) {\n    .av-side {\n        position: absolute;\n        left: 0;\n        top: 44px;\n        bottom: 0;\n        z-index: 30;\n        width: 62%;\n        max-width: 320px;\n        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);\n    }\n    .av-rail { right: 8px; }\n}\n\n/* ===== v45m：列表首帧缩略图 ===== */\n.av-thumb {\n    width: 96px;\n    height: 54px;\n    margin-top: 4px;\n    border-radius: 6px;\n    background: #101016;\n    border: 1px solid #2c2c34;\n    overflow: hidden;\n    display: flex;\n    align-items: center;\n    justify-content: center;\n}\n.av-thumb-ph { color: #4a4a55; font-size: 20px; }\n.av-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }\n";
 
 
     var L = window.__avLogic;
@@ -448,8 +448,7 @@ function build() {
         mainEl = el('div', 'av-main');
         bodyEl.appendChild(mainEl);
 
-        videoEl = el('video', 'av-video');
-        videoEl.setAttribute('playsinline', '');
+        videoEl = el('video', 'av-video');        videoEl.setAttribute('playsinline', '');
         videoEl.setAttribute('preload', 'auto');
         mainEl.appendChild(videoEl);
 
@@ -527,10 +526,11 @@ function build() {
         tlRange.max = '1000';
         tlRange.value = '0';
         tlRange.addEventListener('input', function () {
-            if (!isFinite(videoEl.duration) || videoEl.duration <= 0) return;
-            var t = (parseFloat(tlRange.value) / 1000) * videoEl.duration;
+            var D = curDur();
+            if (!isFinite(D) || D <= 0) return;
+            var t = (parseFloat(tlRange.value) / 1000) * D;
             t = L.snapT(t, S.marks.marks, effFps());
-            videoEl.currentTime = t;
+            setTime(t);
             renderPos();
         });
         rangeWrap.appendChild(tlRange);
@@ -562,22 +562,45 @@ function build() {
         videoEl.addEventListener('loadedmetadata', function () {
             // v45n：选中即显示第一帧——部分 WebView loadedmetadata 后画面区仍是黑屏占位，
             // seek 微量触发解码器出第一帧，不用点播放/下一帧
-            if ((videoEl.currentTime || 0) === 0) { try { videoEl.currentTime = 0.001; } catch (e) { } }
+            if (S.meta.mode !== 'audio' && (videoEl.currentTime || 0) === 0) { try { videoEl.currentTime = 0.001; } catch (e) { } }
             renderPos();
         });
         videoEl.addEventListener('error', function () {
             // v45f：视频流加载失败必须留痕（code 4=格式/网络不可用等）
             var ec = videoEl.error && videoEl.error.code;
             dlog('VIDEO-ERR code=' + ec + ' src=' + String(videoEl.src || '').slice(0, 60));
-            toast('视频加载失败（code=' + ec + '），试试重新选目录或换文件');
+            if (!(S.meta && S.meta.mode === 'audio')) {
+                toast('视频加载失败（code=' + ec + '），试试重新选目录或换文件');
+            }
         });
         videoEl.addEventListener('play', function () { btnPlay.textContent = '⏸'; startFpsSample(); });
         videoEl.addEventListener('pause', function () { btnPlay.textContent = '▶'; });
         videoEl.addEventListener('ended', function () { btnPlay.textContent = '▶'; renderPos(); });
     }
 
+    function updatePlayBtn() {
+        var playing = (S.meta && S.meta.mode === 'audio') ? AP.playing : !videoEl.paused;
+        if (btnPlay) btnPlay.textContent = playing ? '⏸' : '▶';
+    }
+
     function togglePlay() {
         if (!S.files.length || S.cur < 0) { toast('先加载文件夹并选择片段'); return; }
+        // v46：音频走 WebAudio 引擎（<video> 对 WAV 解码不可靠）
+        if (S.meta.mode === 'audio') {
+            if (AP.playing) {
+                apPause();
+            } else {
+                var fa = S.files[S.cur];
+                if (!AP.buf && fa) {
+                    if (vizCache[fa.name]) apLoad(fa.name);
+                    else { toast('音频还在分析，稍等一下再点播放'); return; }
+                }
+                if (!apPlay()) { toast('播放失败：音频未就绪'); return; }
+            }
+            updatePlayBtn();
+            renderPos();
+            return;
+        }
         if (videoEl.paused) {
             var pr = videoEl.play();
             if (pr && pr.catch) pr.catch(function () { toast('播放失败：格式或流不可用'); });
@@ -915,23 +938,226 @@ function build() {
         selectFile(i);
     }
 
+    /* ===== v46：音频时频图（av-viz.js） ===== */
+    var vizCache = {};        // name -> { mono, sr, dur, segs }
+    var vizKeys = [];         // LRU，最多留 3 个
+    var vizBusy = null;       // 正在解码的文件名
+
+    function applyStageMode() {
+        var isAudio = !!(S.meta && S.meta.mode === 'audio');
+        if (videoEl) videoEl.style.display = isAudio ? 'none' : 'block';
+        if (audioCv) audioCv.style.display = isAudio ? 'block' : 'none';
+    }
+
+    function vizPlaceholder(txt) {
+        if (!audioCv) return;
+        var ctx = audioCv.getContext('2d');
+        var w = audioCv.clientWidth || 320, h = audioCv.clientHeight || 180;
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#999999'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(txt, w / 2, h / 2);
+    }
+
+    function drawVizCached(name) {
+        var c = vizCache[name];
+        if (!c) return false;
+        try {
+            var out = window.AudioViz.drawViz(audioCv, c.mono, c.sr, {});
+            c.segs = out.segs;
+            return true;
+        } catch (e) { dlog('viz redraw ERR ' + (e && e.message || e)); return false; }
+    }
+
+    function drawAudioViz(f) {
+        if (!f || !audioCv || !window.AudioViz) return;
+        if (S.serverPort <= 0) return;
+        applyStageMode();
+        if (drawVizCached(f.name)) { dlog('viz cache hit ' + f.name); return; }
+        if (vizBusy === f.name) return;
+        vizBusy = f.name;
+        vizPlaceholder('正在分析音频…');
+        var url = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
+        var mine = f.name;
+        fetch(url).then(function (r) { return r.arrayBuffer(); })
+            .then(function (buf) { return window.AudioViz.decodeMono(buf); })
+            .then(function (res) {
+                if (vizBusy === mine) vizBusy = null;
+                if (!res.mono.length) throw new Error('解码为空');
+                vizCache[mine] = { mono: res.mono, sr: res.sr, dur: res.dur, segs: [] };
+                vizKeys.push(mine);
+                while (vizKeys.length > 3) { var old = vizKeys.shift(); delete vizCache[old]; }
+                // 当前若已切走，不画
+                var cur = S.files[S.cur];
+                if (!cur || cur.name !== mine) return;
+                var out = window.AudioViz.drawViz(audioCv, res.mono, res.sr, {});
+                vizCache[mine].segs = out.segs;
+                var curF = S.files[S.cur];
+                if (curF && curF.name === mine) apLoad(mine);   // 装载到播放引擎
+                renderPos();   // v46：解码后才知道时长，刷新进度条/时间
+                renderTicks();
+                dlog('viz ok ' + mine + ' dur=' + res.dur.toFixed(2) + 's segs=' + out.segs.length +
+                    ' sr=' + res.sr);
+            })
+            .catch(function (e) {
+                if (vizBusy === mine) vizBusy = null;
+                dlog('viz ERR ' + mine + ' ' + (e && e.message || e));
+                vizPlaceholder('音频分析失败：' + (e && e.message || e));
+            });
+    }
+
+    /* ===== v46：音频播放引擎（WebAudio） =====
+     * 为什么不用 <video>：实测部分 WebView/解码栈对 WAV 直接报 MEDIA_ERR_SRC_NOT_SUPPORTED，
+     * 而音频工作台必须保证「能听 + 能精确定位」。音频模式统一走 decodeAudioData 后的
+     * AudioBufferSourceNode，时间完全由我们掌控，同时天然支持任意采样率。 */
+    var AP = { ctx: null, src: null, buf: null, playing: false, startedAt: 0, offset: 0, dur: 0, name: null };
+
+    function apCtx() {
+        if (!AP.ctx) {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            AP.ctx = new AC();
+        }
+        if (AP.ctx.state === 'suspended') { try { AP.ctx.resume(); } catch (e) { } }
+        return AP.ctx;
+    }
+
+    function apStop() {
+        if (AP.src) {
+            try { AP.src.onended = null; AP.src.stop(); } catch (e) { }
+            try { AP.src.disconnect(); } catch (e) { }
+            AP.src = null;
+        }
+        AP.playing = false;
+    }
+
+    function apLoad(name) {
+        var c = vizCache[name];
+        if (!c || AP.name === name) return !!c;
+        apStop();
+        var ctx = apCtx();
+        if (!ctx) return false;
+        try {
+            var buf = ctx.createBuffer(1, c.mono.length, c.sr);
+            buf.copyToChannel(c.mono, 0);
+            AP.buf = buf;
+            AP.name = name;
+            AP.dur = buf.duration;
+            AP.offset = 0;
+            return true;
+        } catch (e) { dlog('apLoad ERR ' + (e && e.message || e)); return false; }
+    }
+
+    function apTime() {
+        if (S.meta.mode !== 'audio') return videoEl.currentTime || 0;
+        if (AP.playing && AP.ctx) {
+            var tt = AP.offset + (AP.ctx.currentTime - AP.startedAt);
+            return Math.min(tt, AP.dur || tt);
+        }
+        return AP.offset;
+    }
+
+    function apPlay() {
+        if (!AP.buf) return false;
+        if (AP.playing) return true;
+        var ctx = apCtx();
+        if (!ctx) return false;
+        if (AP.offset >= (AP.dur || 0) - 1e-3) AP.offset = 0;
+        var src = ctx.createBufferSource();
+        src.buffer = AP.buf;
+        src.connect(ctx.destination);
+        src.onended = function () {
+            if (AP.src === src) { AP.offset = 0; AP.playing = false; AP.src = null; renderPos(); updatePlayBtn(); }
+        };
+        try { src.start(0, AP.offset); } catch (e) { return false; }
+        AP.src = src;
+        AP.startedAt = ctx.currentTime;
+        AP.playing = true;
+        startApTicker();
+        return true;
+    }
+
+    function apPause() {
+        if (!AP.playing) return;
+        AP.offset = apTime();
+        apStop();
+        updatePlayBtn();
+    }
+
+    function apSeek(t) {
+        t = Math.max(0, Math.min(t, AP.dur || 0));
+        var was = AP.playing;
+        if (was) { apStop(); AP.offset = t; apPlay(); }
+        else AP.offset = t;
+        renderPos();
+    }
+
+    var apTicker = null;
+    function startApTicker() {
+        if (apTicker) return;
+        apTicker = setInterval(function () {
+            if (S.meta.mode !== 'audio') { clearInterval(apTicker); apTicker = null; return; }
+            if (!AP.playing) { clearInterval(apTicker); apTicker = null; return; }
+            renderPos();
+        }, 100);
+    }
+
+    /* 统一的时间读写（音频走 AP，视频走 <video>） */
+    function curTime() {
+        return S.meta && S.meta.mode === 'audio' ? apTime() : (videoEl.currentTime || 0);
+    }
+    function setTime(t) {
+        if (S.meta && S.meta.mode === 'audio') { apSeek(t); return; }
+        videoEl.currentTime = t;
+    }
+
+    /* v46：时长来源。视频走 <video>；音频用解码结果兜底
+     * （Android WebView / 部分解码栈拿不到音频容器时长，而我们已经解码过整段音频） */
+    function curDur() {
+        if (S.meta && S.meta.mode === 'audio') {
+            if (AP.dur > 0) return AP.dur;
+            var f0 = S.files[S.cur];
+            var c0 = f0 && vizCache[f0.name];
+            if (c0 && c0.dur > 0) return c0.dur;
+            return 0;
+        }
+        return videoEl.duration;
+    }
+
     function playCurrent(keepPaused) {
         var f = S.files[S.cur];
         if (!f) return;
         emptyHint.style.display = 'none';
-        videoEl.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
-        videoEl.load();
+        var isA = S.meta.mode === 'audio';
+        if (isA) {
+            // 音频：停掉上一段，重置引擎；<video> 完全不参与
+            apStop();
+            AP.buf = null; AP.name = null; AP.offset = 0; AP.dur = 0;
+            try { videoEl.pause(); videoEl.removeAttribute('src'); videoEl.load(); } catch (e) { }
+            setTime(0);
+        } else {
+            videoEl.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
+            videoEl.load();
+        }
         renderList();
         renderPos();
+        applyStageMode();
+        if (isA) {
+            drawAudioViz(f);
+            if (vizCache[f.name]) {           // 已分析过：立即装载，按钮马上可用
+                apLoad(f.name);
+                renderPos();
+                renderTicks();
+            }
+        }
         if (!keepPaused) togglePlay();
-        requestNativeMeta();
+        if (!isA) requestNativeMeta();
     }
 
     /* ---------- 位置显示 + 按钮状态 ---------- */
 
     function renderPos() {
-        var t = videoEl.currentTime || 0;
-        var d = videoEl.duration;
+        var t = curTime();
+        var d = curDur();
         if (isFinite(d) && d > 0) {
             tlRange.value = String(Math.round((t / d) * 1000));
         }
@@ -953,7 +1179,7 @@ function build() {
     }
 
     function renderBtnStates() {
-        var t = videoEl.currentTime || 0;
+        var t = curTime();
         var seg = curSeg();
         var f = effFps();
         var half = 0.5 / f;
@@ -967,18 +1193,27 @@ function build() {
         btnMerge.textContent = merged ? '✕ 解除并入' : '⤴ 并入前段';
         btnMerge.classList.toggle('av-danger', !!merged);
 
+        if (S.meta.mode === 'audio') {
+            var qA = L.quantize(t, 'audio', 0, S.meta.stepAudio || 0.05);
+            var mfA = null;
+            S.marks.marks.forEach(function (m) { if (m.type === 'multiframe_ref' && m.seg === seg) mfA = m; });
+            var hitA = !!(mfA && mfA.secs && secIdx(mfA.secs, qA) >= 0);
+            btnMulti.textContent = hitA ? '✕ 移除此刻' : '▦ 多帧点';
+            btnMulti.classList.toggle('av-danger', hitA);
+            return;
+        }
         var fr = L.frameAt(t, f);
         var mf = null;
         S.marks.marks.forEach(function (m) {
             if (m.type === 'multiframe_ref' && m.seg === seg) mf = m;
         });
-        var hitMulti = mf && mf.frames.indexOf(fr) >= 0;
+        var hitMulti = mf && mf.frames && mf.frames.indexOf(fr) >= 0;
         btnMulti.textContent = hitMulti ? '✕ 移除此帧' : '▦ 多帧点';
         btnMulti.classList.toggle('av-danger', hitMulti);
     }
 
     function renderTicks() {
-        var d = videoEl.duration;
+        var d = curDur();
         ticksEl.innerHTML = '';
         if (!isFinite(d) || d <= 0) return;
         var seg = curSeg();
@@ -999,6 +1234,16 @@ function build() {
                     }
                 });
             }
+            // v46：音频参考点是秒，直接映射
+            if (m.type === 'multiframe_ref' && Array.isArray(m.secs)) {
+                m.secs.forEach(function (s2) {
+                    if (s2 <= d) {
+                        var k3 = el('i', 'av-tick av-tick-multi');
+                        k3.style.left = (s2 / d * 100) + '%';
+                        ticksEl.appendChild(k3);
+                    }
+                });
+            }
         });
     }
 
@@ -1012,8 +1257,10 @@ function build() {
     function markSplit() {
         if (S.cur < 0) { toast('先选择片段'); return; }
         var seg = curSeg();
-        var t = videoEl.currentTime || 0;
-        var half = 0.5 / effFps();
+        var isAudio = S.meta.mode === 'audio';
+        var stepA = S.meta.stepAudio || 0.05;
+        var t = curTime();
+        var half = isAudio ? stepA / 2 : 0.5 / effFps();
         var hit = null;
         S.marks.marks.forEach(function (m) {
             if (m.type === 'split' && m.seg === seg && Math.abs(m.at - t) <= half + 1e-9) hit = m;
@@ -1021,6 +1268,22 @@ function build() {
         if (hit) {
             S.marks.marks.splice(S.marks.marks.indexOf(hit), 1);
             toast('已移除分割点 @' + fmt2(hit.at) + 's');
+        } else if (isAudio) {
+            // v46：音频按秒量化（无帧概念，fps 为空）
+            var qtA = L.quantize(t, 'audio', 0, stepA);
+            var rmA = 0;
+            S.marks.marks.forEach(function (m) {
+                if (m.type === 'multiframe_ref' && m.seg === seg && m.secs) {
+                    var k = secIdx(m.secs, qtA);
+                    if (k >= 0) {
+                        m.secs.splice(k, 1);
+                        rmA++;
+                        if (!m.secs.length) S.marks.marks.splice(S.marks.marks.indexOf(m), 1);
+                    }
+                }
+            });
+            S.marks.marks.push({ id: 'm' + Date.now(), type: 'split', seg: seg, at: qtA, note: '' });
+            toast('✂ 分割点 @' + fmt2(qtA) + 's' + (rmA ? '（该时刻的多帧参考已移除）' : ''));
         } else {
             var qt = L.quantize(t, 'video', effFps(), 0);
             var qfr = L.frameAt(qt, effFps());
@@ -1042,6 +1305,12 @@ function build() {
         renderPos();
     }
 
+    /* v46：秒数组的容差查找（浮点量化值不能用 indexOf） */
+    function secIdx(arr, v) {
+        for (var i = 0; i < arr.length; i++) if (Math.abs(arr[i] - v) < 1e-6) return i;
+        return -1;
+    }
+
     function toggleMerge() {
         if (S.cur < 0) { toast('先选择片段'); return; }
         var seg = curSeg();
@@ -1061,9 +1330,48 @@ function build() {
     function toggleMulti() {
         if (S.cur < 0) { toast('先选择片段'); return; }
         var seg = curSeg();
+        var isAudio = S.meta.mode === 'audio';
+        var stepA = S.meta.stepAudio || 0.05;
         var f = effFps();
-        var fr = L.frameAt(videoEl.currentTime || 0, f);
+        var tA = curTime();
+        var fr = L.frameAt(tA, f);
         var mark = null;
+        if (isAudio) {
+            /* v46：音频多帧点 = 时刻点（按 stepAudio 量化），存 secs，不存帧号 */
+            S.marks.marks.forEach(function (m) {
+                if (m.type === 'multiframe_ref' && m.seg === seg) mark = m;
+            });
+            var qA = L.quantize(tA, 'audio', 0, stepA);
+            var ateSplitA = null;
+            S.marks.marks.forEach(function (m) {
+                if (m.type === 'split' && m.seg === seg && Math.abs(m.at - qA) < 1e-6) ateSplitA = m;
+            });
+            if (ateSplitA) {
+                S.marks.marks.splice(S.marks.marks.indexOf(ateSplitA), 1);
+                toast('该时刻已是分割点，已移除分割点（' + fmt2(qA) + 's）');
+                saveAll(false);
+                renderPos();
+                return;
+            }
+            if (!mark) {
+                mark = { id: 'm' + Date.now(), type: 'multiframe_ref', seg: seg, secs: [], note: '' };
+                S.marks.marks.push(mark);
+            }
+            if (!mark.secs) mark.secs = [];
+            var kA = secIdx(mark.secs, qA);
+            if (kA >= 0) {
+                mark.secs.splice(kA, 1);
+                toast('▦ 已移除参考点 ' + fmt2(qA) + 's（剩 ' + mark.secs.length + '）');
+                if (!mark.secs.length) S.marks.marks.splice(S.marks.marks.indexOf(mark), 1);
+            } else {
+                mark.secs.push(qA);
+                mark.secs.sort(function (a, b) { return a - b; });
+                toast('▦ 参考点 ' + fmt2(qA) + 's（共 ' + mark.secs.length + ' 个）');
+            }
+            saveAll(false);
+            renderPos();
+            return;
+        }
         S.marks.marks.forEach(function (m) {
             if (m.type === 'multiframe_ref' && m.seg === seg) mark = m;
         });
@@ -1109,11 +1417,12 @@ function build() {
         } else {
             st = S.meta.stepAudio || 0.05;
         }
-        var t = (videoEl.currentTime || 0) + dir * st;
+        var t = curTime() + dir * st;
         if (t < 0) t = 0;
-        if (isFinite(videoEl.duration) && t > videoEl.duration) t = videoEl.duration;
+        var D2 = curDur();
+        if (isFinite(D2) && t > D2) t = D2;
         if (S.meta.mode === 'video') t = L.quantize(t, 'video', effFps(), 0);
-        videoEl.currentTime = t;
+        setTime(t);
         renderPos();
     }
 
@@ -1179,7 +1488,7 @@ function build() {
 
     function open(projectName) {
         try {
-            dlog('build v45x');   // 每次打开打版本号：日志与包版本永远对得上
+            dlog('build v46');   // 每次打开打版本号：日志与包版本永远对得上
             dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
                 ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
             build();
@@ -1196,6 +1505,7 @@ function build() {
                 saveAll(false);
             }
             setSide(true);
+            applyStageMode();   // v46：音频工程显示时频图、隐藏视频层
             renderStepBox();
             renderSideHead();
             renderList();
@@ -1265,7 +1575,7 @@ function build() {
         marks: function () { return S.marks; },
         files: function () { return S.files; },
         _S: S,
-        _setVideoTime: function (t) { videoEl.currentTime = t; renderPos(); },
+        _setVideoTime: function (t) { setTime(t); renderPos(); renderBtnStates(); },
         _markSplit: markSplit,
         _toggleMerge: toggleMerge,
         _toggleMulti: toggleMulti,

@@ -264,23 +264,39 @@
             if (m.note && !node.note) node.note = m.note;
             if (m.type === 'merge_prev') { node.merge_prev = true; return; }
             if (m.type === 'split') {
-                node.points.push({ type: 'split', at_frame: frameAt(m.at, fps), at_seconds: Number(m.at.toFixed(2)) });
+                if (meta.mode === 'audio') {
+                    /* v46：音频无帧概念，只写秒（at_seconds），不产出无意义的 at_frame */
+                    node.points.push({ type: 'split', at_seconds: Number(m.at.toFixed(2)) });
+                } else {
+                    node.points.push({ type: 'split', at_frame: frameAt(m.at, fps), at_seconds: Number(m.at.toFixed(2)) });
+                }
             } else if (m.type === 'multiframe_ref') {
-                (m.frames || []).forEach(function (fr) {
-                    node.points.push({ type: 'multiframe', at_frame: fr });
-                });
+                if (meta.mode === 'audio') {
+                    (m.secs || []).forEach(function (s) {
+                        node.points.push({ type: 'multiframe', at_seconds: Number(s.toFixed(2)) });
+                    });
+                } else {
+                    (m.frames || []).forEach(function (fr) {
+                        node.points.push({ type: 'multiframe', at_frame: fr });
+                    });
+                }
             }
         });
         order.forEach(function (node) {
             if (!node.merge_prev) delete node.merge_prev;
             if (!node.note) delete node.note;
-            node.points.sort(function (a, b) { return a.at_frame - b.at_frame; });
-            var splitFrames = {};
-            node.points.forEach(function (pt) { if (pt.type === 'split') splitFrames[pt.at_frame] = true; });
+            var keyOf = meta.mode === 'audio'
+                ? function (pt) { return pt.at_seconds != null ? pt.at_seconds : 0; }
+                : function (pt) { return pt.at_frame != null ? pt.at_frame : 0; };
+            node.points.sort(function (a, b) { return keyOf(a) - keyOf(b); });
+            // 同刻互斥兜底：split 优先（音频按秒、视频按帧各自比对）
+            var splitKeys = {};
+            node.points.forEach(function (pt) { if (pt.type === 'split') splitKeys[keyOf(pt)] = true; });
             var seen = {};
             node.points = node.points.filter(function (pt) {
-                if (pt.type === 'multiframe' && splitFrames[pt.at_frame]) return false;   // 同帧互斥兜底
-                var k = pt.type + ':' + pt.at_frame;
+                var k0 = keyOf(pt);
+                if (pt.type === 'multiframe' && splitKeys[k0]) return false;
+                var k = pt.type + ':' + k0;
                 if (seen[k]) return false;
                 seen[k] = true;
                 return true;
