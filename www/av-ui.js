@@ -254,9 +254,10 @@
             clearTimeout(timer);
             videoThumbBusy = false;
             try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) { }
-            if (jpeg && job.box.isConnected) {
-                thumbApply(job.box, jpeg);
+            if (jpeg) {
+                thumbCache[job.name] = jpeg;   // v45x：先入缓存，下次打开秒出
                 thumbOkCount++;
+                if (job.box && job.box.isConnected) thumbApply(job.box, jpeg);
             } else {
                 thumbFailCount++;
                 thumbFailCache[job.name] = 'video capture: ' + (err || 'unknown');
@@ -663,6 +664,43 @@ function build() {
     var videoThumbBusy = false;
     var videoThumbTried = {};     // name -> true（每个文件只降级一次）
     var videoThumbLogCount = 0;
+    // v45x：原生通道自适应治理
+    var consecutiveNativeFails = 0;
+    var nativeThumbDisabled = false;
+    var NATIVE_THUMB_KEY = 'moyutai.thumbNative';
+    function nativeThumbPersistOff() {
+        try {
+            var raw = localStorage.getItem(NATIVE_THUMB_KEY);
+            if (!raw) return false;
+            var o = JSON.parse(raw);
+            return !!(o && o.off && (Date.now() - (o.ts || 0) < 3 * 86400000));   // 3 天后自动重试原生
+        } catch (e) { return false; }
+    }
+    function nativeThumbPersistSet(off) {
+        try {
+            if (off) localStorage.setItem(NATIVE_THUMB_KEY, JSON.stringify({ off: true, ts: Date.now() }));
+            else localStorage.removeItem(NATIVE_THUMB_KEY);
+        } catch (e) { }
+    }
+    function noteNativeFail(name, msg, box) {
+        consecutiveNativeFails++;
+        if (consecutiveNativeFails >= 2 && !nativeThumbDisabled) {
+            nativeThumbDisabled = true;
+            nativeThumbPersistSet(true);
+            dlog('native thumb disabled (' + consecutiveNativeFails + ' fails) -> video capture mode');
+        }
+        if (!videoThumbTried[name]) {
+            videoThumbTried[name] = true;
+            if (videoThumbQueue.length < 500) videoThumbQueue.push({ name: name, box: box });
+            if (videoThumbLogCount < 3) { videoThumbLogCount++; dlog('thumb native fail -> video capture ' + name); }
+            setTimeout(videoThumbPump, 50);
+        } else {
+            thumbFailCount++;
+            thumbFailCache[name] = msg;
+            if (thumbFailLogged < 3) { thumbFailLogged++; dlog('thumb fail ' + name + ': ' + msg); }
+            if (!thumbFailSample) thumbFailSample = name + '(' + msg + ')';
+        }
+    }
     var thumbFailLogged = 0;  // 只详细记录前 3 条失败（够定位，不刷屏）
     var thumbFailSample = ''; // 汇总里带的第一条失败样例
     var thumbOkCount = 0, thumbFailCount = 0, thumbSummarized = true;
@@ -686,6 +724,12 @@ function build() {
     function thumbEnqueue(f, box) {
         var hit = thumbCache[f.name];
         if (hit) { thumbApply(box, hit); return; }
+        if (nativeThumbDisabled || nativeThumbPersistOff()) {
+            // v45x：原生解码已被判死（会话连续失败或历史记录）→ 直接走视频捕获
+            if (videoThumbQueue.length < 500) videoThumbQueue.push({ name: f.name, box: box });
+            setTimeout(videoThumbPump, 30);
+            return;
+        }
         if (thumbFailCache[f.name]) return; // v45t：失败过的文件本会话不再重试
         if (thumbPending[f.name]) return;   // 在途，等结果（结果回调会按 isConnected 决定是否贴图）
         thumbJobs.push({ f: f, box: box });
@@ -701,9 +745,25 @@ function build() {
                 var cap = window.Capacitor;
                 var p = cap && cap.Plugins && cap.Plugins.MediaServer;
                 if (!p || !p.thumb) { thumbLive--; delete thumbPending[job.f.name]; thumbSummary(); return; }
-                p.thumb({ name: job.f.name }).then(function (r) {
+                // v45x：15s 看门狗——原生挂起不让队列冻死，直接转视频捕获
+                var settled = false;
+                var watchdog = setTimeout(function () {
+                    if (settled) return;
+                    settled = true;
                     thumbLive--;
                     delete thumbPending[job.f.name];
+                    noteNativeFail(job.f.name, 'native timeout', job.box);
+                    if (!thumbJobs.length && !thumbLive) thumbSummary();
+                    setTimeout(thumbDrain, 30);
+                }, 15000);
+                p.thumb({ name: job.f.name }).then(function (r) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(watchdog);
+                    thumbLive--;
+                    delete thumbPending[job.f.name];
+                    consecutiveNativeFails = 0;
+                    nativeThumbPersistSet(false);
                     if (r && r.jpeg && String(r.jpeg).length > 50) {
                         thumbCache[job.f.name] = r.jpeg;
                         if (job.box.isConnected) thumbApply(job.box, r.jpeg);
@@ -717,21 +777,12 @@ function build() {
                     if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
                 }).catch(function (e) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(watchdog);
                     thumbLive--;
                     delete thumbPending[job.f.name];
-                    var msg = e && e.message || String(e);
-                    // v45w：原生解不出 → 降级「页面内视频捕获」（与播放同一条解码栈）
-                    if (!videoThumbTried[job.f.name]) {
-                        videoThumbTried[job.f.name] = true;
-                        if (videoThumbQueue.length < 40) videoThumbQueue.push({ name: job.f.name, box: job.box });
-                        if (videoThumbLogCount < 3) { videoThumbLogCount++; dlog('thumb native fail -> video capture ' + job.f.name); }
-                        setTimeout(videoThumbPump, 50);
-                    } else {
-                        thumbFailCount++;
-                        thumbFailCache[job.f.name] = msg;
-                        if (thumbFailLogged < 3) { thumbFailLogged++; dlog('thumb fail ' + job.f.name + ': ' + msg); }
-                        if (!thumbFailSample) thumbFailSample = job.f.name + '(' + msg + ')';
-                    }
+                    noteNativeFail(job.f.name, e && e.message || String(e), job.box);
                     if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
                 });
@@ -1128,7 +1179,7 @@ function build() {
 
     function open(projectName) {
         try {
-            dlog('build v45w');   // 每次打开打版本号：日志与包版本永远对得上
+            dlog('build v45x');   // 每次打开打版本号：日志与包版本永远对得上
             dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
                 ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
             build();
@@ -1199,7 +1250,7 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
-        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy }; },
+        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy, nativeOff: nativeThumbDisabled, nativeFails: consecutiveNativeFails }; },
         _refreshFolder: refreshFolder,
         open: open,
         back: back,

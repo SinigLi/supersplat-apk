@@ -628,6 +628,7 @@ public class MediaServerPlugin extends Plugin {
         if (pool.getQueue().size() > 12) { call.reject("缩略图队列繁忙"); return; }
         try {
             pool.execute(() -> {
+            if (port < 0) { call.reject("服务已停"); return; }   // v45x：退出工程后队列残留立即拒绝，不再空转
             android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
             try {
                 android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
@@ -662,7 +663,7 @@ public class MediaServerPlugin extends Plugin {
                         java.util.concurrent.Future<android.graphics.Bitmap> f = null;
                         try {
                             f = java.util.concurrent.Executors.newSingleThreadExecutor().submit(task);
-                            return f.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                            return f.get(5, java.util.concurrent.TimeUnit.SECONDS);   // v45x：10s 太宽（8 步最坏 80s/文件），5s 足够区分挂起
                         } catch (Exception e) {
                             return null;
                         } finally {
