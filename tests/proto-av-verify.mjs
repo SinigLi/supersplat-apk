@@ -4,10 +4,12 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { reclaimPorts } from './lib/net-reclaim.mjs';
 
 const ROOT = path.resolve('prototype');
-const PORT = 4194;
-const CDP = 9253;
+const PORT = 4218;
+const CDP = 9278;
+await reclaimPorts([PORT, CDP]);   // v46d: 先回收上次残留，绝不与上一套撞车
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const SHOTDIR = process.env.TEMP + '\\proto_av_shots2';
 const sleep = ms => new Promise(r => setTimeout(r, ms));

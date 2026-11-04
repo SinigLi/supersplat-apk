@@ -6,10 +6,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
+import { reclaimPorts } from './lib/net-reclaim.mjs';
 
 const ROOT = path.resolve('www');
-const PORT = 4205;
-const CDP = 9265;
+const PORT = 4214;
+const CDP = 9274;
+await reclaimPorts([PORT, CDP]);   // v46d: 先回收上次残留，绝不与上一套撞车
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 if (!fs.existsSync(EDGE)) { console.error('Edge not found'); process.exit(1); }
 

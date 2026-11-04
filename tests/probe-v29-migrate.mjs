@@ -15,10 +15,12 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { reclaimPorts } from './lib/net-reclaim.mjs';
 
 const ROOT = path.resolve('www');
 const PORT = 4198;
 const CDP = 9258;
+await reclaimPorts([PORT, CDP]);   // v46d: 先回收上次残留，绝不与上一套撞车
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

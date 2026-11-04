@@ -18,11 +18,13 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { reclaimPorts } from './lib/net-reclaim.mjs';
 
 const ROOT = path.resolve('www');
-const PORT = 4198;
+const PORT = 4216;
 // 每次随机 CDP 端口：固定端口会附到上一轮未死透的旧 Edge 页面（v45b 验证时踩过，四个假失败同源）
 const CDP = 9300 + Math.floor(Math.random() * 300);
+await reclaimPorts([PORT, CDP]);   // v46d: 先回收上次残留，绝不与上一套撞车
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
