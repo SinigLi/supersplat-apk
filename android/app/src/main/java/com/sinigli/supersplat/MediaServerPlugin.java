@@ -632,8 +632,12 @@ public class MediaServerPlugin extends Plugin {
             try {
                 android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
                 r.setDataSource(pfd.getFileDescriptor());
+                // v45t：解码兜底阶梯（0同步帧 → 0任意帧 → 100ms → 500ms → 1s），4K 流帧0偶发解不出
                 android.graphics.Bitmap bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-                if (bmp == null) bmp = r.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);   // v45s：帧0解不出（个别 4K 流）退到 1s 处再试一次
+                if (bmp == null) bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
+                if (bmp == null) bmp = r.getFrameAtTime(100000, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
+                if (bmp == null) bmp = r.getFrameAtTime(500000, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
+                if (bmp == null) bmp = r.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
                 if (bmp == null) { call.reject("无法解码首帧"); return; }
                 int tw = 192;   // 列表 96x54 的 2 倍余量；整帧解码后立即缩小，压缩和 base64 都小
                 int th = Math.max(1, Math.round(bmp.getHeight() * tw / (float) bmp.getWidth()));

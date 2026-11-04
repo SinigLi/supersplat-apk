@@ -608,6 +608,9 @@ function build() {
     var thumbLive = 0;
     var thumbCache = {};      // name -> jpeg(base64)
     var thumbPending = {};    // name -> true（在途，防重）
+    var thumbFailCache = {};  // v45t：name -> 失败原因（会话内不再重试，省电省解码器）
+    var thumbFailLogged = 0;  // 只详细记录前 3 条失败（够定位，不刷屏）
+    var thumbFailSample = ''; // 汇总里带的第一条失败样例
     var thumbOkCount = 0, thumbFailCount = 0, thumbSummarized = true;
     function thumbFlush() {
         thumbJobs.length = 0;
@@ -622,13 +625,14 @@ function build() {
     function thumbSummary() {
         if (thumbSummarized) return;
         thumbSummarized = true;
-        if (thumbOkCount || thumbFailCount) dlog('thumbs done ok=' + thumbOkCount + ' fail=' + thumbFailCount);
+        if (thumbOkCount || thumbFailCount) dlog('thumbs done ok=' + thumbOkCount + ' fail=' + thumbFailCount + (thumbFailSample ? ' e.g. ' + thumbFailSample : ''));
         thumbOkCount = 0;
         thumbFailCount = 0;
     }
     function thumbEnqueue(f, box) {
         var hit = thumbCache[f.name];
         if (hit) { thumbApply(box, hit); return; }
+        if (thumbFailCache[f.name]) return; // v45t：失败过的文件本会话不再重试
         if (thumbPending[f.name]) return;   // 在途，等结果（结果回调会按 isConnected 决定是否贴图）
         thumbJobs.push({ f: f, box: box });
         thumbSummarized = false;
@@ -652,6 +656,9 @@ function build() {
                         thumbOkCount++;
                     } else {
                         thumbFailCount++;
+                        thumbFailCache[job.f.name] = 'empty jpeg';
+                        if (thumbFailLogged < 3) { thumbFailLogged++; dlog('thumb fail ' + job.f.name + ': empty jpeg'); }
+                        if (!thumbFailSample) thumbFailSample = job.f.name + '(empty jpeg)';
                     }
                     if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
@@ -659,6 +666,10 @@ function build() {
                     thumbLive--;
                     delete thumbPending[job.f.name];
                     thumbFailCount++;
+                    var msg = e && e.message || String(e);
+                    thumbFailCache[job.f.name] = msg;
+                    if (thumbFailLogged < 3) { thumbFailLogged++; dlog('thumb fail ' + job.f.name + ': ' + msg); }
+                    if (!thumbFailSample) thumbFailSample = job.f.name + '(' + msg + ')';
                     if (!thumbJobs.length && !thumbLive) thumbSummary();
                     setTimeout(thumbDrain, 30);
                 });
@@ -1048,6 +1059,7 @@ function build() {
 
     function open(projectName) {
         try {
+            dlog('build v45t');   // 每次打开打版本号：日志与包版本永远对得上
             dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
                 ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
             build();
@@ -1118,7 +1130,7 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
-        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount }; },
+        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length }; },
         _refreshFolder: refreshFolder,
         open: open,
         back: back,
