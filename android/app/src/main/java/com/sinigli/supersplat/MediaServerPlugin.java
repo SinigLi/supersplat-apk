@@ -557,30 +557,23 @@ public class MediaServerPlugin extends Plugin {
                     res.put("durationMs", f.getLong(android.media.MediaFormat.KEY_DURATION) / 1000);
                 }
                 // 精确 fps：样本迭代（上限 20 万样本，防超长文件拖时间）
-                // v45p：排序 PTS 取相邻间隔中位数（抗 B 帧解码乱序；v45o 的首尾相除法对乱序流完全失真）
+                // v45r-2：fps = (帧数-1) / 时间跨度。min/max 与遍历顺序完全无关，
+                // 不会被 B 帧乱序带偏（v45p 的中位数法在这台设备 4K 流上仍被乱序时间戳搞出 29.97/25）。
+                // 只走索引不解码，几千帧也在几毫秒内。
                 ex.selectTrack(videoTrack);
                 ex.seekTo(0, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
-                java.util.ArrayList<Long> ts = new java.util.ArrayList<Long>();
                 int count = 0;
-                while (count < 5000 && ex.advance()) {
+                long minTs = -1, maxTs = -1;
+                while (count < 300000 && ex.advance()) {
                     long t = ex.getSampleTime();
                     if (t < 0) break;
-                    ts.add(t);
+                    if (minTs < 0 || t < minTs) minTs = t;
+                    if (maxTs < 0 || t > maxTs) maxTs = t;
                     count++;
                 }
                 float fps = -1;
-                if (ts.size() > 3) {
-                    java.util.Collections.sort(ts);
-                    java.util.ArrayList<Long> deltas = new java.util.ArrayList<Long>();
-                    for (int i = 1; i < ts.size(); i++) {
-                        long d = ts.get(i) - ts.get(i - 1);
-                        if (d > 1000) deltas.add(d);   // 忽略 <1ms 的重复帧间隔
-                    }
-                    if (!deltas.isEmpty()) {
-                        java.util.Collections.sort(deltas);
-                        long med = deltas.get(deltas.size() / 2);
-                        fps = 1000000f / med;
-                    }
+                if (count > 3 && maxTs > minTs) {
+                    fps = (count - 1) * 1000000f / (maxTs - minTs);
                 }
                 if (fps <= 0 && f.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
                     try { fps = f.getInteger(android.media.MediaFormat.KEY_FRAME_RATE); }
@@ -602,12 +595,28 @@ public class MediaServerPlugin extends Plugin {
      */
     /* v45r：缩略图专用单线程池——绝不占用 Capacitor 桥线程（v45p 实证：58 个 MMR 整帧解码把桥堵死，
      * 日志/存储/媒体服务全部排队饿死 → 空日志+转圈圈+占位不出图）。队列超限快速拒绝，JS 侧会重试。 */
-    private final java.util.concurrent.ThreadPoolExecutor thumbPool =
-            (java.util.concurrent.ThreadPoolExecutor) java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-                Thread t = new Thread(r, "moyutai-thumb");
-                t.setDaemon(true);
-                return t;
-            });
+    /* v45r-2：懒加载线程池——插件实例化期绝不跑任何可能抛异常的初始化。
+     * v45r 教训：Executors.newSingleThreadExecutor() 返回包装类，强转 ThreadPoolExecutor
+     * 在插件实例化时抛 ClassCastException → Capacitor 静默摘除整个插件 → 媒体功能全灭。
+     * 直接 new ThreadPoolExecutor：无强转、无包装、getQueue() 可用。 */
+    private java.util.concurrent.ThreadPoolExecutor thumbPool;
+
+    private synchronized java.util.concurrent.ThreadPoolExecutor thumbPool() {
+        if (thumbPool == null || thumbPool.isShutdown()) {
+            thumbPool = new java.util.concurrent.ThreadPoolExecutor(
+                    1, 1, 30L, java.util.concurrent.TimeUnit.SECONDS,
+                    new java.util.concurrent.LinkedBlockingQueue<Runnable>(),
+                    new java.util.concurrent.ThreadFactory() {
+                        @Override
+                        public Thread newThread(Runnable r) {
+                            Thread t = new Thread(r, "moyutai-thumb");
+                            t.setDaemon(true);
+                            return t;
+                        }
+                    });
+        }
+        return thumbPool;
+    }
 
     @PluginMethod
     public void thumb(PluginCall call) {
@@ -615,8 +624,10 @@ public class MediaServerPlugin extends Plugin {
         if (name == null || name.isEmpty() || port < 0) { call.reject("缺少 name 或媒体服务未启动"); return; }
         Uri doc = index.get(name);
         if (doc == null) { call.reject("文件不在已授权目录: " + name); return; }
-        if (thumbPool.getQueue().size() > 12) { call.reject("缩略图队列繁忙"); return; }
-        thumbPool.execute(() -> {
+        java.util.concurrent.ThreadPoolExecutor pool = thumbPool();
+        if (pool.getQueue().size() > 12) { call.reject("缩略图队列繁忙"); return; }
+        try {
+            pool.execute(() -> {
             android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
             try {
                 android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
@@ -641,6 +652,9 @@ public class MediaServerPlugin extends Plugin {
             } finally {
                 try { r.release(); } catch (Exception ignored) { }
             }
-        });
+            });
+        } catch (Exception e) {
+            call.reject("缩略图提交失败: " + e.getMessage());
+        }
     }
 }
