@@ -1059,7 +1059,7 @@ function build() {
 
     function open(projectName) {
         try {
-            dlog('build v45t');   // 每次打开打版本号：日志与包版本永远对得上
+            dlog('build v45u');   // 每次打开打版本号：日志与包版本永远对得上
             dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
                 ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
             build();

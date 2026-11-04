@@ -632,17 +632,45 @@ public class MediaServerPlugin extends Plugin {
             try {
                 android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
                 r.setDataSource(pfd.getFileDescriptor());
-                // v45t：解码兜底阶梯（0同步帧 → 0任意帧 → 100ms → 500ms → 1s），4K 流帧0偶发解不出
-                android.graphics.Bitmap bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-                if (bmp == null) bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
-                if (bmp == null) bmp = r.getFrameAtTime(100000, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
-                if (bmp == null) bmp = r.getFrameAtTime(500000, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
-                if (bmp == null) bmp = r.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-                if (bmp == null) { call.reject("无法解码首帧"); return; }
-                int tw = 192;   // 列表 96x54 的 2 倍余量；整帧解码后立即缩小，压缩和 base64 都小
-                int th = Math.max(1, Math.round(bmp.getHeight() * tw / (float) bmp.getWidth()));
-                android.graphics.Bitmap sc = android.graphics.Bitmap.createScaledBitmap(bmp, tw, th, true);
-                if (sc != bmp) bmp.recycle();
+                // v45u：官方标准路径（Android 8.1+ 文档）——getScaledFrameAtTime 直接解码到缩略图尺寸，
+                // 避免"先解 4K 整帧再缩小"（官方明示该模式浪费内存，也是部分 4K 片段解码失败的根因）。
+                int tw = 192;   // 列表 96x54 的 2 倍余量
+                int vw = 0, vh = 0;
+                try {
+                    String mw = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                    String mh = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+                    if (mw != null && mh != null) { vw = Integer.parseInt(mw); vh = Integer.parseInt(mh); }
+                } catch (Exception ignored) { }
+                int th = (vw > 0 && vh > 0) ? Math.max(1, Math.round(vh * tw / (float) vw)) : 108;
+                android.graphics.Bitmap sc = null;
+                if (android.os.Build.VERSION.SDK_INT >= 27) {
+                    long[] pos = {0L, 100000L, 1000000L};   // 0 → 100ms → 1s，CLOSEST_SYNC 只解关键帧最省
+                    for (long p : pos) {
+                        if (sc != null) break;
+                        try { sc = r.getScaledFrameAtTime(p, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, tw, th); }
+                        catch (Exception ignored) { }
+                    }
+                }
+                if (sc == null) {
+                    // API<27 或 scaled 失败：老路径（整帧解码+缩小），时间点阶梯兜底
+                    long[] pos = {0L, 100000L, 500000L, 1000000L};
+                    for (long p : pos) {
+                        if (sc != null) break;
+                        android.graphics.Bitmap bmp = null;
+                        try { bmp = r.getFrameAtTime(p, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC); }
+                        catch (Exception ignored) { }
+                        if (bmp == null && p == 0L) {
+                            try { bmp = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST); }
+                            catch (Exception ignored) { }
+                        }
+                        if (bmp != null) {
+                            int hh = Math.max(1, Math.round(bmp.getHeight() * tw / (float) bmp.getWidth()));
+                            sc = android.graphics.Bitmap.createScaledBitmap(bmp, tw, hh, true);
+                            if (sc != bmp) bmp.recycle();
+                        }
+                    }
+                }
+                if (sc == null) { call.reject("无法解码首帧"); return; }
                 java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
                 sc.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, bo);
                 int w = sc.getWidth(), h = sc.getHeight();
