@@ -259,104 +259,229 @@
         return String(Math.round(hz));
     }
 
-    /* ---------- 绘制 ---------- */
-    function drawViz(canvas, mono, sr, opts) {
+    /* 频率轴标签：>=1000 用 kHz，否则 Hz */
+    function freqLabel(hz) {
+        if (hz >= 1000) {
+            var k = hz / 1000;
+            return (k >= 10 ? Math.round(k) : Math.round(k * 10) / 10) + 'k';
+        }
+        return String(Math.round(hz));
+    }
+
+    /* ---------- 预分析：包络 + 语谱 + 气口分段，只算一次 ---------- */
+    function prepare(mono, sr, opts) {
+        opts = opts || {};
+        var noiseDb = opts.noiseDb === undefined ? -40 : opts.noiseDb;
+        return {
+            dur: mono.length / sr,
+            sr: sr,
+            noiseDb: noiseDb,
+            fmin: opts.fmin || 30,
+            fmax: sr / 2,
+            dbFloorSpec: opts.dbFloorSpec === undefined ? -80 : opts.dbFloorSpec,
+            dbFloorWave: opts.dbFloorWave === undefined ? -100 : opts.dbFloorWave,
+            env: envelopeDb(mono, sr),
+            spec: stftDb(mono, sr),
+            segs: detectSegments(mono, sr, noiseDb),
+            scene: null
+        };
+    }
+
+    /* 绘图边距：与播放条轨道严格对齐
+     * 播放条 .av-tl-wrap 左右各 16px，轨道 .av-tl-ticks 再内缩 10px（半个拇指宽），
+     * 所以刻度 0% 位于主区左边缘 +26px、100% 位于右边缘 -26px。
+     * 波段/语谱的绘图区必须用同样的 26px，时间才能和进度条严丝合缝对上。 */
+    var EDGE = 26;
+
+    function buildScene(prep, cw, chh, dpr) {
+        var mL = EDGE, mR = EDGE, mT = 10, mB = 22;
+        var plotW = cw - mL - mR;
+        var innerH = chh - mT - mB;
+        if (plotW < 40 || innerH < 60) { plotW = Math.max(40, cw - mL - mR); innerH = Math.max(60, chh - mT - mB); }
+        var waveH = Math.max(28, Math.round(innerH * 0.40));
+        var specH = Math.max(24, innerH - waveH);
+        var waveTop = mT, specTop = mT + waveH;
+        var X = function (t) { return mL + (t / prep.dur) * plotW; };
+
+        // 波形折线点（CSS px，一次算好，重绘只描线）
+        var pts = [], i;
+        for (i = 0; i < prep.env.db.length; i++) {
+            var dbv = Math.max(prep.dbFloorWave, Math.min(0, prep.env.db[i]));
+            pts.push({
+                x: X(prep.env.times[i]),
+                y: waveTop + (1 - (dbv - prep.dbFloorWave) / (0 - prep.dbFloorWave)) * waveH
+            });
+        }
+
+        // 语谱位图：putImageData 不吃 transform，必须按设备像素建
+        var imgW = Math.max(1, Math.round(plotW * dpr));
+        var imgH = Math.max(1, Math.round(specH * dpr));
+        var img = null;
+        try { img = new ImageData(imgW, imgH); } catch (e) { img = null; }
+        if (img && img.data) {
+            var dd = img.data, sp = prep.spec, fRatio = prep.fmax / prep.fmin;
+            var span = 0 - prep.dbFloorSpec;
+            for (var px = 0; px < imgW; px++) {
+                var frame = Math.min(sp.nFrames - 1, Math.floor((px / imgW) * sp.nFrames));
+                var base = frame * sp.nBins;
+                for (var py = 0; py < imgH; py++) {
+                    var frac = 1 - py / imgH;
+                    var freq = prep.fmin * Math.pow(fRatio, frac);
+                    var bin = Math.min(sp.nBins - 1, Math.round(freq / prep.fmax * (sp.nBins - 1)));
+                    var v = sp.db[base + bin];
+                    var q = ((Math.max(prep.dbFloorSpec, Math.min(0, v)) - prep.dbFloorSpec) / span) * 255;
+                    var li = (q | 0) * 3;
+                    var o = (py * imgW + px) * 4;
+                    dd[o] = LUT[li]; dd[o + 1] = LUT[li + 1]; dd[o + 2] = LUT[li + 2]; dd[o + 3] = 255;
+                }
+            }
+        }
+
+        // 分段线位置（CSS px）
+        var segX = [];
+        for (i = 0; i < prep.segs.length; i++) {
+            segX.push([X(prep.segs[i][0] / prep.sr), X(prep.segs[i][1] / prep.sr)]);
+        }
+
+        return {
+            cw: cw, chh: chh, dpr: dpr,
+            mL: mL, mR: mR, mT: mT, mB: mB,
+            plotW: plotW, innerH: innerH, waveH: waveH, specH: specH,
+            waveTop: waveTop, specTop: specTop,
+            X: X, pts: pts, img: img, imgW: imgW, imgH: imgH, segX: segX
+        };
+    }
+
+    /* ---------- 绘制：静态层（白底/波形/语谱/标签/分段） + 播放头 ---------- */
+    function render(canvas, prep, time, opts) {
+        if (!canvas || !prep) return null;
         opts = opts || {};
         if (!LUT) buildLut();
-        var noiseDb = opts.noiseDb === undefined ? -40 : opts.noiseDb;
-        var segs = detectSegments(mono, sr, noiseDb);
-        var dur = mono.length / sr;
-        var env = envelopeDb(mono, sr);
-        var spec = stftDb(mono, sr);
-        var fmin = 30, fmax = sr / 2;
-        var dbFloorSpec = -80, dbFloorWave = -100;
 
+        var cw = Math.max(240, Math.round(canvas.clientWidth || canvas.getBoundingClientRect().width || 320));
+        var chh = Math.max(150, Math.round(canvas.clientHeight || canvas.getBoundingClientRect().height || 180));
         var dpr = Math.min(2, global.devicePixelRatio || 1);
-        var cw = Math.max(320, canvas.clientWidth || 320);
-        var chh = Math.max(180, canvas.clientHeight || 180);
+        var sc = prep.scene;
+        if (!sc || sc.cw !== cw || sc.chh !== chh || sc.dpr !== dpr) {
+            sc = prep.scene = buildScene(prep, cw, chh, dpr);
+        }
+
         canvas.width = Math.round(cw * dpr);
         canvas.height = Math.round(chh * dpr);
         var ctx = canvas.getContext('2d');
+
+        // 白底（设备像素，先 reset transform）
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 语谱位图（设备像素贴图，天然对齐）
+        if (sc.img) {
+            try { ctx.putImageData(sc.img, Math.round(sc.mL * dpr), Math.round(sc.specTop * dpr)); } catch (e) { }
+        }
+
+        // 以下全部用 CSS px 坐标
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var i;
 
-        var W = cw, H = chh;
-        var mL = 52, mR = 12, mT = 14, mB = 22;
-        var plotW = W - mL - mR;
-        var innerH = H - mT - mB;
-        var waveH = Math.round(innerH * 0.40), specH = innerH - waveH;
-        var waveTop = mT, specTop = mT + waveH;
-        var X = function (t) { return mL + (t / dur) * plotW; };
-
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-
-        /* --- 波形行 --- */
-        ctx.strokeStyle = '#d8d8d8'; ctx.lineWidth = 1;
-        ctx.strokeRect(mL, waveTop, plotW, waveH);
-        ctx.strokeStyle = '#2E86C1'; ctx.lineWidth = 1.2; ctx.beginPath();
-        for (var i = 0; i < env.db.length; i++) {
-            var dbv = Math.max(dbFloorWave, Math.min(0, env.db[i]));
-            var px = X(env.times[i]);
-            var py = waveTop + (1 - (dbv - dbFloorWave) / (0 - dbFloorWave)) * waveH;
-            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        /* 波形区：边框 + 蓝色包络 */
+        ctx.strokeStyle = 'rgba(120,120,130,0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sc.mL + 0.5, sc.waveTop + 0.5, sc.plotW - 1, sc.waveH - 1);
+        if (sc.pts.length > 1) {
+            ctx.strokeStyle = '#2E86C1';
+            ctx.lineWidth = 1.2;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(sc.pts[0].x, sc.pts[0].y);
+            for (i = 1; i < sc.pts.length; i++) ctx.lineTo(sc.pts[i].x, sc.pts[i].y);
+            ctx.stroke();
         }
-        ctx.stroke();
-        // 气口阈值红线
-        ctx.strokeStyle = '#E74C3C'; ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.beginPath();
-        var thY = waveTop + (1 - (noiseDb - dbFloorWave) / (0 - dbFloorWave)) * waveH;
-        ctx.moveTo(mL, thY); ctx.lineTo(mL + plotW, thY); ctx.stroke(); ctx.setLineDash([]);
-        // 语音段：绿虚线 + 编号
-        ctx.strokeStyle = '#27AE60'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
-        ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-        for (var s0 = 0; s0 < segs.length; s0++) {
-            var x1 = X(segs[s0][0] / sr), x2 = X(segs[s0][1] / sr);
-            ctx.beginPath(); ctx.moveTo(x1, waveTop); ctx.lineTo(x1, waveTop + waveH); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(x2, waveTop); ctx.lineTo(x2, waveTop + waveH); ctx.stroke();
-            if (x2 - x1 > 14) { ctx.fillStyle = '#1E8449'; ctx.fillText(String(s0 + 1), (x1 + x2) / 2, waveTop + 13); }
-        }
+
+        /* 气口阈值线（红点线） */
+        var thY = sc.waveTop + (1 - (prep.noiseDb - prep.dbFloorWave) / (0 - prep.dbFloorWave)) * sc.waveH;
+        ctx.strokeStyle = 'rgba(231,76,60,0.85)';
+        ctx.setLineDash([2, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(sc.mL, thY); ctx.lineTo(sc.mL + sc.plotW, thY); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = '#777777'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
-        ctx.fillText('0', mL - 5, waveTop + 9);
-        ctx.fillText('-100', mL - 5, waveTop + waveH);
 
-        /* --- 语谱行 --- */
-        ctx.strokeStyle = '#d8d8d8'; ctx.strokeRect(mL, specTop, plotW, specH);
-        var img = ctx.createImageData(plotW, specH);
-        var dd = img.data;
-        var fRatio = fmax / fmin;
-        for (var px2 = 0; px2 < plotW; px2++) {
-            var frame = Math.min(spec.nFrames - 1, Math.floor((px2 / plotW) * spec.nFrames));
-            var base = frame * spec.nBins;
-            for (var py2 = 0; py2 < specH; py2++) {
-                var frac = 1 - py2 / specH;
-                var freq = fmin * Math.pow(fRatio, frac);
-                var bin = Math.min(spec.nBins - 1, Math.round(freq / fmax * (spec.nBins - 1)));
-                var v = spec.db[base + bin];
-                var q = ((Math.max(dbFloorSpec, Math.min(0, v)) - dbFloorSpec) / (0 - dbFloorSpec)) * 255;
-                var li = (q | 0) * 3;
-                var idx = (py2 * plotW + px2) * 4;
-                dd[idx] = LUT[li]; dd[idx + 1] = LUT[li + 1]; dd[idx + 2] = LUT[li + 2]; dd[idx + 3] = 255;
+        /* 语音段：绿虚线贯穿波形区 + 编号 */
+        ctx.strokeStyle = 'rgba(39,174,96,0.75)';
+        ctx.setLineDash([5, 4]);
+        ctx.lineWidth = 1;
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        for (i = 0; i < sc.segX.length; i++) {
+            var x1 = sc.segX[i][0], x2 = sc.segX[i][1];
+            ctx.beginPath(); ctx.moveTo(x1, sc.waveTop); ctx.lineTo(x1, sc.waveTop + sc.waveH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x2, sc.waveTop); ctx.lineTo(x2, sc.waveTop + sc.waveH); ctx.stroke();
+            if (x2 - x1 > 15) {
+                ctx.fillStyle = '#1E8449';
+                ctx.fillText(String(i + 1), (x1 + x2) / 2, sc.waveTop + 13);
             }
         }
-        ctx.putImageData(img, mL, specTop);
-        // 语谱行的段线（实线，便于读数）
-        ctx.strokeStyle = 'rgba(39,174,96,0.85)'; ctx.lineWidth = 1;
-        for (s0 = 0; s0 < segs.length; s0++) {
-            var xa = X(segs[s0][0] / sr), xb = X(segs[s0][1] / sr);
-            ctx.beginPath(); ctx.moveTo(xa, specTop); ctx.lineTo(xa, specTop + specH); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(xb, specTop); ctx.lineTo(xb, specTop + specH); ctx.stroke();
-        }
-        ctx.fillStyle = '#777777'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
-        ctx.fillText(freqLabel(fmax), mL - 5, specTop + 10);
-        ctx.fillText(freqLabel(fmin), mL - 5, specTop + specH);
+        ctx.setLineDash([]);
 
-        /* --- 时间轴 --- */
-        ctx.fillStyle = '#666666'; ctx.textAlign = 'center';
-        var nTicks = dur < 4 ? 4 : (dur < 12 ? 6 : 8);
-        for (var tk = 0; tk <= nTicks; tk++) {
-            var t = dur * tk / nTicks;
-            ctx.fillText(t.toFixed(dur < 10 ? 1 : 0) + 's', X(t), H - 6);
+        /* 语谱区段线（实线） */
+        ctx.strokeStyle = 'rgba(39,174,96,0.85)';
+        ctx.lineWidth = 1;
+        for (i = 0; i < sc.segX.length; i++) {
+            var xa = sc.segX[i][0], xb = sc.segX[i][1];
+            ctx.beginPath(); ctx.moveTo(xa, sc.specTop); ctx.lineTo(xa, sc.specTop + sc.specH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(xb, sc.specTop); ctx.lineTo(xb, sc.specTop + sc.specH); ctx.stroke();
         }
-        return { segs: segs, dur: dur };
+        ctx.strokeStyle = 'rgba(120,120,130,0.45)';
+        ctx.strokeRect(sc.mL + 0.5, sc.specTop + 0.5, sc.plotW - 1, sc.specH - 1);
+
+        /* 坐标标签：全部贴在绘图区内部，外面不再留白，才能和进度条对齐 */
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.lineWidth = 2.4;
+        var topLbl = freqLabel(prep.fmax), botLbl = freqLabel(prep.fmin);
+        ctx.strokeText(topLbl, sc.mL + 4, sc.specTop + 11);
+        ctx.fillText(topLbl, sc.mL + 4, sc.specTop + 11);
+        ctx.strokeText(botLbl, sc.mL + 4, sc.specTop + sc.specH - 3);
+        ctx.fillText(botLbl, sc.mL + 4, sc.specTop + sc.specH - 3);
+
+        /* 时间轴刻度（与进度条同一 X 映射） */
+        ctx.textAlign = 'center';
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#7a7a84';
+        var nTicks = prep.dur < 4 ? 4 : (prep.dur < 12 ? 6 : 8);
+        for (var tk = 0; tk <= nTicks; tk++) {
+            var tt = prep.dur * tk / nTicks;
+            var tx = sc.mL + (tt / prep.dur) * sc.plotW;
+            ctx.fillText(tt.toFixed(prep.dur < 10 ? 1 : 0) + 's', tx, sc.chh - 6);
+        }
+
+        /* 播放头 */
+        if (time != null && isFinite(time) && prep.dur > 0) {
+            var hp = sc.mL + Math.max(0, Math.min(time, prep.dur)) / prep.dur * sc.plotW;
+            ctx.strokeStyle = 'rgba(255,86,86,0.95)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(hp, sc.waveTop);
+            ctx.lineTo(hp, sc.specTop + sc.specH);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255,86,86,0.95)';
+            ctx.beginPath();
+            ctx.moveTo(hp - 4.5, sc.waveTop - 1);
+            ctx.lineTo(hp + 4.5, sc.waveTop - 1);
+            ctx.lineTo(hp, sc.waveTop + 5);
+            ctx.closePath();
+            ctx.fill();
+        }
+        return sc;
+    }
+
+    /* 兼容旧接口：一次画完（无缓存） */
+    function drawViz(canvas, mono, sr, opts) {
+        var prep = prepare(mono, sr, opts);
+        render(canvas, prep, (opts && opts.time) || null, opts);
+        return { segs: prep.segs, dur: prep.dur, prep: prep };
     }
 
     global.AudioViz = {
@@ -364,6 +489,9 @@
         envelopeDb: envelopeDb,
         detectSegments: detectSegments,
         stftDb: stftDb,
-        drawViz: drawViz
+        prepare: prepare,
+        render: render,
+        drawViz: drawViz,
+        freqLabel: freqLabel
     };
 })(typeof window !== 'undefined' ? window : globalThis);

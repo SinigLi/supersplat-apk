@@ -164,9 +164,12 @@
 }
 .av-audio {
     position: absolute;
-    inset: 0;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 56px;   /* v46c：给底部播放条留出完整空间，不再重叠压条 */
     width: 100%;
-    height: 100%;
+    height: auto;
     display: none;
     background: #ffffff;
 }
@@ -196,6 +199,7 @@
 }
 
 /* ===== #1 右侧中间竖排控制栏（⏮⏯⏭ / ◀步进▶） ===== */
+/* v46c：去掉大面积毛玻璃底板（真机挡住时频图），按钮自身半透明即可 */
 .av-rail {
     position: absolute;
     right: 12px;    /* v45d：安全区由 .av-page padding 统一承担 */
@@ -205,12 +209,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 10px;
-    background: rgba(11, 14, 20, 0.25);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    border-radius: 14px;
+    gap: 8px;
+    padding: 0;
+    background: transparent;
 }
 .av-rail-row {
     display: flex;
@@ -218,15 +219,15 @@
     gap: 8px;
 }
 
-/* ===== 通用按钮（v45b 透明定稿） ===== */
+/* ===== 通用按钮（v46c 低不透明度，不遮图） ===== */
 .av-ovl-btn {
-    background: rgba(27, 34, 51, 0.38);
-    color: #eee;
-    border: 1px solid rgba(42, 50, 71, 0.4);
+    background: rgba(20, 26, 40, 0.28);
+    color: #f2f2f5;
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 9px;
     padding: 8px 11px;
     font-size: 12px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
     white-space: nowrap;
 }
 .av-ovl-btn:active { background: rgba(70, 70, 80, 0.55); }
@@ -249,14 +250,14 @@
 
 .av-ovl-input {
     width: 52px;
-    background: rgba(27, 34, 51, 0.38);
+    background: rgba(20, 26, 40, 0.28);
     color: #fff;
-    border: 1px solid rgba(42, 50, 71, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 8px;
     padding: 6px 6px;
     font-size: 12px;
     text-align: center;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 .av-ovl-input.av-step { width: 56px; font-size: 13px; padding: 8px 6px; }
 .av-ovl-input.av-fps { width: 44px; }
@@ -280,11 +281,9 @@
     flex-direction: row;
     align-items: center;
     gap: 8px;
-    padding: 6px 8px;
+    padding: 3px 5px;
     border-radius: 10px;
-    background: rgba(20, 20, 24, 0.55);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(16, 18, 24, 0.14);
 }
 
 
@@ -300,7 +299,7 @@
     gap: 8px;
     padding: 4px 8px;
     border-radius: 8px;
-    background: rgba(20, 20, 24, 0.55);
+    background: rgba(16, 18, 24, 0.18);
     color: #eee;
     font-size: 12px;
     pointer-events: auto;
@@ -334,6 +333,59 @@
 }
 
 
+/* ===== v46c：音频模式（白底）下的深色文字适配 =====
+ * 时频图是纯白底，原本为黑底视频设计的浅色文字/半透明底板全部失效，
+ * 这里统一改成深色字 + 极淡底板，既不遮图又能读。
+ */
+.av-audio-mode .av-pos-top {
+    background: rgba(255, 255, 255, 0.58);
+    color: #1c1c22;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.av-audio-mode .av-fps-chip {
+    background: rgba(46, 134, 193, 0.16);
+    border-color: rgba(46, 134, 193, 0.45);
+    color: #14507a;
+}
+.av-audio-mode .av-ovl {
+    background: rgba(255, 255, 255, 0.3);
+}
+.av-audio-mode .av-ovl-btn {
+    background: rgba(255, 255, 255, 0.74);
+    color: #1c1c22;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    text-shadow: 0 1px 1px rgba(255, 255, 255, 0.7);
+}
+/* 右侧大按钮（⏮⏯⏭）：白底上再透一点，不把频谱整块遮掉 */
+.av-audio-mode .av-ovl-btn.av-big {
+    background: rgba(255, 255, 255, 0.70);
+    border: 1px solid rgba(0, 0, 0, 0.16);
+}
+.av-audio-mode .av-ovl-btn.av-accent { color: #167c3c; }
+.av-audio-mode .av-ovl-btn.av-multi { color: #6633cc; }
+.av-audio-mode .av-ovl-btn.av-danger {
+    color: #b32020;
+    background: rgba(255, 235, 235, 0.92);
+    border-color: rgba(200, 60, 60, 0.5);
+}
+.av-audio-mode .av-ovl-input {
+    background: rgba(255, 255, 255, 0.62);
+    color: #1c1c22;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    text-shadow: none;
+}
+.av-audio-mode .av-tl-wrap {
+    background: rgba(255, 255, 255, 0.42);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+.av-audio-mode .av-tl-range::-webkit-slider-runnable-track {
+    background: rgba(0, 0, 0, 0.18);
+}
+.av-audio-mode .av-tl-range::-webkit-slider-thumb {
+    background: #3a3a44;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
 /* ===== #2 播放条：刻度与进度条同层 ===== */
 .av-tl-wrap {
     position: absolute;
@@ -342,10 +394,8 @@
     bottom: 10px;
     height: 40px;
     z-index: 8;
-    background: rgba(11, 14, 20, 0.25);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    border: 1px solid rgba(42, 50, 71, 0.35);
+    background: rgba(16, 18, 24, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
 }
 /* 刻度容器与 range 轨道对齐：内缩半个拇指宽（thumb 20px → 10px） */
