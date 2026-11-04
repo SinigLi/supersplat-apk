@@ -676,10 +676,13 @@ function build() {
             })(job);
         }
     }
+    var mkThumbCalls = 0;
     function mkThumb(f) {
+        mkThumbCalls++;
+        if (mkThumbCalls <= 3) dlog('mkThumb #' + mkThumbCalls + ' ' + f.name);
         var box = el('div', 'av-thumb');
         box.appendChild(el('div', 'av-thumb-ph', '▶'));
-        try { thumbEnqueue(f, box); } catch (e) { /* 保留占位 */ }
+        try { thumbEnqueue(f, box); } catch (e) { dlog('mkThumb enqueue ERR ' + (e && e.message || e)); }
         return box;
     }
 
@@ -705,6 +708,9 @@ function build() {
         });
         var on = listEl.querySelector('.av-item.on');
         if (on) on.scrollIntoView({ block: 'nearest' });
+        dlog('renderList done files=' + S.files.length + ' port=' + S.serverPort + ' mode=' + S.meta.mode +
+            ' thumbs=' + S.meta.thumbs + ' q=' + JSON.stringify({ jobs: thumbJobs.length, live: thumbLive }) +
+            ' mkCalls=' + mkThumbCalls);
     }
 
     function countSplits(seg) {
@@ -1059,7 +1065,7 @@ function build() {
 
     function open(projectName) {
         try {
-            dlog('build v45u');   // 每次打开打版本号：日志与包版本永远对得上
+            dlog('build v45v');   // 每次打开打版本号：日志与包版本永远对得上
             dlog('open(' + projectName + ') meta=' + (L.loadMeta(projectName) ? 'ok' : 'new') +
                 ' folderUri=' + !!(L.loadMeta(projectName) && L.loadMeta(projectName).folderUri));
             build();
@@ -1130,7 +1136,7 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
-        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length }; },
+        _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls }; },
         _refreshFolder: refreshFolder,
         open: open,
         back: back,
