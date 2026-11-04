@@ -200,10 +200,10 @@ try {
         const f169 = grab();
         const camFov169 = Math.round(window.scene.camera.fov);
         d.updateShot(s.id, { aspect: '9:21' });
-        await new Promise(r2 => setTimeout(r2, 400));
+        await new Promise(r2 => setTimeout(r2, 700));   // v45w：连跑高压下 400ms 偶发不足（时序敏感测试加固）
         const f921 = grab();
         d.updateShot(s.id, { aspect: '1:1' });
-        await new Promise(r2 => setTimeout(r2, 400));
+        await new Promise(r2 => setTimeout(r2, 700));   // v45w：同上加固
         const f11 = grab();
         const exitR = d.exitShotView(false);
         await new Promise(r2 => setTimeout(r2, 200));
