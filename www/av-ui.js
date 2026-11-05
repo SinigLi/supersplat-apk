@@ -284,6 +284,7 @@
                 thumbFailCount++;
                 thumbFailCache[job.name] = 'video capture: ' + (err || 'unknown');
                 if (!thumbFailSample) thumbFailSample = job.name + '(video capture fail)';
+                dlog('THUMB-CAP-FAIL ' + job.name + ' reason=' + (err || 'unknown'));
             }
             if (!thumbJobs.length && !thumbLive && !videoThumbQueue.length) thumbSummary();
             setTimeout(videoThumbPump, 60);
@@ -292,6 +293,11 @@
             v.muted = true;
             v.playsInline = true;
             v.preload = 'auto';
+            /* v48 / ISS-001 缺陷A：视频来自 127.0.0.1:<port>，页面来自 Capacitor 源 —— 跨源。
+             * 不声明 crossOrigin 时 drawImage 会污染 canvas，随后 toDataURL 抛 SecurityError，
+             * 被 catch 吞成 'canvas err'，表现为「捕获也失败」。
+             * 必须在 v.src 之前设置，否则不生效。MediaServer 已返回 ACAO:*，故用 anonymous。 */
+            v.crossOrigin = 'anonymous';
             v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(job.name);
             v.addEventListener('loadeddata', function () {
                 try { v.currentTime = Math.min(0.4, (v.duration || 1) * 0.1); } catch (e) { finish(null, 'seek err'); }
