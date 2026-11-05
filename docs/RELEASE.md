@@ -95,6 +95,14 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v29b | 真机 `Missing parent directory` 修复：appendFile 带 recursive、迁移先建档 |
 | v30 | 全局等待进度条；#1 新建重置视口；#3 移动模型分组+复制到游标；#4 泼溅行统一+直接删除；#5 手动裁剪；#6 方块（独立按钮版） |
 | v31 | 老板真机反馈四条：方块入角色下拉、两钮纯图标+组名改「移动」、场景页隐藏 SS 原生泼溅列表（REMOVE SPLAT 弹窗根因）、双头滑轨（对数映射） |
+| v44~v44f | P1 原生解压：ZIP/7z/分卷（`.7z.001~NNN` 自然序拼接），流式写盘+进度+路径穿越防护；输出 `Download/摸鱼台/<同名>/`。修七处：commons-compress 1.26.2 API、`@ActivityCallback` 迁移（Capacitor 7 不再触发旧 `handleOnActivityResult`）、多 DEX 门禁、分卷断号预检、`org.tukaani:xz` 缺失导致的 `NoClassDefFoundError` |
+| v45~v45x | **P2 三模式工程框架 + 视频/音频工作台**：新建工程三选一（`model`/`video`/`audio`）；AV 工程只持久化 SAF `folderUri` + 文件清单 + `marks.json`，不复制媒体；内嵌只读 HTTP Range 服务（仅绑 `127.0.0.1` 随机端口）；分割点/并入前段/多帧参考、半帧吸附、帧量化、rVFC fps 估算+手调；导出 `moyutai.marks.v3` 按段号降序 |
+| v46 / v46c | 音频时频图（`av-viz.js`：dB 包络/气口检测/magma 语谱/对数频轴）；音频播放改走 WebAudio（`<video>` 对 WAV 直接 `MEDIA_ERR_SRC_NOT_SUPPORTED`）；v46c 语谱与时间轴对齐（统一 `EDGE=26px`，误差 1px）+ 去重模糊底板 + 音频模式深色文字 |
+| v47 | **定位修复**：`serveRange` 用 `InputStream.skip()` 定位，provider 给管道流时退化为「读掉 N 字节」，成本 O(偏移)。改 `ParcelFileDescriptor` + `Os.lseek` + `AutoCloseInputStream`：439MB 处 391.2ms → 1.8ms（后半段约 220×）。新增 `SEEK-SLOW`/`SEEK-SUM`/`MEDIA-STATS` 诊断 |
+| v48 | 缩略图捕获视频声明 `crossOrigin='anonymous'`（跨源 canvas 污染 → `toDataURL` 抛 `SecurityError` 被吞成 `canvas err`） |
+| **v48c** | **ISS-001 关闭**：缩略图三个 JS 缺陷叠加（开关被 `thumbsRev='p1'` 永久关死；`thumbFlush()` 每次列表重建清空解码队列；`thumbApply` 的 `isConnected` 早退误杀缓存命中）。另修 seek 锁死（`_seeking` 只靠 `seeked` 解锁 → 改用 `videoEl.seeking` + 1500ms 看门狗 + 重追上限 2）、同片段不重载、`renderList` 签名短路。probe-v45 48/48、v44 16/16，真机确认 |
+
+> v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 
 ## 6. 已知坑（血泪版）
 

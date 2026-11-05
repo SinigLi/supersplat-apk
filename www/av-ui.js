@@ -756,12 +756,14 @@ function build() {
 
     }
 
-    /* v45o：首帧缩略图——原生 MediaServer.thumb 直接解码首帧 JPEG（base64）。
+    /* 首帧缩略图：原生 MediaServer.thumb 直接解码首帧 JPEG（base64）。
      * v45n 的 WebView 视频管线方案在真机不可靠（解码懒加载/画布路径），原生一次到位。 */
-    /* v45s：缩略图缓存 + 泵（并发2 + 30ms 间隔）。
-     * 会话级缓存：每个文件只解码一次，renderList 重绘直接命中贴图，不再重复打原生。
-     * 清队：back()/renderList 时清待处理队列（旧容器已作废），在途的让它们自然结束（结果按 isConnected 丢弃）。
-     * 日志：不再逐条刷 thumb fail（58 条×N 遍），队列排空后汇总一条 ok=N fail=M。 */
+    /* 缩略图缓存 + 泵（并发 2 + 30ms 间隔）。
+     * 会话级缓存：每个文件只解码一次，列表重绘直接命中贴图，不再重复打原生。
+     * 容器登记（v48c）：按文件名记录 box，结果晚到也能铺到重建后的新容器上。
+     *   —— 旧实现在每次列表重建时清空解码队列，而真机上列表每几秒重建一次，
+     *      导致队列永远排不完、缩略图一张都出不来（ISS-001 的三个叠加成因之一）。
+     * 日志：不逐条刷失败（58 条×N 遍），队列排空后汇总一条 ok=N fail=M。 */
     var thumbJobs = [];
     var thumbLive = 0;
     var thumbCache = {};      // name -> jpeg(base64)
@@ -1272,21 +1274,26 @@ function build() {
     function seekRelease(reason) {
         if (!S._seeking) return;
         S._seeking = false;
-        S._seekRetry = 0;
         var want = S._seekWant;
         S._seekWant = null;
         dlog('SEEK-RELEASE ' + reason + (want != null ? ' want=' + fmt2(want) : ''));
-        // 目标没落到位就补一次，补不上就算了（不再无限追）
-        if (want != null && !S._hardReload) {
+        // 目标没落到位就补一次，补不上就算了。
+        // 补发也受重试上限约束，否则目标不可达时看门狗会每 1.5s 无休止地再试。
+        if (want != null) {
             var d = Math.abs((videoEl.currentTime || 0) - want);
+            var retries = S._seekRetry || 0;
+            if (d > 0.25 / Math.max(effFps(), 1) && retries < 2) {
+                S._seekRetry = retries + 1;
+                dlog('SEEK-RETRY #' + S._seekRetry + ' want=' + fmt2(want) +
+                    ' got=' + fmt2(videoEl.currentTime || 0));
+                applySeekNow(want);
+                return;
+            }
             if (d > 0.25 / Math.max(effFps(), 1)) {
-                S._seeking = true;
-                S._seekWant = want;
-                if (S._seekLog) S._seekLog.t0 = performance.now();
-                videoEl.currentTime = want;
+                dlog('SEEK-GIVEUP want=' + fmt2(want) + ' got=' + fmt2(videoEl.currentTime || 0));
             }
         }
-        S._hardReload = false;
+        S._seekRetry = 0;
         renderPos();
     }
     function seekCoalesced(t) {
@@ -1318,6 +1325,7 @@ function build() {
          * 否则后续所有 seek 都会被误当“在途”而吞掉 —— 这正是真机“不跟手”的根因之一。 */
         if (!videoEl.seeking) {
             S._seeking = false;
+            S._seekRetry = 0;          // 已到位：重试计数归零，别让下一次正常 seek 一上来就撞上限
             if (S._seekWant === t) S._seekWant = null;
             if (S._seekGuard) { clearTimeout(S._seekGuard); S._seekGuard = null; }
         }
@@ -1682,7 +1690,7 @@ function build() {
         dlog('back() cur=' + S.cur);
         logMediaStats('back');
         saveAll(false);
-        thumbFlush();   // v45s：退出即清缩略图队列，残留任务不再空转刷日志
+        thumbFlush();   // 退出回收已断开的容器引用；解码队列不再清空（否则残留任务白跑）
         videoThumbQueue.length = 0;   // v45w：退出同步清视频捕获队列
         stopServer();
         unlockOrientation();

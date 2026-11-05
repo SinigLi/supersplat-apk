@@ -368,6 +368,9 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 | v46d | 回归端口确定性回收 | 85c906c | **纯测试基建，产品代码零改动**。probe-v42 偶发 13/14 的真因：上一套残留的 staticsrv/Edge 占着 4205/9265，v42 静默连到旧页面读到旧 DOM，安全框数值永不变化。三层缺陷：①套内端口重号（4199 被 v30/v32/v28b 共用，4205+9265 被 v35/v42 共用）②守卫只报忙不回收 ③编排 `killStale` 只扫 9xxx 从不碰 4xxx。新增 `tests/lib/net-reclaim.mjs`（`isFree`/`reclaimPort` 按监听 PID `taskkill /T /F` 并轮询到真释放/`reclaimPorts`/`ephemeralPorts`，**跳过自身 PID** 防自杀）；30 个测试全部 `await reclaimPorts([PORT, CDP])` 前置并分配唯一端口（30/30 唯一）；编排每套前后全量回收 + 失败自动重跑一次以区分抖动与真回归。实证：杀 2 个外部监听 5.2s 内双端口释放；18/18 全绿，每套 `freed=59/59` |
 | v47 | 定位修复（长视频按帧卡顿） | c63719a | 老板反馈「播放较长的视频按帧移动画面跟不上，尤其后半段，开头还好」。**根因**：`serveRange` 用 `InputStream.skip()` 循环定位；SAF provider 给的是管道流时 skip 退化为「读掉 N 字节再丢弃」，成本 O(偏移)，越往后越慢。同一条 Range 路径也在拖缩略图捕获通道（v45w/x）。**实测**（461MB/166s 真实 4K，单次 256KB Range 首字节）：0MB 1.5ms → 439MB 391.2ms（**265 倍**）；改 `Os.lseek` 后同条件 1.5ms → 1.8ms（**1.2 倍**），后半段提速 220 倍。实现用 `ParcelFileDescriptor` + `Os.lseek` + `AutoCloseInputStream`（该流拥有 fd，避免双重关闭竞态）；provider 返回不可定位流时 lseek 抛错自动退回 skip 兜底。**诊断**（按老板「定位不到就先打日志」要求）：Java 新增 `stats()` 暴露 ranges/lseek/skipFallback/seekMsAvg/Max；JS 新增 `SEEK-SLOW`（>400ms 带位置比例）与 `SEEK-SUM`（每 20 次 p50/p90/max），打开/退出工程打 `MEDIA-STATS`。AV E2E 24/24 绿 |
 
+| v48 | 缩略图捕获跨源污染（ISS-001 缺陷A） | 7b4bc54 | `videoThumbPump` 的捕获 `<video>` 未声明 `crossOrigin`。服务在 `127.0.0.1:<port>`，页面在 Capacitor 源，属跨源；未声明则 `drawImage` 污染 canvas，`toDataURL` 抛 `SecurityError`，被 catch 吞成 `canvas err`，与「播放正常但截帧出不来」完全吻合。本地实证（4K 片段，页面 :4981 / 媒体 :4982）：不加 → `SecurityError: Tainted canvases may not be exported.`；加 `crossOrigin='anonymous'` → 1180 字节 JPEG 192x108。必须在赋 `v.src` 之前设置。MediaServer 已返回 `ACAO:*`，服务端无需改。另加逐文件 `THUMB-CAP-FAIL` 日志 |
+| v48c | 缩略图三缺陷 + seek 锁死 | f28d0dc | **缩略图三个叠加缺陷**（均 JS 层，每一个都足以全灭）：①开关被永久关死——旧一次性恢复用 `thumbsRev='p1'` 去重，写过 p1 后永不再恢复，真机日志 `thumbs=false` 铁证；改为除非用户手动关（`thumbsUserOff`）就恢复 ②解码队列被反复清空——`thumbFlush()` 每次 renderList 清 `thumbJobs`，而列表真机每 3~5 秒重建，队列永远排不完；改为 `thumbBoxes` 按文件名登记容器，结果晚到也铺到新容器 ③缓存命中被误杀——`thumbApply` 判 `!box.isConnected` 早退，但 `mkThumb` 作为 `appendChild` 实参调用时 box 尚未入文档，每次命中都静默丢弃。**seek 锁死**（“按帧不跟手”根因）：`_seeking` 仅靠 `seeked` 解锁，解码器不派发时（同位/重载中/无真实媒体）永久卡 true，后续 seek 全被吞；改用 `videoEl.seeking` 判真在途 + 未进入 seeking 当场解锁 + 1500ms 看门狗 + 重追上限 2 次。另：同片段不重复装源（`_loadedSrc`，4K 不再重解 GOP）、`renderList` 签名短路。**门禁**：probe-v45 48/48（N4 img=0→3）、v44 16/16；真机老板确认「缩略图也出来了」 |
+
 ## 9. 已知边界 / 待办
 
 - 动画库只保留 `assets_src/UAL1_Standard.glb` 一份；`spike/glb-load-test/index.html` 按 `../../assets_src/UAL1_Standard.glb` 加载。
@@ -381,4 +384,6 @@ node tests/probe-bottom.mjs  # 底栏按钮量测 + 截图
 - **白色外包盒（v36，v37 改可遮挡）补充黄点**：选中任何人偶/道具/泼溅时绘制 12 条白色棱线框，中心贴合对象包围盒；黄点仍负责精确定位基准点。棱线粗细随对象尺寸伸缩（下限 0.01），包围盒尚不可用时（蒙皮首帧前）退化为标准人形盒。v37 起开深度测试（只读不写）：模型能挡住身后的盒线，符合 DCC 选中框直觉；泼溅不写深度所以不会遮挡盒线。
 
 
-> ⚠ **ISS-001 进行中挂起（2026-11-04）**：真机视频列表缩略图不显示，v45o~v45x 共 10 版迭代未根治（桌面探针全绿但真机无效——桌面 mock 无法暴露原生解码栈差异）。完整证据链/已确证事实/嫌疑分析/重启切入点见 docs/KNOWN-ISSUES.md ISS-001。当前代码状态：原生失败自动降级「页面内视频捕获」通道（v45x 自适应：连续 2 次原生失败判死 3 天直走快道），此路径未经真机验证。不影响播放/标记/导出/fps（fps 已稳定 23.976）。
+> ✅ **ISS-001 已关闭（2026-11-05，v48c）**：真机缩略图正常。根因不在解码栈（不是 SecureDecoder、不是 canvas 污染、不是原生阶梯毒化——`mkCalls` 全程不变证明相关代码根本没执行），而是**三个 JS 层缺陷叠加**：开关被 `thumbsRev='p1'` 永久关死、`thumbFlush()` 每次列表重建清空解码队列、`thumbApply` 的 `isConnected` 早退误杀每次缓存命中。v48c 一并修掉，老板真机确认。完整定案见 docs/KNOWN-ISSUES.md ISS-001 文末。
+>
+> 遗留体验项 **ISS-002**：首次进入 58 段 4K 工程时缩略图要排一会儿（并发上限 2 × 4K 首帧解码，属真实解码成本，老板明确可接受）。优化方向见 KNOWN-ISSUES。
