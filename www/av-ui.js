@@ -279,7 +279,7 @@
             if (jpeg) {
                 thumbCache[job.name] = jpeg;   // v45x：先入缓存，下次打开秒出
                 thumbOkCount++;
-                if (job.box && job.box.isConnected) thumbApply(job.box, jpeg);
+                thumbPaint(job.name, jpeg);    // v48c：铺到所有活着的容器（列表可能已重建）
             } else {
                 thumbFailCount++;
                 thumbFailCache[job.name] = 'video capture: ' + (err || 'unknown');
@@ -325,9 +325,11 @@
 
     function toggleThumbs() {
         S.meta.thumbs = (S.meta.thumbs === false);   // 默认开
+        S.meta.thumbsUserOff = (S.meta.thumbs === false);   // v48c：记下是用户手动关的，不再被自动恢复覆盖
         saveAll(false);
         renderList();
         renderPos();
+        dlog('thumbs toggled -> ' + (S.meta.thumbs === false ? 'off' : 'on') + ' (user)');
     }
 
     function startFpsEdit() {
@@ -586,7 +588,32 @@ function build() {
         }
 
         videoEl.addEventListener('timeupdate', renderPos);
-        videoEl.addEventListener('seeked', renderPos);
+        videoEl.addEventListener('seeked', function () {
+            S._seeking = false;
+            var want = S._seekWant;
+            S._seekWant = null;
+            // 目标是最后一次点击的位置：差超过 1/4 帧就再追一次
+            // v48c：加追次数上限（2 次）。解码器落地有偏差时，无限重追会死循环、
+            // 每次都再付一次 200~450ms 解码成本，反而更卡。
+            if (want != null) {
+                var d = Math.abs((videoEl.currentTime || 0) - want);
+                var retries = S._seekRetry || 0;
+                if (d > 0.25 / Math.max(effFps(), 1) && retries < 2) {
+                    S._seekRetry = retries + 1;
+                    if (retries > 0) dlog('SEEK-RETRY #' + (retries + 1) + ' want=' + fmt2(want) +
+                        ' got=' + fmt2(videoEl.currentTime || 0));
+                    seekCoalesced(want);
+                } else {
+                    if (retries >= 2 && d > 0.25 / Math.max(effFps(), 1)) {
+                        dlog('SEEK-GIVEUP want=' + fmt2(want) + ' got=' + fmt2(videoEl.currentTime || 0));
+                    }
+                    S._seekRetry = 0;
+                }
+            } else {
+                S._seekRetry = 0;
+            }
+            renderPos();
+        });
         /* v47：定位计时（诊断「长视频按帧移动越到后半段越慢」）
          * 记「下发 seek → seeked 触发」的延迟，并带上位置比例，
          * 若延迟随位置比例上升即证实与偏移相关（服务端 skip 定位线性成本）。
@@ -785,15 +812,39 @@ function build() {
     var thumbFailLogged = 0;  // 只详细记录前 3 条失败（够定位，不刷屏）
     var thumbFailSample = ''; // 汇总里带的第一条失败样例
     var thumbOkCount = 0, thumbFailCount = 0, thumbSummarized = true;
-    function thumbFlush() {
-        thumbJobs.length = 0;
+    /* v48c：列表重建后要把已解码结果贴到新容器上。
+     * 旧逻辑每次 renderList 都 thumbFlush() 清空队列，而列表在真机上被反复重建，
+     * 队列永远排不完 → 缩略图一个都不出。改为按文件名登记容器，解出即铺满所有活着的 box。 */
+    var thumbBoxes = {};      // name -> [box]（随列表重建累积，断开即回收）
+    function thumbRegister(name, box) {
+        if (!thumbBoxes[name]) thumbBoxes[name] = [];
+        thumbBoxes[name].push(box);
     }
     function thumbApply(box, jpeg) {
+        /* v48c：不能在这里判 isConnected。mkThumb 是作为 appendChild 的实参调用的，
+         * 此时 box 尚未接入文档；缓存命中的同步路径会因此被误杀（真机就是缩略图不显示）。 */
+        if (!box) return;
         var img = document.createElement('img');
         img.className = 'av-thumb-img';
         img.src = 'data:image/jpeg;base64,' + jpeg;
         box.innerHTML = '';
         box.appendChild(img);
+    }
+    function thumbPaint(name, jpeg) {
+        var arr = thumbBoxes[name] || [];
+        var live = [];
+        for (var i = 0; i < arr.length; i++) {
+            var b = arr[i];
+            if (b && b.isConnected) { thumbApply(b, jpeg); live.push(b); }
+        }
+        thumbBoxes[name] = live;   // 断开的一次回收，防无限累积
+    }
+    function thumbFlush() {
+        // v48c：不再清解码队列（那是缩略图永远出不来的主因），只回收已断开的容器引用
+        Object.keys(thumbBoxes).forEach(function (n) {
+            thumbBoxes[n] = thumbBoxes[n].filter(function (b) { return b && b.isConnected; });
+            if (!thumbBoxes[n].length) delete thumbBoxes[n];
+        });
     }
     function thumbSummary() {
         if (thumbSummarized) return;
@@ -847,7 +898,7 @@ function build() {
                     nativeThumbPersistSet(false);
                     if (r && r.jpeg && String(r.jpeg).length > 50) {
                         thumbCache[job.f.name] = r.jpeg;
-                        if (job.box.isConnected) thumbApply(job.box, r.jpeg);
+                        thumbPaint(job.f.name, r.jpeg);   // v48c：铺到所有活着的容器，不只当前 box
                         thumbOkCount++;
                     } else {
                         thumbFailCount++;
@@ -876,12 +927,22 @@ function build() {
         if (mkThumbCalls <= 3) dlog('mkThumb #' + mkThumbCalls + ' ' + f.name);
         var box = el('div', 'av-thumb');
         box.appendChild(el('div', 'av-thumb-ph', '▶'));
+        thumbRegister(f.name, box);   // v48c：登记容器，解码结果晚到也能贴上
         try { thumbEnqueue(f, box); } catch (e) { dlog('mkThumb enqueue ERR ' + (e && e.message || e)); }
         return box;
     }
 
     function renderList() {
-        thumbFlush();   // v45s：列表即将重建，旧队列任务引用的容器已作废
+        /* v48c：无变化不重建。日志显示列表在真机上每 3~5 秒被重建一次（58 项 × mkThumb），
+         * 白烧 CPU 且反复打断缩略图队列。用签名挡掉纯重复调用。 */
+        var sig = S.files.length + '|' + S.cur + '|' + (S.marks && S.marks.marks.length) + '|' +
+            S.serverPort + '|' + (S.meta.thumbs === false ? '0' : '1') + '|' + S.meta.mode;
+        if (sig === S._listSig) {
+            dlog('renderList skip (unchanged)');
+            return;
+        }
+        S._listSig = sig;
+        thumbFlush();   // v48c：只回收已断开的容器引用，不清解码队列
         listEl.innerHTML = '';
         S.files.forEach(function (f, i) {
             var card = el('div', 'av-item' + (i === S.cur ? ' on' : ''));
@@ -985,6 +1046,11 @@ function build() {
 
     function selectFile(i) {
         if (i < 0 || i >= S.files.length) return;
+        // v48c：同一段重复点不再重建+重载（旧逻辑会白跑一整轮 renderList + 重解 GOP）
+        if (i === S.cur && S._loadedSrc) {
+            dlog('selectFile same index ' + i + ', skip');
+            return;
+        }
         S.cur = i;
         renderList();
         playCurrent(true);
@@ -1197,10 +1263,70 @@ function build() {
     function curTime() {
         return S.meta && S.meta.mode === 'audio' ? apTime() : (videoEl.currentTime || 0);
     }
+    /* v48b：seek 合并状态。视频解码 4K 一帧要 200~450ms（实测），
+     * 连按时若每次都立刻下发 currentTime，后一次会覆盖前一次的请求，
+     * 但进度条只在 seeked 后才更新 → 用户觉得"点了没反应"。 */
+    /* v48c：_seeking 必须能自己解锁。seeked 在某些情况下不会派发
+     * （目标与当前位相同、解码器拒绝、源正在重载）——而一旦卡在 true，
+     * 后续所有 seek 都被当成"在途"只记目标不发请求，画面永久不跟手。 */
+    function seekRelease(reason) {
+        if (!S._seeking) return;
+        S._seeking = false;
+        S._seekRetry = 0;
+        var want = S._seekWant;
+        S._seekWant = null;
+        dlog('SEEK-RELEASE ' + reason + (want != null ? ' want=' + fmt2(want) : ''));
+        // 目标没落到位就补一次，补不上就算了（不再无限追）
+        if (want != null && !S._hardReload) {
+            var d = Math.abs((videoEl.currentTime || 0) - want);
+            if (d > 0.25 / Math.max(effFps(), 1)) {
+                S._seeking = true;
+                S._seekWant = want;
+                if (S._seekLog) S._seekLog.t0 = performance.now();
+                videoEl.currentTime = want;
+            }
+        }
+        S._hardReload = false;
+        renderPos();
+    }
+    function seekCoalesced(t) {
+        S._seekWant = t;
+        /* v48c：用 videoEl.seeking 判断是否真在途。
+         * 不同解码器/不同场景 seeked 不一定派发（目标与当前位相同、
+         * 源重载中、无真实媒体），只靠 seeked 解锁会永久卡死。 */
+        if (S._seeking && videoEl.seeking) {
+            return;          // 真在途：只记目标，等 seeked 追
+        }
+        applySeekNow(t);
+    }
+    function applySeekNow(t) {
+        S._seeking = true;
+        if (S._seekLog) S._seekLog.t0 = performance.now();
+        if (S._seekGuard) { clearTimeout(S._seekGuard); }
+        S._seekGuard = setTimeout(function () {
+            S._seekGuard = null;
+            if (S._seeking) seekRelease('watchdog 1500ms');
+        }, 1500);
+        try {
+            videoEl.currentTime = t;
+        } catch (e) {
+            dlog('SEEK-ERR ' + (e && e.message || e));
+            seekRelease('exception');
+            return;
+        }
+        /* 赋值后若元素并没进入 seeking（无真实媒体/已到位），当场解锁，
+         * 否则后续所有 seek 都会被误当“在途”而吞掉 —— 这正是真机“不跟手”的根因之一。 */
+        if (!videoEl.seeking) {
+            S._seeking = false;
+            if (S._seekWant === t) S._seekWant = null;
+            if (S._seekGuard) { clearTimeout(S._seekGuard); S._seekGuard = null; }
+        }
+    }
+
     function setTime(t) {
         if (S.meta && S.meta.mode === 'audio') { apSeek(t); drawVizHead(); return; }
-        if (S._seekLog) S._seekLog.t0 = performance.now();   // v47：定位计时起点
-        videoEl.currentTime = t;
+        seekCoalesced(t);
+        renderPos();   // 乐观显示：先让标签/进度条跟上，画面随后
     }
 
     /* v46：时长来源。视频走 <video>；音频用解码结果兜底
@@ -1228,8 +1354,21 @@ function build() {
             try { videoEl.pause(); videoEl.removeAttribute('src'); videoEl.load(); } catch (e) { }
             setTime(0);
         } else {
-            videoEl.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
-            videoEl.load();
+            /* v48c：同一片段不重复装源。旧逻辑每次 playCurrent 都重设 src + load()，
+             * 4K 文件重载要重新起流、重新解 GOP，是「越用越卡」的放大器。
+             * 列表重建/重绘也会走到这里，所以必须挡住。 */
+            var wantSrc = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
+            if (S._loadedSrc === wantSrc && S._loadedName === f.name) {
+                dlog('playCurrent skip reload ' + f.name);
+            } else {
+                S._loadedSrc = wantSrc;
+                S._loadedName = f.name;
+                S._seekRetry = 0;
+                S._seeking = false;
+                S._seekWant = null;
+                videoEl.src = wantSrc;
+                videoEl.load();
+            }
         }
         renderList();
         renderPos();
@@ -1249,7 +1388,8 @@ function build() {
     /* ---------- 位置显示 + 按钮状态 ---------- */
 
     function renderPos() {
-        var t = curTime();
+        // v48b：正在 seek 时显示"目标时间"，让点击立刻有反馈（画面稍后跟上）
+        var t = (S._seeking && S._seekWant != null) ? S._seekWant : curTime();
         var d = curDur();
         if (isFinite(d) && d > 0) {
             tlRange.value = String(Math.round((t / d) * 1000));
@@ -1592,11 +1732,13 @@ function build() {
             S.files = [];
             S.cur = -1;
             S.fps = S.meta.fps || null;
-            // v45p：一次性恢复缩略图（v45m/o 期间被误关+持久化；恢复这一次后，再手动关闭会被尊重）
-            if (S.meta.thumbs === false && S.meta.thumbsRev !== 'p1') {
+            // v48c：缩略图默认开。旧的一次性恢复靠 thumbsRev='p1' 去重，
+            // 但一旦写过 p1（含 v45m/o 误关那次），之后永远不再恢复 → 真机永久无缩略图。
+            // 改为：thumbs 显式 false 但从未被用户手动关过（thumbsUserOff 无值）就恢复。
+            if (S.meta.thumbs === false && !S.meta.thumbsUserOff) {
                 S.meta.thumbs = true;
-                S.meta.thumbsRev = 'p1';
                 saveAll(false);
+                dlog('thumbs auto-restored (was off, not user-set)');
             }
             setSide(true);
             applyStageMode();   // v46：音频工程显示时频图、隐藏视频层
