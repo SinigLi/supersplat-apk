@@ -40,6 +40,7 @@ spike/glb-load-test/     F0 技术验证页（GLB + 泼溅同场景）
 prototype/               网页交互原型（定稿后再移植 APK）
 docs/DIRECTOR.md         导演台模块架构 / API / 资产流水线 / 版本史
 docs/PROJECTS.md         工程管理：存储布局 / .svproj 格式 / 双页 UI / 脏检查
+docs/KNOWN-ISSUES.md      已知未解决问题（ISS-001 真机缩略图等证据链与重启切入点）
 docs/RELEASE.md          构建与发版手册
 DOCK.md                  停靠组 UI 架构与真机事故红线
 ```
