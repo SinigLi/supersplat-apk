@@ -35,6 +35,25 @@
             }
         } catch (e) { }
     }
+
+    /* v47：把原生定位统计打到日志里（判断真机是否还在走 skip 慢路径）
+     * MediaServerPlugin.stats() 返回 ranges/lseek/skipFallback/seekMsAvg/seekMsMax。
+     * lseek 占比高 = 已走快路径；skipFallback 有值 = 该 provider 不支持定位，仍在慢路径。 */
+    function logMediaStats(tag) {
+        try {
+            var p = ms();
+            if (!p || !p.stats) return;
+            var r = p.stats();
+            if (r && r.then) {
+                r.then(function (s) {
+                    if (!s) return;
+                    dlog('MEDIA-STATS[' + tag + '] ranges=' + s.ranges + ' lseek=' + s.lseek +
+                        ' skipFallback=' + s.skipFallback + ' avg=' + s.seekMsAvg + 'ms max=' + s.seekMsMax + 'ms');
+                }).catch(function () { });
+            }
+        } catch (e) { }
+    }
+
     // 全局网：任何未捕获错误/拒绝都落日志（真机上不再有静默失败）
     window.addEventListener('error', function (e) {
         dlog('JS-ERR ' + (e.message || '') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || '?'));
@@ -562,6 +581,36 @@ function build() {
 
         videoEl.addEventListener('timeupdate', renderPos);
         videoEl.addEventListener('seeked', renderPos);
+        /* v47：定位计时（诊断「长视频按帧移动越到后半段越慢」）
+         * 记「下发 seek → seeked 触发」的延迟，并带上位置比例，
+         * 若延迟随位置比例上升即证实与偏移相关（服务端 skip 定位线性成本）。
+         * 单条 >400ms 落日志；每 20 次汇总 p50/p90/max。 */
+        if (!S._seekHooked) {
+            S._seekHooked = true;
+            S._seekLog = { n: 0, slow: 0, samples: [], t0: 0 };
+            videoEl.addEventListener('seeked', function () {
+                var st = S._seekLog;
+                if (!st || !st.t0) return;
+                var dt = Math.round(performance.now() - st.t0);
+                st.t0 = 0;
+                var d = curDur();
+                var ratio = (isFinite(d) && d > 0) ? Math.round((videoEl.currentTime / d) * 100) : -1;
+                st.n++;
+                st.samples.push(dt);
+                if (st.samples.length > 40) st.samples.shift();
+                if (dt >= 400) {
+                    st.slow++;
+                    dlog('SEEK-SLOW ' + dt + 'ms @' + fmt2(videoEl.currentTime) + 's pos=' + ratio + '% dur=' +
+                        (isFinite(d) ? fmt2(d) : '?') + 's');
+                }
+                if (st.n % 20 === 0) {
+                    var arr = st.samples.slice().sort(function (a, b) { return a - b; });
+                    var q = function (p) { return arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * p))] : 0; };
+                    dlog('SEEK-SUM n=' + st.n + ' slow=' + st.slow + ' p50=' + q(0.5) + 'ms p90=' + q(0.9) +
+                        'ms max=' + arr[arr.length - 1] + 'ms');
+                }
+            });
+        }
         videoEl.addEventListener('loadedmetadata', function () {
             // v45n：选中即显示第一帧——部分 WebView loadedmetadata 后画面区仍是黑屏占位，
             // seek 微量触发解码器出第一帧，不用点播放/下一帧
@@ -1144,6 +1193,7 @@ function build() {
     }
     function setTime(t) {
         if (S.meta && S.meta.mode === 'audio') { apSeek(t); drawVizHead(); return; }
+        if (S._seekLog) S._seekLog.t0 = performance.now();   // v47：定位计时起点
         videoEl.currentTime = t;
     }
 
@@ -1484,6 +1534,7 @@ function build() {
 
     function back() {
         dlog('back() cur=' + S.cur);
+        logMediaStats('back');
         saveAll(false);
         thumbFlush();   // v45s：退出即清缩略图队列，残留任务不再空转刷日志
         videoThumbQueue.length = 0;   // v45w：退出同步清视频捕获队列
@@ -1559,6 +1610,7 @@ function build() {
             lockLandscape();
             applySafeArea();      // #4：系统栏避让
             dlog('page open; folderUri=' + (S.meta.folderUri ? 'yes' : 'no'));
+            logMediaStats('open');
             // 渲染取证：120ms 后回报计算样式（若再异常，日志直接给出层叠真相）
             setTimeout(function () {
                 try {

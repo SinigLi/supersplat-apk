@@ -429,6 +429,29 @@ public class MediaServerPlugin extends Plugin {
         return cr().openInputStream(doc);
     }
 
+    /* ---------- v47：定位成本统计（诊断用，读操作无锁风险） ---------- */
+
+    private volatile long stRanges = 0, stLseek = 0, stSkip = 0, stSeekMsSum = 0, stSeekMsMax = 0;
+
+    private synchronized void noteSeek(boolean byLseek, long ms) {
+        stRanges++;
+        if (byLseek) stLseek++; else stSkip++;
+        stSeekMsSum += ms;
+        if (ms > stSeekMsMax) stSeekMsMax = ms;
+    }
+
+    /** 诊断口：JS 侧 dlog 出来即可判断真机是否还在走慢路径 */
+    @PluginMethod
+    public void stats(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("ranges", stRanges);
+        r.put("lseek", stLseek);
+        r.put("skipFallback", stSkip);
+        r.put("seekMsMax", stSeekMsMax);
+        r.put("seekMsAvg", stRanges > 0 ? Math.round(stSeekMsSum * 10.0 / stRanges) / 10.0 : 0.0);
+        call.resolve(r);
+    }
+
     private void serveFull(OutputStream out, Uri doc, String mime, long size) throws Exception {
         InputStream in = openDoc(doc);
         if (in == null) { writeResp(out, 500, "text/plain", "open failed".getBytes(StandardCharsets.UTF_8), null, 0); return; }
@@ -462,15 +485,47 @@ public class MediaServerPlugin extends Plugin {
             writeResp(out, 416, "text/plain", "range error".getBytes(StandardCharsets.UTF_8), null, 0);
             return;
         }
-        InputStream in = openDoc(doc);
-        if (in == null) { writeResp(out, 500, "text/plain", "open failed".getBytes(StandardCharsets.UTF_8), null, 0); return; }
-        long skipTotal = start;
-        while (skipTotal > 0) {
-            long skipped = in.skip(skipTotal);
-            if (skipped <= 0) break;
-            skipTotal -= skipped;
+        // v47：改为 O(1) 定位。原实现用 InputStream.skip()，在部分 SAF provider 上退化为
+        // 「顺序读掉 N 字节再丢弃」，成本随偏移线性增长 → 长视频后半段按帧移动明显变慢，
+        // 缩略图捕获通道（同一条 Range 路径）也被一起拖死。
+        long seekT0 = android.os.SystemClock.elapsedRealtime();
+        InputStream in = null;
+        boolean byLseek = false;
+        try {
+            android.os.ParcelFileDescriptor pfd = cr().openFileDescriptor(doc, "r");
+            if (pfd == null) throw new java.io.IOException("pfd null");
+            try {
+                if (start > 0) {
+                    android.system.Os.lseek(pfd.getFileDescriptor(), start, android.system.OsConstants.SEEK_SET);
+                }
+                in = new android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd);
+                byLseek = true;
+            } catch (Exception le) {
+                // provider 给的是不可定位的管道流：关掉 pfd，退回顺序跳过
+                try { pfd.close(); } catch (Exception ignored) { }
+                in = openDoc(doc);
+                if (in == null) { writeResp(out, 500, "text/plain", "open failed".getBytes(StandardCharsets.UTF_8), null, 0); return; }
+                long skipTotal = start;
+                while (skipTotal > 0) {
+                    long skipped = in.skip(skipTotal);
+                    if (skipped <= 0) break;
+                    skipTotal -= skipped;
+                }
+                if (skipTotal > 0) {
+                    in.close();
+                    writeResp(out, 500, "text/plain", "seek failed".getBytes(StandardCharsets.UTF_8), null, 0);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            writeResp(out, 500, "text/plain", ("open failed: " + e.getMessage()).getBytes(StandardCharsets.UTF_8), null, 0);
+            return;
         }
-        if (skipTotal > 0) { in.close(); writeResp(out, 500, "text/plain", "seek failed".getBytes(StandardCharsets.UTF_8), null, 0); return; }
+        if (in == null) {
+            writeResp(out, 500, "text/plain", "open failed".getBytes(StandardCharsets.UTF_8), null, 0);
+            return;
+        }
+        noteSeek(byLseek, android.os.SystemClock.elapsedRealtime() - seekT0);
         long len = end - start + 1;
         StringBuilder h = new StringBuilder();
         h.append("HTTP/1.1 206 Partial Content\r\n");
