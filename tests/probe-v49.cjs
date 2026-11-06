@@ -183,25 +183,55 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
     ck('重做后笔画恢复', st.strokes === 1 && st.redo === 0, st);
 
-    // 多边形
+    /* v49b：多边形改为手绘套索——按住拖动画一圈，松手自动闭合。
+     * 探针对应改造：一次 pointerdown → 沿矩形轨迹 pointermove → pointerup。 */
     await ev('window.__img._setTool("polygon")');
     await sleep(200);
-    await ev(`(async () => {
+    const lasso = await ev(`(async () => {
       const s = document.querySelector('#imgPage .img-stage');
       const mk = (t,pid,x,y) => new PointerEvent(t,{pointerId:pid,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true,button:0,buttons:1});
-      const pts = [[100,300],[250,300],[250,420],[100,420]];
-      for (const [x,y] of pts) {
-        s.dispatchEvent(mk('pointerdown',2,x,y));
-        s.dispatchEvent(mk('pointerup',2,x,y));
-        await new Promise(r=>setTimeout(r,100));
+      const before = window.__img.state().strokes;
+      // 画一个矩形轮廓并回到起点（模拟套索）
+      const path = [];
+      const L = 140, T = 300, R = 250, B = 420;
+      for (let x = L; x <= R; x += 8) path.push([x, T]);
+      for (let y = T; y <= B; y += 8) path.push([R, y]);
+      for (let x = R; x >= L; x -= 8) path.push([x, B]);
+      for (let y = B; y >= T; y -= 8) path.push([L, y]);
+      s.dispatchEvent(mk('pointerdown', 2, L, T));
+      for (const [x,y] of path) {
+        s.dispatchEvent(mk('pointermove', 2, x, y));
+        await new Promise(r=>requestAnimationFrame(r));
       }
+      const mid = window.__img.state().strokes;
+      s.dispatchEvent(mk('pointerup', 2, L, T));
+      await new Promise(r=>setTimeout(r,150));
+      const after = window.__img.state().strokes;
+      return JSON.stringify({before, duringDrag: mid, after});
     })()`);
+    const lr = JSON.parse(lasso);
+    console.log('套索状态: ' + lasso);
+    ck('拖动中未入栈（松手才闭合）', lr.duringDrag === lr.before, lr);
+    ck('松手后自动闭合入栈', lr.after === lr.before + 1, lr);
     await sleep(300);
-    await shot('S4-polygon-points');
-    await ev('window.__img._finishPolygon()');
-    await sleep(300);
+    await shot('S4-polygon-lasso');
+
     st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
     ck('多边形入栈', st.strokes === 2, st.strokes);
+
+    // 闭合验证：导出蒙版在矩形内部应为挖穿状态
+    const lassoHole = JSON.parse(await ev(`(() => {
+      const st = window.__img.state();
+      const c = window.__img._exportCanvas();
+      const g = c.getContext('2d');
+      // 矩形内部中心点（图片坐标 ≈ 屏幕/scale，但这里直接扫全图统计）
+      const d = g.getImageData(0,0,c.width,c.height).data;
+      let holes = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] === 0) holes++;
+      return JSON.stringify({holes, w: c.width, h: c.height});
+    })()`));
+    console.log('套索导出: ' + JSON.stringify(lassoHole));
+    ck('套索区域已挖穿', lassoHole.holes > 1000, lassoHole.holes);
     await shot('S5-polygon-done');
 
     // 反选

@@ -27,8 +27,11 @@
 "/* 摸鱼台 v49 —— 图片工作台样式（自原型 image-mode-proto.html 移植） */",
 ".img-page{position:fixed;inset:0;display:none;flex-direction:column;background:#1a1d21;z-index:1550}",
 ".img-page.open{display:flex}",
-"/* 顶栏：系统栏避让交给 safe-area 变量 */",
-".img-top{position:relative;height:52px;display:flex;align-items:center;gap:6px;flex-shrink:0;",
+/* 顶栏：系统栏/挖孔避让由 applySafeArea() 动态注入 padding（Android 15 edge-to-edge
+ * 下 env(safe-area-inset) 不可靠，必须走 MediaServer.getSafeArea，同 av-ui 方案） */
+/* box-sizing:border-box 必写：applySafeArea() 会设 height=52+inset 并同时加
+ * padding-top，content-box 下两者相加会把顶栏撑到 100px（实测），吸掉六分之一屏。 */
+".img-top{position:relative;height:52px;box-sizing:border-box;display:flex;align-items:center;gap:6px;flex-shrink:0;",
 "  padding:0 8px 0 6px;background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,.35));z-index:60}",
 ".img-top-btn{height:34px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);",
 "  background:rgba(58,63,70,.9);color:#eee;font-size:12.5px;display:flex;align-items:center;gap:4px;",
@@ -42,7 +45,11 @@
 "  background:repeating-conic-gradient(#26292e 0% 25%,#202327 0% 50%) 50%/24px 24px}",
 ".img-wrap{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}",
 ".img-base{display:block;max-width:none}",
-".img-mask{position:absolute;left:0;top:0;pointer-events:none}",
+/* 蒙版层整体压透明度：笔画以 alpha=1 不透明绘制（重叠不再累积加深），
+ * 再由这一层的 opacity 统一降下来。之前是每笔用 rgba(.82) 叠加，
+ * 同一处来回涂会越叠越深（1 次 82% → 2 次 96.8% → 3 次 99.4%），
+ * 看起来像「有厚度控制」，其实是渲染缺陷。 */
+".img-mask{position:absolute;left:0;top:0;pointer-events:none;opacity:.82}",
 "/* 右侧工具组：复刻 dock 分组样式（.sd-grp-btn 同源） */",
 ".img-dock{position:fixed;right:10px;top:50%;transform:translateY(-50%);",
 "  display:flex;flex-direction:column;gap:.45rem;z-index:70}",
@@ -113,12 +120,8 @@
         tool: 'pan',
         size: 24,
         live: null,
-        polyPts: [],
-        polyHover: null,
         drawing: false,
         panStart: null,
-        lastTapTime: 0,
-        lastTapPos: null,
         built: false,
         dirty: false
     };
@@ -154,6 +157,52 @@
     function savePlug() {
         var cap = window.Capacitor;
         return (cap && cap.Plugins && cap.Plugins.SaveImage) || null;
+    }
+
+    /* 系统栏/挖孔避让（照搬 av-ui v45d 的教训）：
+     *  a) 原生 getSafeArea 返回物理 px，必须 ÷ devicePixelRatio 换算 CSS px
+     *     （v45c 直接当 CSS px 用 → 顶带放大 2~3 倍，真机整页被撑出大黑边）
+     *  b) 旋转过渡期会读到旧方向脏值 → 超过 SAFE_MAX 一律归零
+     *  c) 稳定后延迟重读 + resize/orientationchange 自愈
+     *  d) 直接内联 padding，不依赖样式表消费变量（WebView 旧缓存会污染样式） */
+    var SAFE_MAX = 48;
+
+    function msPlugin() {
+        var cap = window.Capacitor;
+        return (cap && cap.Plugins && cap.Plugins.MediaServer) || null;
+    }
+
+    function applySafeArea() {
+        if (!page) return;
+        var p = msPlugin();
+        if (!p || !p.getSafeArea) return;
+        var read = function () {
+            p.getSafeArea().then(function (r) {
+                if (!r) return;
+                var dpr = window.devicePixelRatio || 1;
+                var cvt = function (v) {
+                    v = (v || 0) / dpr;
+                    if (v < 0 || v > SAFE_MAX) v = 0;
+                    return Math.round(v);
+                };
+                var top = cvt(r.top), right = cvt(r.right),
+                    left = cvt(r.left), bottom = cvt(r.bottom);
+                page.style.setProperty('--img-safe-top', top + 'px');
+                page.style.setProperty('--img-safe-right', right + 'px');
+                page.style.setProperty('--img-safe-left', left + 'px');
+                page.style.setProperty('--img-safe-bottom', bottom + 'px');
+                // 顶部只垫给顶栏，舞台不吃（否则画面被压扁）
+                topEl.style.paddingTop = top + 'px';
+                topEl.style.height = (52 + top) + 'px';
+                topEl.style.paddingLeft = (6 + left) + 'px';
+                topEl.style.paddingRight = (8 + right) + 'px';
+                page.style.paddingBottom = bottom + 'px';
+                // 工具组避开右侧安全区
+                if (dockEl) dockEl.style.right = (10 + right) + 'px';
+            }).catch(function () { });
+        };
+        read();
+        [400, 1000, 2000].forEach(function (t) { setTimeout(read, t); });
     }
 
     /* 屏幕坐标 -> 原图像素（wrap 带 transform，rect 已含缩放） */
@@ -233,33 +282,28 @@
 
         if (!showAids) { g.restore(); return; }
 
-        /* 多边形橡皮筋 + 顶点（仅屏幕） */
-        if (S.tool === 'polygon' && S.polyPts.length && S.polyHover) {
-            var last = S.polyPts[S.polyPts.length - 1];
+        /* 多边形拖动中：把已采样的点描一条高亮轮廓线，
+         * 让用户看清自己正在圈哪里（填充是闭合预览，见上面的 polygon 分支）。 */
+        if (S.live && S.live.type === 'polygon' && S.live.points.length > 1) {
+            g.globalCompositeOperation = 'source-over';
             g.beginPath();
-            g.moveTo(last[0], last[1]);
-            g.lineTo(S.polyHover.x, S.polyHover.y);
-            g.lineWidth = 2 / S.scale;
-            g.setLineDash([6 / S.scale, 5 / S.scale]);
-            g.strokeStyle = 'rgba(120,200,255,.95)';
+            S.live.points.forEach(function (p, i) {
+                i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]);
+            });
+            g.lineWidth = 1.5 / S.scale;
+            g.setLineDash([7 / S.scale, 5 / S.scale]);
+            g.strokeStyle = 'rgba(255,255,255,.9)';
             g.stroke();
             g.setLineDash([]);
-        }
-        if (S.tool === 'polygon' && S.polyPts.length) {
-            g.fillStyle = 'rgba(120,200,255,.95)';
-            var rr = 5 / S.scale;
-            S.polyPts.forEach(function (p) {
-                g.beginPath();
-                g.arc(p[0], p[1], rr, 0, Math.PI * 2);
-                g.fill();
-            });
         }
         g.restore();
     }
 
     function redrawMask() {
         mctx.clearRect(0, 0, maskCv.width, maskCv.height);
-        drawMaskInto(mctx, { alpha: 0.82, rgb: '255,42,42', showAids: true });
+        /* alpha=1：同色不透明覆盖，笔画自我重叠不再累积加深。
+         * 整体半透明由 .img-mask 的 CSS opacity 统一承担。 */
+        drawMaskInto(mctx, { alpha: 1, rgb: '255,42,42', showAids: true });
     }
 
     /* ---------- 图片载入 ---------- */
@@ -331,7 +375,7 @@
     /* ---------- 撤销 / 重做 ---------- */
 
     function updateUndoState() {
-        undoGrp.classList.toggle('on', S.strokes.length > 0 || S.polyPts.length > 0);
+        undoGrp.classList.toggle('on', S.strokes.length > 0);
         redoGrp.classList.toggle('on', S.redo.length > 0);
     }
 
@@ -345,7 +389,6 @@
     }
 
     function undo() {
-        if (S.polyPts.length) { S.polyPts.pop(); redrawMask(); updateUndoState(); return; }
         if (!S.strokes.length) { hint('没有可撤销的操作'); return; }
         S.redo.push(S.strokes.pop());
         S.dirty = true;
@@ -378,13 +421,12 @@
         [panGrp, drawGrp, eraseGrp].forEach(function (k) {
             if (k !== map[t]) k.classList.remove('on');
         });
-        if (t !== 'polygon') { S.polyPts = []; S.polyHover = null; }
         redrawMask();
         updateUndoState();
         var names = {
             pan: '单指拖动查看 · 双指缩放',
             brush: '涂抹中 · 画到哪挖到哪',
-            polygon: '多边形：点按落点，双击或再点按钮结束',
+            polygon: '轮廓：拖动画一圈，松手自动闭合',
             erase: '橡皮：擦除遮罩（补回来）'
         };
         hint(names[t] || '');
@@ -414,11 +456,13 @@
     }
 
     function finishPolygon() {
-        if (S.polyPts.length < 3) { hint('多边形至少要 3 个点', true); return; }
-        pushStroke({ type: 'polygon', size: S.size, points: S.polyPts.slice() });
-        S.polyPts = [];
-        S.polyHover = null;
-        hint('多边形已完成');
+        /* v49b：多边形改为手绘套索。这里只保留「把当前 live 收尾成多边形」
+         * 的能力，供探针与内部调用；用户路径是松手即闭合，见 endPointer。 */
+        if (!S.live || S.live.points.length < 3) { hint('轮廓太短', true); return; }
+        S.live.type = 'polygon';
+        pushStroke(S.live);
+        S.live = null;
+        S.drawing = false;
     }
 
     function bindStageEvents() {
@@ -445,24 +489,13 @@
                 return;
             }
 
-            if (S.tool === 'polygon') {
-                var now = Date.now();
-                if (S.lastTapPos && now - S.lastTapTime < 350 &&
-                    Math.hypot(p.x - S.lastTapPos.x, p.y - S.lastTapPos.y) < 26 &&
-                    S.polyPts.length >= 3) {
-                    finishPolygon();
-                    S.lastTapTime = 0; S.lastTapPos = null;
-                    return;
-                }
-                S.polyPts.push([ip.x, ip.y]);
-                S.lastTapTime = now; S.lastTapPos = p;
-                redrawMask();
-                updateUndoState();
-                return;
-            }
-
+            /* v49b：多边形改成「拖动画轮廓，松手自动闭合」。
+             * 与涂抹共用拖动采点，只是收尾时闭合而不是留成开放路径。
+             * 半径采样阈值调小（0.06 而非 0.12）：轮廓要贴合手指轨迹，
+             * 太稀会在拐角处切角。 */
             S.drawing = true;
-            S.live = { type: S.tool === 'erase' ? 'erase' : 'brush', size: S.size, points: [[ip.x, ip.y]] };
+            var kind = S.tool === 'erase' ? 'erase' : (S.tool === 'polygon' ? 'polygon' : 'brush');
+            S.live = { type: kind, size: S.size, points: [[ip.x, ip.y]] };
             redrawMask();
         });
 
@@ -490,16 +523,14 @@
                 return;
             }
 
-            if (S.tool === 'polygon' && S.polyPts.length && pointers.size === 1) {
-                S.polyHover = toImage(e.clientX, e.clientY);
-                redrawMask();
-                return;
-            }
-
             if (!S.drawing || !S.live || pointers.size !== 1) return;
             var ip = toImage(e.clientX, e.clientY);
             var last = S.live.points[S.live.points.length - 1];
-            if (Math.hypot(ip.x - last[0], ip.y - last[1]) > Math.max(1, S.size * 0.12)) {
+            /* 多边形按更细的步长采点（贴合轮廓），涂抹按笔宽比例 */
+            var thr = S.live.type === 'polygon'
+                ? Math.max(0.75, S.size * 0.06)
+                : Math.max(1, S.size * 0.12);
+            if (Math.hypot(ip.x - last[0], ip.y - last[1]) > thr) {
                 S.live.points.push([ip.x, ip.y]);
                 redrawMask();
             }
@@ -515,6 +546,14 @@
             }
             if (S.drawing && S.live) {
                 S.drawing = false;
+                /* 多边形需要至少 3 点才能闭合成面；不够就丢弃并提示，
+                 * 不留下一个看着像笔画、导出却是折线的怪东西。 */
+                if (S.live.type === 'polygon' && S.live.points.length < 3) {
+                    hint('轮廓太短，已被忽略', true);
+                    S.live = null;
+                    redrawMask();
+                    return;
+                }
                 if (S.live.points.length) pushStroke(S.live);
                 S.live = null;
             }
@@ -604,9 +643,9 @@
         btnBrush.title = '涂抹';
         btnBrush.addEventListener('click', function () { setTool('brush'); });
         btnPoly = el('button', 'img-sub-btn', '🔺');
-        btnPoly.title = '多边形';
+        btnPoly.title = '轮廓：拖动画一圈，松手自动闭合';
         btnPoly.addEventListener('click', function () {
-            if (S.tool === 'polygon' && S.polyPts.length >= 3) { finishPolygon(); return; }
+            /* v49b：不再有「再点一次结束」——松手即闭合，按钮只负责切换工具 */
             setTool('polygon');
         });
         g1.appendChild(btnBrush); g1.appendChild(btnPoly);
@@ -627,7 +666,7 @@
         btnClear.title = '清空遮罩';
         btnClear.addEventListener('click', function () {
             if (!S.strokes.length && !S.invert) { hint('遮罩已是空的'); return; }
-            S.strokes = []; S.redo = []; S.polyPts = [];
+            S.strokes = []; S.redo = [];
             S.dirty = true;
             saveStrokes();
             redrawMask(); updateUndoState();
@@ -707,6 +746,10 @@
         window.addEventListener('resize', function () {
             if (page.classList.contains('open') && S.img) fitView();
         });
+        // 旋转/窗口变化后重读安全区（与 av-ui 同策略）
+        var reapply = function () { if (page.classList.contains('open')) applySafeArea(); };
+        window.addEventListener('resize', reapply);
+        window.addEventListener('orientationchange', reapply);
     }
 
     function showEmpty(show) {
@@ -784,7 +827,6 @@
             S.strokes = L.loadStrokes(projectName).strokes.slice();
             S.redo = [];
             S.live = null;
-            S.polyPts = [];
             S.tool = 'pan';
             S.dirty = false;
             setTool('pan');
@@ -796,6 +838,7 @@
             page.style.inset = '0';
             page.style.zIndex = '1550';
             page.style.display = 'flex';
+            applySafeArea();
 
             if (S.meta.imageFile) {
                 readProjectImage().then(function () {
