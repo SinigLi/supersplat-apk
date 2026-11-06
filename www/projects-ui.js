@@ -125,9 +125,9 @@
         newDlg = el('div', 'pj-dlg-mask');
         var box = el('div', 'pj-dlg');
         box.appendChild(el('div', 'pj-dlg-title', '新建工程'));
-        // v45：模式三选一（R4，默认 3D 模型）
+        // v45：模式三选一（R4，默认 3D 模型）；v49 扩为四选一（+图片）
         var modeRow = el('div', 'pj-mode-row');
-        var modes = [['model', '🔮 3D 模型'], ['video', '🎬 视频'], ['audio', '🎵 音频']];
+        var modes = [['model', '🔮 3D 模型'], ['video', '🎬 视频'], ['audio', '🎵 音频'], ['image', '🖼 图片']];
         modes.forEach(function (m) {
             var b = el('button', 'pj-mode' + (m[0] === newMode ? ' on' : ''), m[1]);
             b.addEventListener('click', function () {
@@ -293,8 +293,10 @@
 
             var info = el('div', 'pj-info');
             info.appendChild(el('div', 'pj-name', item.name));
+            // v49：image 角标（video/audio 走 AV 链路已有分支，3D 保持原文案）
             var modeTxt = item.mode === 'video' ? '🎬 视频' :
                 item.mode === 'audio' ? '🎵 音频' :
+                item.mode === 'image' ? '🖼 图片' :
                 (item.hasModel ? '已有模型' : '空工程');
             var sub = el('div', 'pj-sub',
                 modeTxt +
@@ -308,6 +310,11 @@
                 if (!confirm('删除工程「' + item.name + '」？模型数据会一并删除。')) return;
                 var p = L.pathsFor(item.name);
                 store().remove(p.dir).then(function () {
+                    // v49：图片工程的 localStorage 残留（meta/strokes）一并清掉；
+                    // AV 的 av-* 键同理（v45 时没清，属于已知遗留，这里顺手补齐图片侧）
+                    if (item.mode === 'image' && window.__imgLogic) {
+                        window.__imgLogic.deleteMeta(item.name);
+                    }
                     L.saveRegistry(L.removeProject(L.loadRegistry(), item.name));
                     refreshList();
                 });
@@ -359,6 +366,14 @@
                 // 关键：新建就得把空工程落盘。v29 起写的是纯状态 project.json
                 // （几 KB），不再打 zip；模型字节由保存时按内容寻址另存。
                 await store().write(p.state, new TextEncoder().encode(JSON.stringify(L.emptyProjectState())));
+            } else if (m === 'image') {
+                // v49 图片工程：图片字节由工作台导入时按内容寻址落 files/，
+                // 笔画在 localStorage（img-store）。这里只建 meta 空记录，
+                // 与 AV 同一模式：新建不落图，重开不丢设置。
+                showWait('创建工程…');
+                if (window.__imgLogic) {
+                    window.__imgLogic.saveMeta(window.__imgLogic.emptyMeta(name));
+                }
             } else {
                 // v45 AV 工程（R4）：媒体不进包（300MB 级，方案 §3.2），
                 // 只落 meta.json 带模式标记；AV 工作台的 meta/folderUri/fps
@@ -385,11 +400,16 @@
                 // 空工程落盘后就是“已保存”状态，返回时不该弹未保存确认
                 lastSavedSnapshot = snapshotNow();
                 toast('已创建「' + name + '」，请导入模型');
-            } else {
+            } else if (m === 'video' || m === 'audio') {
                 // AV 工作台直接接管（工程页垫底，工作台返回时恢复）
                 showProjectsPage();
                 if (window.__av) window.__av.open(name);
                 else toast('AV 工作台模块未加载');
+            } else {
+                // v49 图片工作台
+                showProjectsPage();
+                if (window.__img) window.__img.open(name);
+                else toast('图片工作台模块未加载');
             }
         } catch (err) {
             console.error('[projects] create failed', err);
@@ -455,6 +475,18 @@
                 var mb = await storeTimeout(store().read(p.meta), 4000, '读取工程数据');
                 pjDlog('meta read ok ' + (mb && mb.byteLength || 0) + 'B');
                 var mm = JSON.parse(new TextDecoder().decode(mb));
+                if (mm && mm.mode === 'image') {
+                    // v49：图片工程路由（图片不进包，meta.json 带模式标记）
+                    if (window.__img) {
+                        pjDlog('route IMG ' + name);
+                        hideWait();
+                        busy = false;
+                        window.__img.open(name);
+                        return;
+                    }
+                    toast('图片工作台模块未加载');
+                    return;
+                }
                 if (mm && (mm.mode === 'video' || mm.mode === 'audio')) {
                     if (window.__av) {
                         pjDlog('route AV ' + name + ' mode=' + mm.mode);

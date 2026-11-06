@@ -227,7 +227,7 @@ try {
 
     // UI 流程
     const ui = await evalJs(uiTests);
-    check('U1 模式三选一', ui.modeCount === 3);
+    check('U1 模式四选一(v49)', ui.modeCount === 4);
     check('U2 默认 3D 高亮', ui.modeDefault === 0);
     check('U3 视频可选', ui.videoSelected);
     check('U4 AV 工程打开工作台', ui.avOpen, ui.uiState);
