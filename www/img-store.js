@@ -20,23 +20,6 @@
 
     var SCHEMA = 'moyutai.imgmask.v1';
 
-    /* ---------- 注册表（与 av-store 同键，共用工程列表） ---------- */
-
-    function emptyRegistry() {
-        return { projects: [] };
-    }
-
-    function upsertProject(reg, entry) {
-        if (!entry || !entry.name || !entry.mode) throw new Error('工程条目无效');
-        if (entry.mode !== 'image') throw new Error('模式无效: ' + entry.mode);
-        var rest = (reg.projects || []).filter(function (p) { return p.name !== entry.name; });
-        return { projects: [{
-            name: entry.name,
-            mode: entry.mode,
-            updatedAt: entry.updatedAt || new Date().toISOString()
-        }].concat(rest) };
-    }
-
     /* ---------- meta ---------- */
 
     function metaKey(name) { return 'img-' + name + '-meta'; }
@@ -89,7 +72,14 @@
             var raw = localStorage.getItem(strokesKey(name));
             if (raw) {
                 var s = JSON.parse(raw);
-                if (s && s.schema === SCHEMA && Array.isArray(s.strokes)) return s;
+                if (s && s.schema === SCHEMA && Array.isArray(s.strokes)) {
+                    /* 校验而非直接信任：损坏的笔画宁可丢弃并记因，也不要让
+                     * drawMaskInto 拿着坏坐标画出一屏鬼东西（NaN 坐标会让
+                     * 整个 canvas 路径失效，表现为「打开工程后蒙版全没了」）。 */
+                    var err = validateStrokes(s.strokes);
+                    if (!err) return s;
+                    try { console.error('[img-store] strokes 校验失败，丢弃：' + err); } catch (e2) { }
+                }
             }
         } catch (e) { /* */ }
         return emptyStrokes();
@@ -146,8 +136,6 @@
 
     window.__imgLogic = {
         SCHEMA: SCHEMA,
-        emptyRegistry: emptyRegistry,
-        upsertProject: upsertProject,
         emptyMeta: emptyMeta,
         loadMeta: loadMeta,
         saveMeta: saveMeta,

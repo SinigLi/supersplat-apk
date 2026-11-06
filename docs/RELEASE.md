@@ -104,9 +104,12 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 
 | v48d | 视图导航双模式：`navMode` 默认 `game`，缩放走 `exp(-amount × rate)` 且上下限按场景缩放（D_fit 的 0.02/8 倍）；`model` 保留原几何缩放与绝对上下限。配套 `clampDistance`、`dFit`、`suggestedStep`（1-2-5 吸附）、`camera.navMetrics`；dock 视口面板加模式切换 + 自适应步进 + 重置，偏好存 localStorage |
 | v48e | 修正 v48d 的两个缺陷：`gameZoomRate` 0.35→0.8（原值与建模模式只差 10%，真机无法分辨）；`setPointerCapture` 包 `safeCapture()`（抛错会中断 `pointerdown`，导致触点记录不了、双指彻底失效）。游戏 0.20 倍/捏合 vs 建模 0.445 |
+| v49 | **图片模式（第四工程模式）**：新建工程四选一（`model`/`video`/`audio`/**`image`**）；工作台双层 canvas（图片层只在视图变换重绘、蒙版层只在笔画变化重绘）；涂抹/多边形/橡皮/撤销/重做/反选；笔画以路径数组持久化（`moyutai.imgmask.v1`，每笔一存），图片按内容寻址入 `files/<sha1>.<ext>`；导出按原图尺寸合成 PNG（挖除区 alpha=0）走 `SaveImagePlugin.share`，与 3D 机位同链路，**零新原生插件**。新增 `www/img-store.js` + `www/img-ui.js`，`av-store.js` 不动（其 mode 校验严格，塞 image 会搅动已稳定链路） |
+| **v49b** | 图片模式真机三条反馈定稿：① 顶栏避让系统状态栏（`MediaServer.getSafeArea` 物理 px ÷ dpr、超 48 视为旋转脏值归零、延迟重读 + resize/orientationchange 自愈、内联 padding；**必须 `box-sizing:border-box`**，否则 `height` 与 `padding-top` 相加实测 100px）；② 多边形由「逐点点击 + 双击结束」改为**套索**（拖动画一圈、松手自动闭合，拖动中不入撤销栈）；③ 涂抹深浅不一**不是厚度控制而是渲染缺陷**——蒙版每笔 `rgba(...,.82)` 叠加，同处涂 N 遍 = `1-(1-.82)^N`，改为每笔 `alpha=1` + 整层 CSS `opacity:.82`。另修门禁脚本误报：`accept` 缺席检查的正则把解释该约束的注释也匹配了，改结构性断言。探针 21/21 |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
+> v49/v49b 的设计、决策与验证口径见 `docs/IMAGE-MODE.md`。
 
 ## 6. 已知坑（血泪版）
 
@@ -115,3 +118,6 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 - CDP 截图后 WebView 无 preserveDrawingBuffer，隔帧 toDataURL 是黑的。
 - 真机 CI 签名：workflow 内 `Verify signing certificate` 步骤已校验固定调试证书（`keystore/ss-debug.p12`），覆盖安装不再报「应用未安装」。
 - WMI 启动的后台任务父进程是 WmiPrvSE，不受 exec Job Object 连坐；**不要** WMI+stdout 重定向，日志由脚本自写。
+- **门禁断言别用全文关键字匹配**——v49 事故：检查「file input 不带 `accept`」的正则 `/type \*= *['"]file['"][^>]*accept/` 把注释里解释该约束的 `accept` 字样也匹配了，导致全绿代码被判失败、白等一轮 CI。改结构性断言（`!/.accept\s*=/`），或锚定到具体元素的属性。
+- **半透明不要画在 primitive 上**——v49b 事故：预览蒙版每笔 `rgba(...,0.82)` `source-over` 叠加，同一处涂 2 遍变 96.8%、3 遍 99.4%，被当成「厚度控制」。层内叠加 + 层统一半透明的场景，透明度放层上（CSS `opacity`），primitive 一律 `alpha=1`。
+- **`height` 与 `padding` 相加**——`box-sizing` 默认 `content-box`，动态设 `height:52+inset` 再加 `padding-top:inset` 会得到 `52+2×inset`。凡是要「内边距从高度里吃」的容器，样式里必须写 `border-box`。

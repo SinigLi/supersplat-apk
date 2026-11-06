@@ -1,4 +1,4 @@
-/* v49 img-ui.js — 图片工作台（第四工程模式）
+/* v49 / v49b img-ui.js — 图片工作台（第四工程模式）
  *
  * 交互与渲染逻辑来自 prototype/image-mode-proto.html（老板 2026-11-06 12:46 确认），
  * 本文件做工程化接线：
@@ -11,6 +11,15 @@
  * 渲染核心 drawMaskInto 与原型一致：屏幕预览与导出共用一套顺序语义，
  * brush/polygon = source-over（盖上去），erase = destination-out（抹掉）。
  * 「先画后擦」能补回、「先擦后画」仍被挖——与用户所见一致。
+ *
+ * ---- v49b 真机反馈三处修订 ----
+ * 1) 顶栏避让系统栏：applySafeArea() 读 MediaServer.getSafeArea（物理 px ÷ dpr，
+ *    超 SAFE_MAX 判脏值归零，延迟重读 + resize 自愈）。只垫顶栏不垫舞台。
+ *    .img-top 必须 box-sizing:border-box，否则 height 与 padding-top 相加。
+ * 2) 多边形 = 套索：pointerdown 起笔画 → pointermove 采点（步长比涂抹细）
+ *    → pointerup 闭合入栈。拖动中不入撤销栈。
+ * 3) 预览透明度放层上（.img-mask opacity:.82），笔画一律 alpha=1。
+ *    半透明进笔画会随重叠累积（1-(1-a)^N），曾被误认成「厚度控制」。
  */
 (function () {
     'use strict';
@@ -455,16 +464,6 @@
         return { x: e.clientX - r.left, y: e.clientY - r.top };
     }
 
-    function finishPolygon() {
-        /* v49b：多边形改为手绘套索。这里只保留「把当前 live 收尾成多边形」
-         * 的能力，供探针与内部调用；用户路径是松手即闭合，见 endPointer。 */
-        if (!S.live || S.live.points.length < 3) { hint('轮廓太短', true); return; }
-        S.live.type = 'polygon';
-        pushStroke(S.live);
-        S.live = null;
-        S.drawing = false;
-    }
-
     function bindStageEvents() {
         stage.addEventListener('pointerdown', function (e) {
             if (!S.img) return;
@@ -879,7 +878,6 @@
         _setTool: setTool,
         _undo: undo,
         _redo: redo,
-        _finishPolygon: finishPolygon,
         _pickImage: pickImage,
         _exportCanvas: function () {
             /* 探针用：返回导出画布，不触发分享 */
