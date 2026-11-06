@@ -102,7 +102,11 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v48 | 缩略图捕获视频声明 `crossOrigin='anonymous'`（跨源 canvas 污染 → `toDataURL` 抛 `SecurityError` 被吞成 `canvas err`） |
 | **v48c** | **ISS-001 关闭**：缩略图三个 JS 缺陷叠加（开关被 `thumbsRev='p1'` 永久关死；`thumbFlush()` 每次列表重建清空解码队列；`thumbApply` 的 `isConnected` 早退误杀缓存命中）。另修 seek 锁死（`_seeking` 只靠 `seeked` 解锁 → 改用 `videoEl.seeking` + 1500ms 看门狗 + 重追上限 2）、同片段不重载、`renderList` 签名短路。probe-v45 48/48、v44 16/16，真机确认 |
 
+| v48d | 视图导航双模式：`navMode` 默认 `game`，缩放走 `exp(-amount × rate)` 且上下限按场景缩放（D_fit 的 0.02/8 倍）；`model` 保留原几何缩放与绝对上下限。配套 `clampDistance`、`dFit`、`suggestedStep`（1-2-5 吸附）、`camera.navMetrics`；dock 视口面板加模式切换 + 自适应步进 + 重置，偏好存 localStorage |
+| v48e | 修正 v48d 的两个缺陷：`gameZoomRate` 0.35→0.8（原值与建模模式只差 10%，真机无法分辨）；`setPointerCapture` 包 `safeCapture()`（抛错会中断 `pointerdown`，导致触点记录不了、双指彻底失效）。游戏 0.20 倍/捏合 vs 建模 0.445 |
+
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
+> v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
 
 ## 6. 已知坑（血泪版）
 
