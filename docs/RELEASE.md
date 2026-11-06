@@ -106,12 +106,14 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v48e | 修正 v48d 的两个缺陷：`gameZoomRate` 0.35→0.8（原值与建模模式只差 10%，真机无法分辨）；`setPointerCapture` 包 `safeCapture()`（抛错会中断 `pointerdown`，导致触点记录不了、双指彻底失效）。游戏 0.20 倍/捏合 vs 建模 0.445 |
 | v49 | **图片模式（第四工程模式）**：新建工程四选一（`model`/`video`/`audio`/**`image`**）；工作台双层 canvas（图片层只在视图变换重绘、蒙版层只在笔画变化重绘）；涂抹/多边形/橡皮/撤销/重做/反选；笔画以路径数组持久化（`moyutai.imgmask.v1`，每笔一存），图片按内容寻址入 `files/<sha1>.<ext>`；导出按原图尺寸合成 PNG（挖除区 alpha=0）走 `SaveImagePlugin.share`，与 3D 机位同链路，**零新原生插件**。新增 `www/img-store.js` + `www/img-ui.js`，`av-store.js` 不动（其 mode 校验严格，塞 image 会搅动已稳定链路） |
 | **v49b** | 图片模式真机三条反馈定稿：① 顶栏避让系统状态栏（`MediaServer.getSafeArea` 物理 px ÷ dpr、超 48 视为旋转脏值归零、延迟重读 + resize/orientationchange 自愈、内联 padding；**必须 `box-sizing:border-box`**，否则 `height` 与 `padding-top` 相加实测 100px）；② 多边形由「逐点点击 + 双击结束」改为**套索**（拖动画一圈、松手自动闭合，拖动中不入撤销栈）；③ 涂抹深浅不一**不是厚度控制而是渲染缺陷**——蒙版每笔 `rgba(...,.82)` 叠加，同处涂 N 遍 = `1-(1-.82)^N`，改为每笔 `alpha=1` + 整层 CSS `opacity:.82`。另修门禁脚本误报：`accept` 缺席检查的正则把解释该约束的注释也匹配了，改结构性断言。探针 21/21 |
+| v49c | 图片模式返回按钮失效修复 | 返回前 | `open()` 内联写死 `display:flex`，`back()` 只删 `.open` 类 → 内联样式仍生效、图片页继续盖在列表上，表现为「点返回没反应」；补 `page.style.display = 'none'`（`open()` 失败兜底同补，否则用户被留在半死页面且无返回入口）。探针加 4 条往返断言并把运行时异常计入失败，顺带修掉 `applySafeArea` 延迟重读的 `TypeError`（插件存在性只在入口查一次，定时器回调空手敲门）。`av-ui.js` 无此问题（一直有这行）|
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
 > v49/v49b 的设计、决策与验证口径见 `docs/IMAGE-MODE.md`。
 
 ## 6. 已知坑（血泪版）
+- **只删 class 不清内联样式 = 页面关不掉**——v49c 事故：`open()` 为绕开样式表缓存把 `display:flex` 内联写死，`back()` 只 `classList.remove('open')`，内联样式仍然生效，页面继续盖在上面，表现为「点按钮没反应」。凡是内联设过 `style.display` 的容器，关闭时必须显式复位。
 
 - **发版前核对发送路径与 APKBASE 一致**——v30 事故：打包改名了、feishu --file 没改。
 - PowerShell `>` 重定向写 UTF-16LE；`cd` 不改 .NET 进程工作目录（`[IO.File]::ReadAllBytes` 要绝对路径）。

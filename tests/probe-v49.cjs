@@ -280,6 +280,102 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     })()`));
     ck('绘制面板尺寸收敛', pb.w <= 155 && pb.h <= 200, pb);
 
+    /* ---- v49b 回归：遮罩不叠加、顶栏避让系统栏 ---- */
+
+    // 1) 遮罩层用整体 opacity，笔画本身 alpha=1（否则同一处来回涂会越涂越深）
+    const maskStyle = JSON.parse(await ev(`(() => {
+      const m = document.querySelector('#imgPage .img-mask');
+      return JSON.stringify({ opacity: getComputedStyle(m).opacity });
+    })()`));
+    ck('遮罩层整体不透明度 .82', Math.abs(maskStyle.opacity - 0.82) < 0.01, maskStyle);
+
+    // 2) 顶栏避让：mock 原生 getSafeArea 返回 96 物理 px @dpr2 → 48 CSS px
+    const safe = await ev(`(async () => {
+      window.Capacitor = window.Capacitor || { Plugins: {} };
+      window.Capacitor.Plugins.MediaServer = window.Capacitor.Plugins.MediaServer || {};
+      window.Capacitor.Plugins.MediaServer.getSafeArea = function () {
+        return Promise.resolve({ top: 96, bottom: 0, left: 0, right: 60 });
+      };
+      // 触发重读
+      window.__img.back();
+      window.__img.open('探针图片工程');
+      await new Promise(r => setTimeout(r, 900));
+      const top = document.querySelector('#imgPage .img-top');
+      const dock = document.querySelector('#imgPage .img-dock');
+      return JSON.stringify({
+        padTop: getComputedStyle(top).paddingTop,
+        height: Math.round(top.getBoundingClientRect().height),
+        dockRight: dock ? getComputedStyle(dock).right : null
+      });
+    })()`);
+    const sf = JSON.parse(safe);
+    console.log('安全区: ' + safe);
+    ck('顶栏吃下状态栏高度', sf.padTop === '48px', sf);
+    ck('顶栏总高 = 52 + 48', sf.height === 100, sf);
+    ck('工具组避开右侧挖孔', sf.dockRight === '40px', sf.dockRight);
+
+    // 3) 脏值保护：超阈值一律归零（Android 旋转过渡期的旧方向值）
+    const dirty = await ev(`(async () => {
+      window.Capacitor.Plugins.MediaServer.getSafeArea = function () {
+        return Promise.resolve({ top: 400, bottom: 0, left: 0, right: 0 });
+      };
+      window.__img.back();
+      window.__img.open('探针图片工程');
+      await new Promise(r => setTimeout(r, 900));
+      const top = document.querySelector('#imgPage .img-top');
+      return getComputedStyle(top).paddingTop;
+    })()`);
+    ck('超阈值脏值归零', dirty === '0px', dirty);
+
+    // 恢复 mock，免得影响后续
+    await ev(`(() => {
+      delete window.Capacitor.Plugins.MediaServer.getSafeArea;
+      return 'ok';
+    })()`);
+
+    /* ---- v49c：返回按钮必须真的回到工程列表 ----
+     * 事故：open() 为绕开样式表缓存把 display:flex 内联写死，back() 只
+     * remove('open') 类，内联 display 仍然生效 → 图片页继续盖在列表上，
+     * 表现为「点返回没反应」。断言内联 display 与可见性都复位。 */
+    const backBefore = JSON.parse(await ev(`(() => {
+      const p = document.getElementById('imgPage');
+      return JSON.stringify({
+        open: p.classList.contains('open'),
+        inline: p.style.display,
+        computed: getComputedStyle(p).display
+      });
+    })()`));
+    ck('打开时工作台可见', backBefore.computed === 'flex', backBefore);
+
+    await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
+    await sleep(700);
+
+    const backAfter = JSON.parse(await ev(`(() => {
+      const p = document.getElementById('imgPage');
+      const pj = document.getElementById('pjPage');
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+      return JSON.stringify({
+        imgOpen: p.classList.contains('open'),
+        imgInline: p.style.display,
+        imgComputed: getComputedStyle(p).display,
+        pjOpen: pj ? pj.classList.contains('open') : null,
+        pjReachable: !!(pj && el && pj.contains(el))
+      });
+    })()`));
+    console.log('返回后: ' + JSON.stringify(backAfter));
+    ck('返回后工作台隐藏', backAfter.imgComputed === 'none' && backAfter.imgInline === 'none', backAfter);
+    ck('返回后列表可见且可点', backAfter.pjOpen === true && backAfter.pjReachable === true, backAfter);
+
+    // 往返一次：确认可以再次进入并再次返回
+    await ev('window.__img.open("探针图片工程")');
+    await sleep(800);
+    const reopen = await ev(`getComputedStyle(document.getElementById('imgPage')).display`);
+    ck('可再次进入工作台', reopen === 'flex', reopen);
+    await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
+    await sleep(600);
+    const reclose = await ev(`getComputedStyle(document.getElementById('imgPage')).display`);
+    ck('二次返回仍有效', reclose === 'none', reclose);
+
     console.log('\n运行时异常: ' + (errors.length ? errors.join(' | ') : '无'));
     ck('无运行时异常', errors.length === 0, errors.length);
 

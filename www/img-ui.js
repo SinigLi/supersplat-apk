@@ -183,9 +183,13 @@
 
     function applySafeArea() {
         if (!page) return;
-        var p = msPlugin();
-        if (!p || !p.getSafeArea) return;
         var read = function () {
+            /* 存在性检查必须放在 read 内部、每次重读都做：延迟重读（400/1000/2000ms）
+             * 与 resize 回调都是在插件可能已不可用之后才跑的。若只在 applySafeArea
+             * 入口查一次，插件卸载后定时器仍会空手敲门 → TypeError 冒到全局
+             * （真机上插件不会中途消失，但测试/热更新会，探针已抓到）。 */
+            var p = msPlugin();
+            if (!p || !p.getSafeArea) return;
             p.getSafeArea().then(function (r) {
                 if (!r) return;
                 var dpr = window.devicePixelRatio || 1;
@@ -771,6 +775,11 @@
         dlog('back() project=' + S.project);
         saveAll(false);
         page.classList.remove('open');
+        /* 必须同时清掉内联 display：open() 里为绕开样式表缓存把 display:flex
+         * 内联写死在 page.style 上，而 .open 只是一个类。只 remove('open') 的话
+         * 内联 display:flex 仍然生效，图片页会继续盖在工程列表上面，
+         * 表现为「点返回没反应」（v49b 真机反馈）。 */
+        page.style.display = 'none';
         var pj = document.getElementById('pjPage');
         if (pj) pj.classList.add('open');
         if (window.__projects && window.__projects.list) window.__projects.list();
@@ -859,7 +868,14 @@
             var m = e && (e.stack || e.message) || String(e);
             dlog('open FAIL ' + m);
             toast('打开图片工作台失败：' + (e && e.message || e));
-            try { page.classList.remove('open'); var pj = document.getElementById('pjPage'); if (pj) pj.classList.add('open'); } catch (e2) { }
+            /* 同样要清内联 display（open() 中途已把它设成 flex），否则失败后
+             * 用户被留在一个半死的图片页上，且没有可点的返回入口。 */
+            try {
+                page.classList.remove('open');
+                page.style.display = 'none';
+                var pj = document.getElementById('pjPage');
+                if (pj) pj.classList.add('open');
+            } catch (e2) { }
         }
     }
 
