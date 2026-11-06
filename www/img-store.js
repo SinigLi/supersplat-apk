@@ -50,6 +50,12 @@
     }
 
     function saveMeta(meta) {
+        /* 写入侧也把关：loadMeta 只认 mode==='image'，若让别的模式混进来写，
+         * 那份 meta 会变成永远读不出来的死数据（占用配额还查不出原因）。
+         * 注册表归 projects.js 管，但 meta 的 mode 是本模块的契约。 */
+        if (!meta || !meta.name || meta.mode !== 'image') {
+            throw new Error('meta 无效：mode 必须是 image');
+        }
         meta.updatedAt = new Date().toISOString();
         try { localStorage.setItem(metaKey(meta.name), JSON.stringify(meta)); } catch (e) { /* 配额满 */ }
     }

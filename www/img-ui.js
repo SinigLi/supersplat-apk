@@ -421,7 +421,16 @@
 
     function saveStrokes() {
         L.saveStrokes(S.project, S.strokes);
-        if (S.meta) { S.meta.invert = S.invert; L.saveMeta(S.meta); }
+        /* saveMeta 现在会拒收 mode!=='image' 的 meta，这里兜一层：
+         * 笔画已经落了，不该因为 meta 契约不符把整个保存流程炸掉。 */
+        if (S.meta) {
+            try {
+                S.meta.invert = S.invert;
+                L.saveMeta(S.meta);
+            } catch (e) {
+                dlog('saveMeta skipped: ' + (e && e.message || e));
+            }
+        }
     }
 
     /* ---------- 工具与面板 ---------- */
