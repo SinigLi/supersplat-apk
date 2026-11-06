@@ -534,6 +534,11 @@ waitUI(function () {
     wrap.innerHTML =
       '<div class="sd-dir-hint">轨道 = 绕目标转 · 飞行 = 第一人称 · 框选 = 聚焦选中物 · 回原点 = 重置视角</div>' +
       '<div class="sd-dir-row sd-vp-modes"></div>' +
+      '<div class="sd-dir-row sd-vp-navrow">' +
+        '<span class="sd-dv-lab">视图</span>' +
+        '<button class="sd-dir-btn sd-nav-btn on" data-navmode="game" title="游戏模式：缩放速率恒定，缩放/步进范围按场景大小自适应">游戏</button>' +
+        '<button class="sd-dir-btn sd-nav-btn" data-navmode="model" title="建模模式：原始 SuperSplat 手感，缩放越近越细（适合精修）">建模</button>' +
+      '</div>' +
       '<div class="sd-dir-row sd-vp-cliprow">' +
         '<span class="sd-dv-lab">裁剪</span>' +
         '<span class="sd-pill" data-vp="state">自动</span>' +
@@ -548,6 +553,14 @@ waitUI(function () {
       '<div class="sd-dir-row">' +
         '<button class="sd-dir-btn sd-shot-btn" data-vp="restore" title="裁剪回自动 + 焦距回 50mm">↺ 恢复默认</button>' +
       '</div>' +
+      '<div class="sd-sect">场景步进（游戏模式下自动跟随场景大小）</div>' +
+      '<div class="sd-dir-row sd-vp-steprow">' +
+        '<span class="sd-dv-lab">步进</span>' +
+        '<input class="sd-num sd-nav-step" type="number" step="0.01" min="0.001" value="0.1" title="方向键每次点按的移动距离（米）">' +
+        '<span class="sd-dv-lab">米/次</span>' +
+        '<button class="sd-dir-btn sd-shot-btn sd-shot-mini" data-navstep="reset" title="按当前场景大小重算步进值">↺</button>' +
+      '</div>' +
+      '<div class="sd-dir-hint" data-vp="navhint">场景半径 —</div>' +
       '<div class="sd-sect">参数信息（只读 · 实时）</div>' +
       '<div class="sd-kv"><span class="sd-dv-lab">位置</span><span class="sd-kv-v" data-vp="pos"></span></div>' +
       '<div class="sd-kv"><span class="sd-dv-lab">方向</span><span class="sd-kv-v" data-vp="tgt"></span></div>' +
@@ -617,12 +630,118 @@ waitUI(function () {
       vpInfo(); vpRender();
       showMsg("已恢复默认视口：自动裁剪 + 焦距 50mm");
     };
+    /* ----- v48d 视图导航模式（游戏 / 建模）+ 场景自适应步进 -----
+     *
+     * 游戏模式（默认）：双指缩放速率恒定，缩放上下限按场景大小自适应，适合粗搭。
+     * 建模模式：完全等于 SuperSplat 原本手感（几何缩放 + 绝对上下限），适合精修。
+     *
+     * 模式与步进都存 localStorage（全局偏好），不进工程文件 ——
+     * 这是使用习惯，不是场景属性。换工程还得重设会很烦。 */
+    const NAV_MODE_KEY = "moyutai.navMode";
+    const NAV_STEP_KEY = "moyutai.navStep";
+    const NAV_STEP_USER_KEY = "moyutai.navStepUser";
+
+    const navStepIn = q(".sd-nav-step");
+    const navHint = q('[data-vp="navhint"]');
+
+    function navLsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function navLsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+    function navPaintMode(mode) {
+      wrap.querySelectorAll(".sd-nav-btn").forEach(b => {
+        b.classList.toggle("on", b.dataset.navmode === mode);
+      });
+    }
+
+    // 场景变化后刷新步进：只有用户没手动设过才覆盖
+    function navRefreshStep() {
+      const d = window.__director;
+      if (!d || !d.getNavMetrics) return;
+      const m = d.getNavMetrics();
+      if (!m) return;
+      const userSet = navLsGet(NAV_STEP_USER_KEY) === "1";
+      if (!userSet && navStepIn && m.suggestedStep > 0) {
+        navStepIn.value = String(m.suggestedStep);
+        navLsSet(NAV_STEP_KEY, String(m.suggestedStep));
+      }
+      if (navHint) {
+        const r = m.sceneRadius;
+        // R 是包围盒半对角线；步进 = R/25 吸附到 1-2-5
+        navHint.textContent = "场景半径 " + (r >= 10 ? r.toFixed(0) : r.toFixed(1)) +
+          " · 自适应步进 " + m.suggestedStep + (userSet ? "（已手动设定）" : "");
+      }
+    }
+
+    // 启动时把持久化的偏好推到引擎。
+    // 注意：面板在 dock 初始化时就构建，此时 __director 往往还没注册；
+    // 直接拿会拿到 undefined 就永久失效，所以必须重试到就绪。
+    (function navBoot(attempt) {
+      attempt = attempt || 0;
+      const d = window.__director;
+      if (!d || !d.setNavMode) {
+        if (attempt < 120) setTimeout(() => navBoot(attempt + 1), 250);
+        return;
+      }
+      const savedMode = navLsGet(NAV_MODE_KEY);
+      const mode = savedMode === "model" ? "model" : "game";
+      d.setNavMode(mode);
+      navPaintMode(mode);
+      const savedStep = parseFloat(navLsGet(NAV_STEP_KEY) || "");
+      if (navStepIn && isFinite(savedStep) && savedStep > 0) navStepIn.value = String(savedStep);
+      navRefreshStep();
+    })();
+
+    wrap.querySelectorAll(".sd-nav-btn").forEach(b => {
+      b.onclick = (e) => {
+        e.stopPropagation();
+        const d = window.__director;
+        const mode = b.dataset.navmode === "model" ? "model" : "game";
+        if (d && d.setNavMode) d.setNavMode(mode);
+        navPaintMode(mode);
+        navLsSet(NAV_MODE_KEY, mode);
+        navRefreshStep();
+        showMsg(mode === "game"
+          ? "游戏模式：缩放速率恒定，范围按场景自适应"
+          : "建模模式：原始手感，缩放越近越细（适合精修）");
+      };
+    });
+
+    if (navStepIn) {
+      // 手动改就锁定，不再被场景刷新覆盖
+      const onStepEdit = () => {
+        const v = parseFloat(navStepIn.value);
+        if (!isFinite(v) || v <= 0) return;
+        navLsSet(NAV_STEP_KEY, String(v));
+        navLsSet(NAV_STEP_USER_KEY, "1");
+        navRefreshStep();
+      };
+      navStepIn.addEventListener("change", onStepEdit);
+      navStepIn.addEventListener("blur", onStepEdit);
+    }
+
+    const bNavReset = q('[data-navstep="reset"]');
+    if (bNavReset) bNavReset.onclick = (e) => {
+      e.stopPropagation();
+      // 清掉手动标记 → 回到自动跟随
+      try { localStorage.removeItem(NAV_STEP_USER_KEY); } catch (err) {}
+      navRefreshStep();
+      showMsg("步进已按当前场景重算：" + (navStepIn ? navStepIn.value : "?") + " 米/次");
+    };
+
+    // 引擎在包围盒变化时会派发 camera.navMetrics；dock 侧轮询兼作兵底
+    // （放人偶/道具/导入模型都会改 bound，这里跟着刷就对了）
+    let navTick = 0;
+    setInterval(() => {
+      if (!wrap.classList.contains("sd-open")) return;
+      navTick++;
+      if (navTick % 3 === 0) navRefreshStep();
+    }, 1000);
+
     setInterval(() => { if (wrap.classList.contains("sd-open")) vpInfo(); }, 300);
     wrap.__sdRefresh = () => { vpInfo(); };
     vpInfo();
     return wrap.querySelector(".sd-vp-modes");   // SS 模式按钮收养位
   }
-
   /* ----- v39 机位组：#5 机位视角模式（查看↔退出、实时生效、恢复默认=进入时参数、
    * 退出保存+还原视口）+ #7 三轴步进旋转（水平/俯仰/倾斜 ±，默认 3°）----- */
   function buildShotPanel(wrap) {

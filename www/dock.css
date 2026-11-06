@@ -365,3 +365,12 @@ body:not(.sd-has-bar) .sd-dock[data-dock="file"] {
   border:1px solid rgba(148,163,184,.35); border-radius:.6rem; color:#e2e8f0; }
 .sd-rot-btn:active { background:#2563eb; color:#fff; }
 .sd-num-mini { flex:0 0 7rem !important; min-height:2.2rem !important; }
+
+/* v48d: 视图导航模式切换（游戏 / 建模）+ 场景自适应步进 */
+.sd-vp-navrow { gap:.4rem; align-items:center; }
+.sd-nav-btn { flex:0 0 auto; min-width:4.2rem; justify-content:center; font-size:13px;
+  background:rgba(30,41,59,.92); color:#94a3b8; border:1px solid rgba(148,163,184,.35); }
+.sd-nav-btn.on { background:#2563eb; color:#fff; border-color:#2563eb; }
+.sd-nav-btn:active { opacity:.85; }
+.sd-vp-steprow { gap:.4rem; align-items:center; }
+.sd-nav-step { flex:0 0 7rem !important; min-height:2.2rem !important; }
