@@ -1,8 +1,8 @@
 # 视图导航模式（游戏 / 建模）开发方案 v0.1
 
-> 版本：v0.1（2026-11-05）· 维护者：全栈工程师
-> 关联：`docs/DIRECTOR.md`（相机模型）、`www/dock.js`（视口面板）、`supersplat-main/src/{controllers,camera,scene-config}.ts`
-> 状态：**方案待拍板，未开工**
+> 版本：v0.2（2026-11-06）· 维护者：全栈工程师
+> 关联：`docs/DIRECTOR.md`（相机模型）、`www/dock.js`（视口面板）、`supersplat-main/src/{controllers,camera,scene-config,editor,director}.ts`
+> 状态：**已实现（v48d，M1–M3 完成）**，待真机手感确认
 
 ## 1. 背景
 
@@ -228,7 +228,53 @@ const NAV_STEP_USER_KEY = 'sd-nav-step-user';  // '1' = 用户手动设过
 | 归一化与 `fov` 联动 | 改焦距后 `D_fit` 变化，步进跟着变 | 这是**正确行为**（长焦看得更远），但要在面板上实时反映 |
 | 机位系统读取相机距离 | 切模式后机位还原可能不一致 | 机位存的是解析后位姿（绝对世界坐标），与 `navMode` 无关，预期无影响；M3 验证 |
 
-## 11. 待确认（老板）
+## 11. 实施记录（2026-11-06，v48d）
+
+老板拍板「按你建议的来」，四项取值全部采用本节默认值。已实现并交付。
+
+### 实际落地
+
+| 文件 | 改动 |
+|---|---|
+| `scene-config.ts` | `navMode: 'game'`、`gameZoomMin 0.02`、`gameZoomMax 8.0`、`gameZoomRate 0.35` |
+| `camera.ts` | `Camera.clampDistance()` 统一钳制；`get dFit`；`get suggestedStep`（`snap125`）；`onBoundChanged` 派发 `camera.navMetrics` |
+| `controllers.ts` | `zoomPinch()`：游戏模式走 `d × exp(-amount × rate)`；**只有触屏双指走这里**，鼠标滚轮保持原逻辑 |
+| `editor.ts` | `camera.navMode` / `camera.setNavMode` / `camera.navMetrics` 事件；fov 改动也走 `clampDistance` |
+| `director.ts` | `getNavMode()` / `setNavMode()` / `getNavMetrics()` |
+| `dock.js` | 视口面板「视图 [游戏][建模]」+「步进 + ↺」+ 场景半径提示；localStorage 全局偏好 |
+| `dock.css` | `.sd-nav-btn` 及激活态 |
+
+### 实现中补充的两个决定
+
+1. **步进下限 0.1**：空场景 `sceneRadius` 默认 1，`1/25 = 0.04` 太小，按钮等于没动。
+   加 `Math.max(sceneRadius / 25, 0.1)` 兜底，有内容后包围盒接管。
+2. **`navBoot` 重试**：面板在 dock 初始化时就构建，那时 `__director` 还没注册，
+   一次读取会拿到 undefined 并永久失效。改为每 250ms 重试，最多 120 次。
+
+### 验证结果（全部通过）
+
+| 项 | 结果 |
+|---|---|
+| tsc | clean |
+| 游戏模式倍率（6 连续手势，amount=2） | **0.4966 × 6，恒定** |
+| 建模模式倍率（同条件） | 0.2006 → 0.1998 → 0.1958 → 0.1753 → 0.0554 → **−2.421**（原逻辑未变） |
+| 游戏模式上下限 | 8.0 / 0.02 |
+| 建模模式上下限 | 10 / 1e-6 |
+| 切模式 re-clamp（model 9.5 → game） | 拉回 8.0 ✓ |
+| 步进量化 | R=5→0.2、20→1、50→2、120→5、200→10、500→20 |
+| 面板 UI | 按钮切换/持久化/手动锁定/重置全通 |
+| 导演台回归 | 16/16 |
+| 音视频回归 | 48/48 |
+
+### 待真机确认
+
+- 游戏模式的实际手感（一次捏合约 4 倍变化，是否合适）
+- 4K 视频工作台与 3D 导演台的缩放是否都有改善
+
+若真机觉得「一次捏合跳得太猛」，调 `gameZoomRate`（现 0.35，调小更缓）。
+若觉得「最远不够」，调 `gameZoomMax`（现 8.0）。两者都是 `scene-config.ts` 单点常量。
+
+## 12. 待确认（老板）—— **已随 v48d 落地**
 
 1. 模式偏好**全局**存储（换工程保留）——本方案已按这个前提写。
 2. 游戏模式下方向按钮步进**保留手动改**，默认自适应 + 一键重置。
