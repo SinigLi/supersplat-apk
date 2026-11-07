@@ -13,7 +13,8 @@
     background: #14161a;
     padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px
              calc(env(safe-area-inset-bottom, 0px) + 12px);
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;   /* v52c：页面级不滚动（listEl 自己滚）；否则 flex:1 的
+                           empty 层在 overflow 容器里塌陷，底部条浮到中间 */
     overscroll-behavior: contain;
 }
 .pj-page.open { display: flex; }
@@ -322,3 +323,16 @@
     font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .pj-move-btn.primary { background: #2563eb; color: #fff; }
+
+/* ===== v52c：多选复选框 ===== */
+.pj-check {
+    flex: 0 0 auto;
+    width: 24px; height: 24px; border-radius: 6px;
+    border: 2px solid #4a5563; color: transparent;
+    display: none; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700;
+    background: rgba(0, 0, 0, 0.25);
+}
+.pj-card.selectable .pj-check, .pj-gcard.selectable .pj-check { display: flex; }
+.pj-card.sel .pj-check { background: #2563eb; border-color: #4da3ff; color: #fff; }
+.pj-gcard.selectable { cursor: pointer; }

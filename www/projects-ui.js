@@ -66,6 +66,11 @@
         crumbEl.style.display = 'none';
         page.appendChild(crumbEl);
 
+        emptyEl = el('div', 'pj-empty');
+        emptyEl.innerHTML = '<div class="pj-empty-ico">📁</div><div>还没有工程</div>' +
+            '<div class="pj-empty-sub">点右上角「新建」开始</div>';
+        page.appendChild(emptyEl);
+
         gbarEl = el('div', 'pj-gbar');
         var gNewBtn = el('button', 'pj-gbar-btn', '📁 新建分组');
         gNewBtn.addEventListener('click', function () { onGroupNewClick(); });
@@ -80,10 +85,6 @@
         cancelBtn.addEventListener('click', function () { setMulti(false); toast('已退出多选'); });
         page.appendChild(cancelBtn);
 
-        emptyEl = el('div', 'pj-empty');
-        emptyEl.innerHTML = '<div class="pj-empty-ico">📁</div><div>还没有工程</div>' +
-            '<div class="pj-empty-sub">点右上角「新建」开始</div>';
-        page.appendChild(emptyEl);
 
         document.body.appendChild(page);
 
@@ -536,8 +537,10 @@
         /* 分组卡片 */
         groups.forEach(function (g) {
             var key = 'g:' + g.id;
-            var card = el('div', 'pj-card pj-gcard' + (multiMode && selSet[key] ? ' sel' : ''));
-            var icon = el('div', 'pj-thumb-empty', multiMode && selSet[key] ? '✅' : '📁');
+            var card = el('div', 'pj-card pj-gcard' + (multiMode ? ' selectable' : '') + (multiMode && selSet[key] ? ' sel' : ''));
+            var check = el('div', 'pj-check', multiMode && selSet[key] ? '✓' : '');
+            card.appendChild(check);
+            var icon = el('div', 'pj-thumb-empty', '📁');
             card.appendChild(icon);
             var info = el('div', 'pj-info');
             info.appendChild(el('div', 'pj-name', g.name));
@@ -564,7 +567,9 @@
             var key = 'p:' + item.name;
             var card = el('div', 'pj-card' + (multiMode ? ' selectable' : '') + (multiMode && selSet[key] ? ' sel' : ''));
 
-            var thumb = el('div', 'pj-thumb-empty', multiMode && selSet[key] ? '✅' : '🔮');
+            var check = el('div', 'pj-check', multiMode && selSet[key] ? '✓' : '');
+            card.appendChild(check);
+            var thumb = el('div', 'pj-thumb-empty', '🔮');
             card.appendChild(thumb);
 
             if (item.hasModel) {

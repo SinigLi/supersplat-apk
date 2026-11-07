@@ -717,6 +717,45 @@ try {
         check('V52-8 三选弹窗+仅解除分组', r7.btns.join().includes('仅解除分组') && r7.btns.join().includes('完整删除') && r7.btns.join().includes('取消') && r7.groupsLeft === 0, r7);
     }
 
+    /* ---- v52c：复选框引导 + 空文件夹底部条贴底 ---- */
+    {
+        /* 长按后左侧复选框可见且选中 */
+        const r8 = JSON.parse(await evalJs(`
+        (async () => {
+            const card = document.querySelectorAll('.pj-card')[0];
+            card.dispatchEvent(new Event('contextmenu', { cancelable: true }));
+            await new Promise(r => setTimeout(r, 300));
+            const sel = document.querySelector('.pj-card.sel');
+            const check = sel ? sel.querySelector('.pj-check') : null;
+            const cs = check ? getComputedStyle(check) : null;
+            const checkVisible = !!cs && cs.display !== 'none' && check.textContent === '✓';
+            document.querySelector('.pj-cancel').click();
+            await new Promise(r => setTimeout(r, 200));
+            const checkHidden = getComputedStyle(document.querySelector('.pj-card .pj-check')).display === 'none';
+            return JSON.stringify({ checkVisible, checkHidden });
+        })()`));
+        check('V52-9 长按选中+左侧复选框✓', r8.checkVisible && r8.checkHidden, r8);
+
+        /* 空分组：gbar 贴底（bottom 与视口底距离 < 80px） */
+        const r9 = JSON.parse(await evalJs(`
+        (async () => {
+            const reg = window.__projectLogic.loadRegistry();
+            const g = window.__groups.createGroup(reg, '空组', '');
+            window.__projectLogic.saveRegistry(reg);
+            window.__projects.list();
+            await new Promise(r => setTimeout(r, 200));
+            [...document.querySelectorAll('.pj-card')].find(x => x.classList.contains('pj-gcard')).click();
+            await new Promise(r => setTimeout(r, 300));
+            const gbar = document.querySelector('.pj-gbar').getBoundingClientRect();
+            const empty = document.querySelector('.pj-empty');
+            const emptyShown = empty && getComputedStyle(empty).display !== 'none';
+            const gap = innerHeight - gbar.bottom;
+            return JSON.stringify({ emptyShown, gap: Math.round(gap) });
+        })()`));
+        check('V52-10 空分组底部条贴底', r9.emptyShown && r9.gap >= 0 && r9.gap < 80, r9);
+    }
+
+
 
 
 
