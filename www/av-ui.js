@@ -981,6 +981,7 @@ function build() {
             info.appendChild(el('div', 'av-item-sub', fmtSize(f.size)));
             card.appendChild(info);
             if (hasMerge(f.label)) card.appendChild(el('div', 'av-item-badge', '⤴'));
+            if (hasMulti(f.label)) card.appendChild(el('div', 'av-item-badge', '▦'));
             var n = countSplits(f.label);
             if (n) card.appendChild(el('div', 'av-item-badge av-b-split', '✂' + n));
             card.addEventListener('click', function () { selectFile(i); });
@@ -1002,6 +1003,11 @@ function build() {
     }
     function hasMerge(seg) {
         return S.marks.marks.some(function (m) { return m.type === 'merge_prev' && m.seg === seg; });
+    }
+    /* v51c：该段是否存在多帧参考点（列表徽标用） */
+    function hasMulti(seg) {
+        return S.marks.marks.some(function (m) { return m.type === 'multiframe_ref' && m.seg === seg &&
+            ((m.frames && m.frames.length) || (m.secs && m.secs.length)); });
     }
 
     /* ---------- 文件夹 / 服务器 ---------- */
@@ -1043,6 +1049,14 @@ function build() {
         var matched = window.__storyboard.matchStoryboard(parsed.rows, S.files);
         if (!matched.ok) { sbDiag('match FAIL: ' + matched.reason); toast('分镜清单与视频不匹配：' + matched.reason + '，已跳过自动打点'); return; }
         sbDiag('match ok marks=' + matched.marks.length + ' ' + JSON.stringify(matched.marks));
+        /* v51c 修复：mark.seg 必须与手动标记一致用 label（字符串）。
+         * 此前用数字 seq，所有 UI 比较（m.seg === curSeg()/f.label）全 miss
+         * → 播放条刻度与列表徽标都不显示。 */
+        matched.marks.forEach(function (mk) {
+            var f = null;
+            for (var q = 0; q < S.files.length; q++) { if (S.files[q].seq === mk.seg) { f = S.files[q]; break; } }
+            mk.seg = f ? f.label : String(mk.seg);
+        });
         S.marks.marks = window.__storyboard.mergeIntoMarks(S.marks.marks, matched.marks);
         saveAll(false);
         renderTicks(); renderSideHead();

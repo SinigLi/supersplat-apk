@@ -498,7 +498,7 @@ try {
             return JSON.stringify({ files: document.querySelectorAll('#avPage .av-item').length, marks: mf.map(m => ({ seg: m.seg, frames: m.frames })), csvUri: (window.__avLogic.loadMeta('v51sb').csvUri || '') });
         })()`));
         check('V51-1 清单5视频2组mark', r1.files === 5 && r1.marks.length === 2, r1);
-        check('V51-2 seg1=[10,20] seg5=[20]', JSON.stringify(r1.marks) === '[{"seg":1,"frames":[10,20]},{"seg":5,"frames":[20]}]', r1.marks);
+        check('V51-2 seg(label)=[10,20]/[20]', JSON.stringify(r1.marks) === '[{"seg":"1","frames":[10,20]},{"seg":"5","frames":[20]}]', r1.marks);
         check('V51-3 csvUri 已持久化', r1.csvUri.includes('csv'), r1.csvUri);
 
         /* V51-4：v51c 无 csvUri 时不再自动弹选择器 → 顶栏 📋 手动关联 */
@@ -540,6 +540,30 @@ try {
             return JSON.stringify({ sb: cap.Plugins.DebugLog.lines.filter(l => l.includes('sb:')).length });
         })()`));
         check('V51-6 诊断日志进 DebugLog', r4.sb >= 2, r4);
+
+        /* V51-7：播放条刻度 + 列表 ▦ 徽标（seg 用 label 与手动标记一致） */
+        const r5 = JSON.parse(await evalJs(`
+        (async () => {
+            window.__av.open('v51sb');
+            await new Promise(r => setTimeout(r, 800));
+            /* 选中 seg=1 的视频（列表第 1 项）后播放条应有 2 个 multi 刻度 */
+            const items = document.querySelectorAll('#avPage .av-item');
+            items[0].click();
+            await new Promise(r => setTimeout(r, 600));
+            /* mock 环境视频加载不出真 duration → 覆盖后补发 loadedmetadata
+             * 走真实 renderTicks 路径 */
+            const v = document.querySelector('#avPage video');
+            if (v) {
+                try { Object.defineProperty(v, 'duration', { configurable: true, get: () => 100 }); } catch (e) { }
+                v.dispatchEvent(new Event('loadedmetadata'));
+                await new Promise(r => setTimeout(r, 400));
+            }
+            const ticks = document.querySelectorAll('#avPage .av-tick-multi').length;
+            const badge = items[0].textContent.includes('▦');
+            const marks = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref').map(m => ({ seg: m.seg, frames: m.frames }));
+            return JSON.stringify({ ticks, badge, marks });
+        })()`));
+        check('V51-7 播放条刻度+列表▦徽标', r5.ticks === 2 && r5.badge && r5.marks.length === 2 && r5.marks[0].seg === '1', r5);
     }
 
 } catch (e) {
