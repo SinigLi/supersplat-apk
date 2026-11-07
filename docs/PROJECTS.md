@@ -163,3 +163,24 @@ node tests/probe-v28b.mjs           # 9 项：停靠区避让保存条
 `project.mjs` 用 `spike/glb-load-test/splat.ply` 作测试模型（跑时拷进 `www/`，结束删除，不进仓库）。测试起 `tools/dev/staticsrv.cjs` + headless Edge（WebGPU/ANGLE），端口各套件错开，跑完自动退出。
 
 > **桌面绿 ≠ 真机过**：v29 首发的 `Missing parent directory` 就是 IndexedDB（无目录概念）测不出来的原生路径问题。原生分支的改动必须真机验一轮。
+
+## 9. 分组管理（v52~v52c，2026-11-08）
+
+工程列表支持文件夹式嵌套分组。数据在 registry 顶层 `groups` 数组：
+`{ id, name, parent }`（parent 为 '' 或父分组 id）；工程条目用 `project.group` 指向所在分组，缺省为根层。
+
+**纯逻辑** `www/groups.js`（无 DOM 依赖，global.__groups / module.exports）：
+- `createGroup`：非空名、同层唯一（与分组和工程名都查重）、回滚（建组放节点失败时删组）
+- `moveNodes / validateMove`：禁止移入自身/子孙、目标重名与同批冲突校验
+- `dissolveGroup`（仅解除分组）：子工程+子分组上移到被删分组的父路径
+- `deleteGroupDeep`（完整删除）：递归删子分组+子工程（工程含数据删除）
+- 单测 `tests/groups.test.cjs`
+
+**UI** `www/projects-ui.js`：
+- 面包屑导航（⬆ 上级 / 路径段点击跳层）
+- 500ms 长按或右键进入多选；长按的卡片自动选中；多选时卡片左侧 ☐/☑ 复选框（v52c）
+- 底部操作栏「新建分组 / 移动到分组」，右下角取消按钮
+- 分组卡右侧 🗑 → 三选弹窗：仅解除分组 / 完整删除（confirm 数量）/ 取消
+- 空态层 DOM 顺序在底部操作栏之前（v52c 教训：排在后面会被 flex:1 顶起，底部条浮到中间）
+
+**血泪**：`upsertProject/removeProject` 重建 registry 对象时曾只保留 `projects`，静默丢 `groups` —— 表现为「新建工程后所有分组消失、新工程落根目录」。给 registry 加顶层字段后，所有重建式写函数必须同步携带全字段（v52b）。

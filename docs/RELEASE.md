@@ -111,7 +111,13 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v50 | 982c28b | 图片模式大版本：遮罩分层(moyutai.imgmask.v2，含 v1 自动迁移)、换图确认弹窗、分享双模式(默认 PNG/分层 ZIP，隐藏层不导出)、工具栏四边拖拽停靠+左侧撤销条。坑：String.fromCharCode.apply 超 64KB 参数上限炸大 zip → 分块 base64；setupDockDrag 定义未调用 → 拖拽全失效，探针抓出。 |
 | v50b | 061dec5 | 真机反馈修复：图层整行可点激活（原只有名字可点）+ 激活高亮加强；保存改手动（编辑标脏、标题●、返回三选确认）。 |
 | v50c | (本次) | 两侧工具组 ⠿ 把手拖拽吸附（右 dock 四边 + 左撤销条四边独立持久化）、左条纵向滚动。 |
-| v51 | (本次) | 分镜清单适配：视频工程关联「分镜清单.csv」（镜号/多参考图），镜号 1..N 连续且数量与视频一致时自动打多参点（CSV 0-based → 显示 1-based）；首次单文件授权持久化，之后全自动；不匹配/缺文件完全跳过。新文件 www/storyboard.js（纯逻辑+27单测）+ MediaServerPlugin.pickCsv/readText。 |
+| v51 | 分镜清单适配：视频工程关联「分镜清单.csv」（镜号/多参考图），镜号 1..N 连续且数量与视频一致时自动打多参点（CSV 0-based → 显示 1-based）；首次单文件授权持久化，之后全自动；不匹配/缺文件完全跳过。新文件 www/storyboard.js（纯逻辑+27单测）+ MediaServerPlugin.pickCsv/readText。 |
+| v51b | 真机反馈：GBK/UTF-8 CSV 编码兼容（BOM 探测→严格 UTF-8→GBK→Latin-1 回退，返回 charset/byte 元数据）；诊断暂走既有 DebugLog |
+| v51c | 真机日志定位：自动弹文件选择器被取消 4 次导致从没关联上 CSV。改为手动「📋」按钮关联/换绑 + 打开工程无关联时一次性引导提示；砍掉独立 sb-diag 存储与剪贴板手势，统一走 DebugLog |
+| v51d | 多参点不显示根因：storyboard 匹配用数字 seq，UI 严格等值比较字符串 label → 全部失配。applyStoryboard 做 seg→label 归一 + 左列表补「▦ 多帧点」徽标 |
+| v52 | 工程列表文件夹式分组：嵌套分组（registry.groups）、面包屑、500ms 长按/右键多选、底部「新建分组/移动到分组」、层级移动校验。新文件 www/groups.js（纯逻辑+27单测） |
+| v52b | 真机反馈两 bug 同根因：upsertProject/removeProject 重建 registry 丢 groups 字段 → 分组消失/新工程落根目录；改为全字段保留+新工程落当前分组。分组卡 🗑 三选删除（仅解除分组/完整删除/取消），groups.js 补 dissolve/deleteGroupDeep |
+| v52c | 多选体验：长按自动选中 + 卡片左侧 ☐/☑ 复选框引导；空文件夹底部条漂浮根因 = emptyEl 在 DOM 排 gbar 之后被 flex:1 顶起 → 移到 gbar 之前 |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
