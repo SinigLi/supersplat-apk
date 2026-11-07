@@ -106,10 +106,17 @@ v49 的撤销是「strokes 数组 pop/push」，分层后操作类型变多（�
 |---|---|---|---|
 | M1 图层核心 | img-ops.js + img-store v2 + 迁移 + 层列表 UI + op 化撤销 | node 单测全绿 + probe 层断言 | ✅ `234da5a` img-ops 37/37、probe-v49 46/46 |
 | M2 换图 | 顶栏「🔄 换图」（有图才显示）+ 确认弹窗：确定=保留笔画 / 取消=放弃；清空走既有 🗑（可撤销） | probe 驱动真实 pickImage：有笔画必弹确认、取消不落盘、meta 不变 | ✅ probe-v49 **49/49** |
-| M3 导出模式 | 分享弹窗 + zip 分层导出 + shareFile 验证 | probe 解 zip 验字节 | 进行中 |
-| M4 停靠 | 拖拽吸附 + 左侧撤销组 + 滚动折叠 | probe 拖拽 + 手感真机确认 | 排队 |
+| M3 导出模式 | 分享弹窗 + zip 分层导出（fflate level0 + 分块 base64）+ shareFile(mime=application/zip) | probe 捕获 shareFile 解 zip：5 文件齐全、隐藏层二次导出验证不出现 | ✅ probe-v49 **58/58** |
+| M4 停靠 | 拖拽吸附 + 左侧撤销组 + 滚动折叠 | probe 拖拽 + 手感真机确认 | 排队（下一步） |
 | M5 拆分 | img-core/img-page（纯重构） | probe 全绿不变 | 排队 |
 | M6 交付 | 门禁升级（v50 断言入 verify_v49 或新 verify_v50）、CI、真机、飞书 | 全绿 + 老板确认 | 排队 |
+
+### M3 实施记录（2026-11-07）
+
+- **探针抓出真机级 bug**：`btoa(String.fromCharCode.apply(null, zipped))` 在 zip >64KB 时抛 RangeError（apply 参数上限 ~65535），600×400 三层工程正好越线；错误被按钮 catch 成 toast，「分享没反应」。修复为 8KB 分块编码，大小无上限。教训：**大 Uint8Array 转 base64 禁止 apply 全量展开**。
+- zip 结构：`<工程名>.png`（干净原图）+ `<工程名>_alpha.png`（挖除图）+ `<工程名>_<层名>.png` ×可见层；fflate `zipSync level 0`（PNG 本身已压缩）。
+- MIME 走 `application/zip`（SaveImagePlugin.shareFile 的白名单校验内）；插件不存在时降级 dataURL share。
+- 「隐藏层不导出」的验证方式：临时建层→隐藏→二次导出→断言 zip 无该层且其余 5 文件仍在（比检查被删又撤销恢复的天空层更直接）。
 
 ### M2 实施记录（与原计划的差异）
 

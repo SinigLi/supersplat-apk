@@ -533,6 +533,93 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ck('取消换图：不写新图', cp.putCalled === false, cp);
     ck('取消换图：meta 不变', afterMeta.imageFile === beforeMeta.imageFile, afterMeta.imageFile);
 
+    /* ---- v50/M3：分享双模式 ---- */
+    // 点分享 → 弹窗出现（两个模式按钮）
+    await ev(`[...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('分享')).click()`);
+    await sleep(400);
+    const d = await ev(`(() => {
+      const m = document.querySelector('.pj-dlg-mask.open');
+      if (!m) return { open: false };
+      return { open: true, btns: [...m.querySelectorAll('.pj-dlg-btn')].map(b => b.textContent) };
+    })()`);
+    console.log('分享弹窗: ' + JSON.stringify(d));
+    ck('分享弹窗出现', d.open === true, d);
+    ck('双模式按钮齐全', d.btns && d.btns.length === 3 && d.btns.some(x => x.includes('默认')) && d.btns.some(x => x.includes('分层')), d.btns);
+
+    // 拦截 shareFile，点「遮罩分层」→ 捕获 zip 参数；在页内解包验内容
+    const z = await ev(`(async () => {
+      let captured = null;
+      /* headless 无原生插件：先确保 SaveImage 存在再拦截（savePlug() 走
+       * window.Capacitor.Plugins.SaveImage，造在同一位置即被读到）。 */
+      window.Capacitor = window.Capacitor || { Plugins: {} };
+      window.Capacitor.Plugins = window.Capacitor.Plugins || {};
+      if (!window.Capacitor.Plugins.SaveImage) window.Capacitor.Plugins.SaveImage = {};
+      window.Capacitor.Plugins.SaveImage.shareFile = async function (args) { captured = args; return {}; };
+      [...document.querySelectorAll('.pj-dlg-mask.open .pj-dlg-btn')].find(b => b.textContent.includes('分层')).click();
+      /* 3 张 canvas toDataURL + zipSync 在 dpr=3 headless 里耗时波动大，轮询等 */
+      for (let i = 0; i < 40 && !captured; i++) await new Promise(r => setTimeout(r, 200));
+      if (!captured) return JSON.stringify({ captured: false, waitedMs: 8000 });
+      // 页内解 zip：fflate.unzipSync
+      const bin = atob(captured.data);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const files = window.fflate.unzipSync(u8);
+      const names = Object.keys(files).sort();
+      // 验 alpha 图：找 _alpha 那张，采样透明/不透明像素数
+      let holes = -1;
+      const alphaName = names.find(n => n.includes('_alpha'));
+      if (alphaName) {
+        const blob = new Blob([files[alphaName]]);
+        const bmp = await createImageBitmap(blob);
+        const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+        const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        holes = 0;
+        for (let i = 3; i < px.length; i += 4) if (px[i] === 0) holes++;
+      }
+      return { captured: true, filename: captured.filename, mime: captured.mime, names, holes };
+    })()`);
+    console.log('zip 导出: ' + JSON.stringify(z));
+    ck('zip 已捕获（shareFile 调用）', z.captured === true, z.captured);
+    ck('zip 文件名正确', z.filename === '探针图片工程_layers.zip', z.filename);
+    ck('zip 含原图+alpha', z.names && z.names.some(n => /[^_a-zA-Z0-9\u4e00-\u9fff]\.png$/.test(n) || /_alpha\.png$/.test(n)), z.names);
+    ck('zip 含每可见层遮罩', z.names && z.names.filter(n => /_(遮罩 1|头发|天空)\.png$/.test(n)).length === 3, z.names);
+    /* 「隐藏层不导出」的正向验证：新建一层并隐藏，再导一次，zip 里不能有它。
+     * （此前断言检查「天空不在 zip」是错的——天空被删后撤销恢复，恢复即可见，
+     *  本来就该出现在 zip 里。） */
+    await ev('window.__img._addLayer("临时层")');
+    await sleep(250);
+    const tmpId = JSON.parse(await ev('JSON.stringify(window.__img._layers())')).find(l => l.name === '临时层').id;
+    await ev('window.__img._toggleLayer(' + JSON.stringify(tmpId) + ')');   // 隐藏
+    await sleep(250);
+    const layersNow = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    const tmpVisible = layersNow.find(l => l.name === '临时层').visible;
+    ck('临时层已隐藏', tmpVisible === false, tmpVisible);
+    ck('alpha 图挖除区有效', z.holes > 5000, z.holes);
+
+    // 隐藏「临时层」后再导一次 → zip 不含临时层
+    const z2 = await ev(`(async () => {
+      let cap2 = null;
+      window.Capacitor.Plugins.SaveImage.shareFile = async function (args) { cap2 = args; return {}; };
+      const btn = [...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('分享'));
+      btn.click();
+      await new Promise(r => setTimeout(r, 300));
+      const b2 = [...document.querySelectorAll('.pj-dlg-mask.open .pj-dlg-btn')].find(b => b.textContent.includes('分层'));
+      b2.click();
+      for (let i = 0; i < 40 && !cap2; i++) await new Promise(r => setTimeout(r, 200));
+      if (!cap2) return { captured: false };
+      const bin = atob(cap2.data);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return { captured: true, names: Object.keys(window.fflate.unzipSync(u8)).sort() };
+    })()`);
+    ck('二次导出成功', z2.captured === true, z2.captured);
+    ck('隐藏层不在 zip 内（老板确认不导出）', z2.names && !z2.names.some(n => n.includes('临时层')), z2.names);
+    ck('zip 其余 5 文件仍齐全', z2.names && z2.names.length === 5, z2.names);
+    // 清理：删掉临时层（还原三层状态）
+    await ev('window.__img._delLayer(' + JSON.stringify(tmpId) + ')');
+    await sleep(250);
+
     // 返回后列表可点（维持既有行为）
     await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
     await sleep(600);

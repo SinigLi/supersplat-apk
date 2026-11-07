@@ -720,7 +720,7 @@
         saveBtn.addEventListener('click', function () { saveAll(true); });
         topEl.appendChild(saveBtn);
         var shareBtn = el('button', 'img-top-btn primary', '📤 分享');
-        shareBtn.addEventListener('click', exportPng);
+        shareBtn.addEventListener('click', showShareDialog);
         topEl.appendChild(shareBtn);
         page.appendChild(topEl);
 
@@ -961,21 +961,122 @@
     }
 
     /* 导出：drawMaskInto 生成蒙版 → destination-out 挖图 → SaveImage 分享 */
+    /* ---------- 导出（v50 双模式） ---------- */
+
+    /* 单图导出画布：合成可见层蒙版 → destination-out 挖图。导出与分享共用。 */
+    function buildCutoutCanvas() {
+        var mc = document.createElement('canvas');
+        mc.width = S.imgW; mc.height = S.imgH;
+        drawMaskInto(mc.getContext('2d'), { alpha: 1, showAids: false });
+        if (S.invert) applyInvert(mc.getContext('2d'), '0,0,0', 1);
+
+        var c = document.createElement('canvas');
+        c.width = S.imgW; c.height = S.imgH;
+        var g = c.getContext('2d');
+        g.drawImage(S.img, 0, 0);
+        g.globalCompositeOperation = 'destination-out';
+        g.drawImage(mc, 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        return c;
+    }
+
+    /* 单层遮罩画布：白笔不透明底透明（老板确认：隐藏层不导出） */
+    function buildLayerCanvas(layer) {
+        var c = document.createElement('canvas');
+        c.width = S.imgW; c.height = S.imgH;
+        var g = c.getContext('2d');
+        g.lineCap = 'round'; g.lineJoin = 'round';
+        g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+        drawStrokes(g, layer.strokes);
+        return c;
+    }
+
+    function safePart(name) {
+        return OPS.sanitizeName(name, []);
+    }
+
+    function canvasToU8(c) {
+        var b64 = c.toDataURL('image/png').split(',')[1];
+        var bin = atob(b64);
+        var u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return u8;
+    }
+
+    /* 分层 zip：原图 + 原图_alpha + 每可见层 原图_层名.png，fflate 打包后分享 */
+    async function exportLayersZip() {
+        var base = safePart(S.project);
+        var entries = {};
+
+        var clean = document.createElement('canvas');
+        clean.width = S.imgW; clean.height = S.imgH;
+        clean.getContext('2d').drawImage(S.img, 0, 0);
+        entries[base + '.png'] = canvasToU8(clean);
+
+        entries[base + '_alpha.png'] = canvasToU8(buildCutoutCanvas());
+
+        var used = [];
+        S.state.layers.forEach(function (lay) {
+            if (!lay.visible) return;   // 隐藏层不导出（老板确认）
+            var nm = OPS.sanitizeName(lay.name, used);
+            entries[base + '_' + nm + '.png'] = canvasToU8(buildLayerCanvas(lay));
+        });
+
+        if (!window.fflate) throw new Error('fflate 未加载');
+        var zipped = window.fflate.zipSync(entries, { level: 0 });   // PNG 已压缩，再压白费 CPU
+        /* 分块 base64：String.fromCharCode.apply(null, zipped) 的参数上限
+         * ≈65535，图层包很容易越线（RangeError: Maximum call stack size
+         * exceeded），异常会被按钮 catch 成 toast，「分享没反应」。探针实测
+         * 600×400×5 张已触雷。分块拼，不限大小。 */
+        var bin = '';
+        var CH = 8192;
+        for (var bi = 0; bi < zipped.length; bi += CH) {
+            bin += String.fromCharCode.apply(null, zipped.subarray(bi, bi + CH));
+        }
+        var b64 = btoa(bin);
+        var name = base + '_layers.zip';
+
+        var sp = savePlug();
+        if (sp && sp.shareFile) {
+            await sp.shareFile({ data: b64, filename: name, mime: 'application/zip' });
+            hint('已分享分层包（' + Object.keys(entries).length + ' 个文件）');
+        } else if (sp && sp.share) {
+            await sp.share({ data: 'data:application/zip;base64,' + b64, filename: name });
+            hint('已唤起系统分享');
+        } else {
+            throw new Error('分享插件不可用');
+        }
+    }
+
+    /* 分享模式弹窗（默认 / 遮罩分层），纯 DOM，不用系统对话框 */
+    function showShareDialog() {
+        var mask = el('div', 'pj-dlg-mask');
+        var box = el('div', 'pj-dlg');
+        box.appendChild(el('div', 'pj-dlg-title', '选择导出模式'));
+        box.appendChild(el('div', 'pj-dlg-hint', '默认：整图 PNG（遮罩区透明）；分层：打包原图/挖除图/各层遮罩'));
+        var col = el('div', 'pj-dlg-col');
+        var b1 = el('button', 'pj-dlg-btn pj-primary', '默认导出（PNG）');
+        var b2 = el('button', 'pj-dlg-btn', '遮罩分层（ZIP）');
+        var b3 = el('button', 'pj-dlg-btn', '取消');
+        col.appendChild(b1); col.appendChild(b2); col.appendChild(b3);
+        box.appendChild(col);
+        mask.appendChild(box);
+        document.body.appendChild(mask);
+        requestAnimationFrame(function () { mask.classList.add('open'); });
+        var close = function () { mask.classList.remove('open'); setTimeout(function () { mask.remove(); }, 200); };
+        b1.addEventListener('click', async function () { close(); await exportPng(); });
+        b2.addEventListener('click', async function () {
+            close();
+            try { await exportLayersZip(); } catch (e) { toast('分层导出失败：' + (e && e.message || e)); }
+        });
+        b3.addEventListener('click', close);
+        mask.addEventListener('click', function (e) { if (e.target === mask) close(); });
+    }
+
     async function exportPng() {
         if (!S.img) { hint('先导入图片', true); return; }
         try {
-            var mc = document.createElement('canvas');
-            mc.width = S.imgW; mc.height = S.imgH;
-            var mg = mc.getContext('2d');
-            drawMaskInto(mg, { alpha: 1, showAids: false });
-
-            var c = document.createElement('canvas');
-            c.width = S.imgW; c.height = S.imgH;
-            var g = c.getContext('2d');
-            g.drawImage(S.img, 0, 0);
-            g.globalCompositeOperation = 'destination-out';
-            g.drawImage(mc, 0, 0);
-            g.globalCompositeOperation = 'source-over';
+            var c = buildCutoutCanvas();
 
             var url = c.toDataURL('image/png');
             var name = 'cutout-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '-' +
