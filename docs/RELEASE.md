@@ -107,12 +107,15 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v49 | **图片模式（第四工程模式）**：新建工程四选一（`model`/`video`/`audio`/**`image`**）；工作台双层 canvas（图片层只在视图变换重绘、蒙版层只在笔画变化重绘）；涂抹/多边形/橡皮/撤销/重做/反选；笔画以路径数组持久化（`moyutai.imgmask.v1`，每笔一存），图片按内容寻址入 `files/<sha1>.<ext>`；导出按原图尺寸合成 PNG（挖除区 alpha=0）走 `SaveImagePlugin.share`，与 3D 机位同链路，**零新原生插件**。新增 `www/img-store.js` + `www/img-ui.js`，`av-store.js` 不动（其 mode 校验严格，塞 image 会搅动已稳定链路） |
 | **v49b** | 图片模式真机三条反馈定稿：① 顶栏避让系统状态栏（`MediaServer.getSafeArea` 物理 px ÷ dpr、超 48 视为旋转脏值归零、延迟重读 + resize/orientationchange 自愈、内联 padding；**必须 `box-sizing:border-box`**，否则 `height` 与 `padding-top` 相加实测 100px）；② 多边形由「逐点点击 + 双击结束」改为**套索**（拖动画一圈、松手自动闭合，拖动中不入撤销栈）；③ 涂抹深浅不一**不是厚度控制而是渲染缺陷**——蒙版每笔 `rgba(...,.82)` 叠加，同处涂 N 遍 = `1-(1-.82)^N`，改为每笔 `alpha=1` + 整层 CSS `opacity:.82`。另修门禁脚本误报：`accept` 缺席检查的正则把解释该约束的注释也匹配了，改结构性断言。探针 21/21 |
 | v49c | 图片模式返回按钮失效修复 | 返回前 | `open()` 内联写死 `display:flex`，`back()` 只删 `.open` 类 → 内联样式仍生效、图片页继续盖在列表上，表现为「点返回没反应」；补 `page.style.display = 'none'`（`open()` 失败兜底同补，否则用户被留在半死页面且无返回入口）。探针加 4 条往返断言并把运行时异常计入失败，顺带修掉 `applySafeArea` 延迟重读的 `TypeError`（插件存在性只在入口查一次，定时器回调空手敲门）。`av-ui.js` 无此问题（一直有这行）|
+| v49d | 恢复图片模式 mode 契约（v49c 交付时门禁报警） | 提交后 | 整理代码时删除了 `upsertProject`，连带删掉了 `img-store` 里唯一的 mode 校验；`loadMeta` 读侧仍过滤但 `saveMeta` 写侧失守，坏 meta 会变成永远读不出的死数据。校验移到写侧：`saveMeta` 拒收 `mode!=='image'`，`img-ui` 的 `saveStrokes` 兜一层（笔画已落盘不因 meta 契约中断）。门禁断言改为读/写双向检查。另：交付脚本路径替换失误（`temp/` 拼出 `temp/tools/ci/`）导致第二次失败，从断点续做 zip+飞书，未重跑 CI |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
 > v49/v49b 的设计、决策与验证口径见 `docs/IMAGE-MODE.md`。
 
 ## 6. 已知坑（血泪版）
+- **门禁脚本必须随仓库走**——v49 门禁最初是 `temp/v49-gate.cjs` 临时文件，整理代码后没人同步它，出现「代码删了函数、门禁还在找函数里的字符串」的假失败。现为 `tools/ci/verify_v49.cjs`，改代码必须同步改门禁。
+- **交付脚本改路径别用全局字符串替换**——v49d 事故：把 `v49-gate.cjs` 全局替换成 `tools/ci/verify_v49.cjs`，把 `WS + '/temp/v49-gate.cjs'` 也一起换成了 `WS + '/temp/tools/ci/...'`，路径多一层 `temp/` 直接 MODULE_NOT_FOUND。改路径先打印替换后的完整结果再执行。
 - **只删 class 不清内联样式 = 页面关不掉**——v49c 事故：`open()` 为绕开样式表缓存把 `display:flex` 内联写死，`back()` 只 `classList.remove('open')`，内联样式仍然生效，页面继续盖在上面，表现为「点按钮没反应」。凡是内联设过 `style.display` 的容器，关闭时必须显式复位。
 
 - **发版前核对发送路径与 APKBASE 一致**——v30 事故：打包改名了、feishu --file 没改。
