@@ -501,21 +501,23 @@ try {
         check('V51-2 seg1=[10,20] seg5=[20]', JSON.stringify(r1.marks) === '[{"seg":1,"frames":[10,20]},{"seg":5,"frames":[20]}]', r1.marks);
         check('V51-3 csvUri 已持久化', r1.csvUri.includes('csv'), r1.csvUri);
 
-        /* V51-4：新工程无 csvUri → 首开自动弹一次并应用；重开零弹窗 */
+        /* V51-4：v51c 无 csvUri 时不再自动弹选择器 → 顶栏 📋 手动关联 */
         const r2 = JSON.parse(await evalJs(`
         (async () => {
+            let pickCalls2 = 0;
+            window.Capacitor.Plugins.MediaServer.pickCsv = async () => { pickCalls2++; return { uri: 'content://document/csv', name: '分镜清单.csv' }; };
             window.__avLogic.saveMeta({ name: 'v51pick', mode: 'video', folderUri: 'content://tree/x', folderName: 'sb Clips', fps: 25 });
             window.__av.open('v51pick');
             await new Promise(r => setTimeout(r, 800));
-            const first = window.__sbPickCalls();
-            const mf1 = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref').length;
-            window.__av.open('v51pick');
+            const autoCalls = pickCalls2;   // open 过程不应弹
+            const btn = [...document.querySelectorAll('#avPage .av-top-btn')].find(b => b.textContent.includes('📋'));
+            if (btn) btn.click();
             await new Promise(r => setTimeout(r, 800));
-            const second = window.__sbPickCalls();
-            const mf2 = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref').length;
-            return JSON.stringify({ first, mf1, second, mf2 });
+            const btnCalls = pickCalls2;
+            const mf1 = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref').length;
+            return JSON.stringify({ autoCalls, btnCalls, mf1, hasBtn: !!btn });
         })()`));
-        check('V51-4 首开弹一次+重开零弹窗', r2.first === 1 && r2.second === 1 && r2.mf1 === 2 && r2.mf2 === 2, r2);
+        check('V51-4 打开不弹窗+点📋关联打点', r2.autoCalls === 0 && r2.btnCalls === 1 && r2.mf1 === 2 && r2.hasBtn, r2);
 
         /* V51-5：不匹配清单 → 全跳过 */
         const r3 = JSON.parse(await evalJs(`
@@ -528,8 +530,16 @@ try {
         })()`));
         check('V51-5 不匹配跳过（0 mark）', r3.count === 0, r3);
 
-        const r4 = await evalJs('JSON.stringify({ diag: Array.isArray(window.__av._sbDiag()), n: window.__av._sbDiag().length })');
-        check('V51-6 诊断日志接口可用', JSON.parse(r4).diag && JSON.parse(r4).n >= 3, r4);
+        const r4 = JSON.parse(await evalJs(`
+        (async () => {
+            const cap = window.Capacitor;
+            cap.Plugins.DebugLog = { lines: [], append: async (a) => { cap.Plugins.DebugLog.lines.push(a.text || ''); return { ok: true }; } };
+            window.__avLogic.saveMeta({ name: 'v51diag', mode: 'video', folderUri: 'content://tree/x', folderName: 'sb Clips', fps: 25, csvUri: 'content://document/csv' });
+            window.__av.open('v51diag');
+            await new Promise(r => setTimeout(r, 800));
+            return JSON.stringify({ sb: cap.Plugins.DebugLog.lines.filter(l => l.includes('sb:')).length });
+        })()`));
+        check('V51-6 诊断日志进 DebugLog', r4.sb >= 2, r4);
     }
 
 } catch (e) {

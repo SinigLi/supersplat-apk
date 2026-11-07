@@ -450,24 +450,30 @@ function build() {
         var backBtn = el('button', 'av-top-btn', '← 返回');
         backBtn.addEventListener('click', back);
         topEl.appendChild(backBtn);
-        var topTitle = el('div', 'av-top-title', '');
-        /* v51b：连点标题 5 次 → 复制分镜清单诊断日志（真机排障入口） */
-        var titleTaps = 0, titleTapTimer = null;
-        topTitle.addEventListener('click', function () {
-            titleTaps++;
-            if (titleTapTimer) clearTimeout(titleTapTimer);
-            titleTapTimer = setTimeout(function () { titleTaps = 0; }, 1200);
-            if (titleTaps >= 5) {
-                titleTaps = 0;
-                var txt = '';
-                try { txt = localStorage.getItem('sb-diag') || '（暂无分镜诊断日志）'; } catch (e) { txt = String(e); }
-                var done = function () { toast('诊断日志已复制，粘贴发给工程师'); };
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(txt).then(done).catch(function () { toast(txt.slice(-120)); });
-                } else { toast(txt.slice(-120)); }
-            }
+        topEl.appendChild(el('div', 'av-top-title', ''));
+        /* v51c：📋 关联/更换分镜清单（SAF 单文件授权，持久化后全自动） */
+        var sbBtn = el('button', 'av-top-btn', '📋');
+        sbBtn.title = '关联分镜清单.csv';
+        sbBtn.addEventListener('click', function () {
+            var p = ms();
+            if (!p || !p.pickCsv) { toast('当前环境不支持分镜清单关联'); return; }
+            sbDiag('sbBtn pickCsv asking (cur csvUri=' + (S.meta.csvUri || 'none') + ')');
+            p.pickCsv().then(function (r) {
+                if (!r || !r.uri) { sbDiag('sbBtn pickCsv cancelled'); return; }
+                S.meta.csvUri = r.uri;
+                S.meta.csvName = r.name || '';
+                saveAll(false);
+                sbDiag('sbBtn linked name=' + (r.name || '') + ' uri=' + r.uri);
+                toast('已关联「' + (r.name || '分镜清单.csv') + '」，正在比对…');
+                return p.readText({ uri: r.uri }).then(function (r2) {
+                    sbDiag('readText ok charset=' + (r2 && r2.charset || '?') + ' bytes=' + (r2 && r2.bytes || 0));
+                    applyStoryboard(r2 && r2.text || '');
+                });
+            }).catch(function (e) {
+                sbDiag('sbBtn pickCsv ERR ' + (e && (e.message || e) || e));
+            });
         });
-        topEl.appendChild(topTitle);
+        topEl.appendChild(sbBtn);
         var saveBtn = el('button', 'av-top-btn', '💾 保存');
         saveBtn.addEventListener('click', function () { saveAll(true); });
         topEl.appendChild(saveBtn);
@@ -1016,17 +1022,10 @@ function build() {
         });
     }
 
-    /* ---- v51b：分镜清单诊断日志（真机排障）----
-     * 写 localStorage['sb-diag']（最近 40 条），标题连点 5 次复制全部。 */
+    /* ---- v51b/c：分镜清单诊断日志 ----
+     * 只走 dlog（DebugLog 原生日志，「🐞 日志」按钮可见/可发回），
+     * 不再另写 localStorage（老板反馈：日志按钮本来就有一套）。 */
     function sbDiag(msg) {
-        try {
-            var key = 'sb-diag';
-            var arr = [];
-            try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
-            arr.push(new Date().toISOString().slice(11, 19) + ' ' + msg);
-            while (arr.length > 40) arr.shift();
-            localStorage.setItem(key, JSON.stringify(arr));
-        } catch (e) { }
         dlog('sb: ' + msg);
     }
 
@@ -1036,8 +1035,7 @@ function build() {
      * csvUri 已记住 → 每次打开工程全自动读取比对；首次自动弹一次选择器，
      * 取消则本次会话不再打扰。比对失败（镜号数≠视频数/不连续/重复）只
      * toast 一次原因，绝不部分应用。 */
-    var csvAsked = false;
-
+    var csvGuideShown = false;
     function applyStoryboard(csvText) {
         var parsed = window.__storyboard.parseStoryboardCsv(csvText);
         if (!parsed.ok) { sbDiag('parse FAIL: ' + parsed.error + ' | head=' + String(csvText).slice(0, 60).replace(/[\r\n]+/g, ' ')); toast('分镜清单不可用：' + parsed.error); return; }
@@ -1053,7 +1051,6 @@ function build() {
     }
 
     function tryAutoStoryboard() {
-        sbDiag('enter project=' + S.project + ' mode=' + S.meta.mode + ' files=' + (S.files || []).length + ' csvUri=' + (S.meta.csvUri || 'none'));
         if (S.meta.mode !== 'video' || !S.files || !S.files.length) { sbDiag('skip: not video or no files'); return; }
         var p = ms();
         if (!p) { sbDiag('skip: no plugin'); return; }
@@ -1064,29 +1061,18 @@ function build() {
                 applyStoryboard(r && r.text || '');
             }).catch(function (e) {
                 sbDiag('readText ERR ' + (e && (e.message || e) || e));
-                toast('分镜清单读取失败（重新选择一次即可）：' + (e && e.message || e));
+                toast('分镜清单读取失败（点顶栏 📋 重新选择）：' + (e && e.message || e));
                 S.meta.csvUri = null; saveAll(false);
             });
             return;
         }
-        if (csvAsked) { sbDiag('skip: already asked this session'); return; }
-        csvAsked = true;
-        if (!p.pickCsv) { sbDiag('skip: no pickCsv (old plugin/mock)'); return; }
-        sbDiag('pickCsv asking...');
-        p.pickCsv().then(function (r) {
-            if (!r || !r.uri) { sbDiag('pickCsv cancelled by user'); return; }
-            S.meta.csvUri = r.uri;
-            S.meta.csvName = r.name || '';
-            saveAll(false);
-            sbDiag('pickCsv ok name=' + (r.name || '') + ' uri=' + r.uri);
-            toast('已关联「' + (r.name || '分镜清单.csv') + '」，之后自动比对');
-            return p.readText({ uri: r.uri }).then(function (r2) {
-                sbDiag('readText ok charset=' + (r2 && r2.charset || '?') + ' bytes=' + (r2 && r2.bytes || 0) + ' head=' + String(r2 && r2.text || '').slice(0, 60).replace(/[\r\n]+/g, ' '));
-                applyStoryboard(r2 && r2.text || '');
-            });
-        }).catch(function (e) {
-            sbDiag('pickCsv ERR ' + (e && (e.message || e) || e));
-        });
+        /* v51c：不再自动弹系统选择器（日志显示多次被当作误触取消）。
+         * 改为一次性 toast 引导 + 顶栏 📋 手动关联。 */
+        if (!csvGuideShown) {
+            csvGuideShown = true;
+            sbDiag('guide toast shown (no csvUri)');
+            toast('提示：点顶栏 📋 关联「分镜清单.csv」可自动打多参点');
+        }
     }
 
     function refreshFolder() {
@@ -1896,8 +1882,7 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
-        _sbDiag: function () { try { return JSON.parse(localStorage.getItem('sb-diag') || '[]'); } catch (e) { return [String(e)]; } },
-        _sbDiagClear: function () { try { localStorage.removeItem('sb-diag'); } catch (e) { } },
+
         _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy, nativeOff: nativeThumbDisabled, nativeFails: consecutiveNativeFails }; },
         _refreshFolder: refreshFolder,
         open: open,
