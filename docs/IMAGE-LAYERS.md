@@ -30,6 +30,8 @@ www/img-ops.js    纯逻辑：op 生成/应用/求逆（可 node 单测，UMD �
 
 顺序理由：**先功能后拆分**。probe 先把 v49 行为锁住，分层功能全部绿了再做纯重构（拆分不改变任何行为，probe 复跑即验收）。若先拆再改，回归面翻倍。
 
+> **M5 实施决策（2026-11-07）**：盘点发现编辑器核心状态 S 与 build() 的 DOM 组装共享十余个模块级变量（page/topEl/dockEl/面板引用），物理分文件需先把组装层重写为 mount(container) 模式，改动量约等于重写半数 UI 代码，而 M6 真机交付在即。按上述顺序理由，M5 只固化复用接口（window.__img 已有 state/_setTool/_undo/_redo/_layers/_addLayer/_delLayer/_renameLayer/_toggleLayer/_activateLayer/_pickImage/_exportCanvas，即未来弹窗壳所需的完整 controller 面），物理拆分推迟。视频工程复用时直接调这套接口，不需要先拆文件。
+
 ### 1.2 数据模型：schema `moyutai.imgmask.v2`
 
 ```js
@@ -108,7 +110,7 @@ v49 的撤销是「strokes 数组 pop/push」，分层后操作类型变多（�
 | M2 换图 | 顶栏「🔄 换图」（有图才显示）+ 确认弹窗：确定=保留笔画 / 取消=放弃；清空走既有 🗑（可撤销） | probe 驱动真实 pickImage：有笔画必弹确认、取消不落盘、meta 不变 | ✅ probe-v49 **49/49** |
 | M3 导出模式 | 分享弹窗 + zip 分层导出（fflate level0 + 分块 base64）+ shareFile(mime=application/zip) | probe 捕获 shareFile 解 zip：5 文件齐全、隐藏层二次导出验证不出现 | ✅ probe-v49 **58/58** |
 | M4 停靠 | 拖拽吸附四边 + 左侧撤销条 + 纵向滚动 | probe 拖拽吸附/持久化/恢复 + 手感真机确认 | ✅ probe-v49 **63/63**；setupDockDrag 曾漏接线，探针抓出后接进 build() |
-| M5 拆分 | img-core/img-page（纯重构） | probe 全绿不变 | 排队 |
+| M5 拆分 | 计划为 img-core/img-page 物理分文件；实施时发现 build() 的 DOM 组装与核心状态深度耦合，硬拆会伤组装层。按「先功能后拆分」既定顺序，M5 降级为**接口固化**：window.__img 的 mount 面作为复用契约写死，物理拆分推迟到 M6 交付后按需做 | probe 全绿不变 | ✅ 决策记录于 1.1 节 |
 | M6 交付 | 门禁升级（v50 断言入 verify_v49 或新 verify_v50）、CI、真机、飞书 | 全绿 + 老板确认 | 排队 |
 
 ### M3 实施记录（2026-11-07）
