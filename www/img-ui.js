@@ -692,6 +692,42 @@
         }, function () { return S.dockPos; }, function (p) { S.dockPos = p; });
     }
 
+    /* ---- v50d：横竖屏切换后重钳位悬浮工具条 ----
+     * commit 把吸附边和垂直坐标写成内联样式（按当下窗口算的绝对 px）。
+     * 旋转后视口尺寸变化，旧的 top/left 可能完全落在屏幕外 → 工具条"丢了"。
+     * 这里保留吸附边，只把垂直于该边的坐标按当前视口重新钳位。 */
+    function reflowFloatBar(bar) {
+        if (!bar) return;
+        var cs = getComputedStyle(bar);
+        var L = bar.style.left, T = bar.style.top, R = bar.style.right, B = bar.style.bottom;
+        var hasInline = (L && L !== 'auto') || (T && T !== 'auto') || (R && R !== 'auto') || (B && B !== 'auto');
+        if (!hasInline) return;   /* 默认停靠态（纯 CSS 类定位），无需处理 */
+        var m = 8, topMin = 60;
+        var vw = window.innerWidth, vh = window.innerHeight;
+        var r = bar.getBoundingClientRect();
+        /* 吸附边 = 内联里非 auto 的那个水平/垂直属性；缺省视为默认边 */
+        var pinnedRight = R && R !== 'auto';
+        var pinnedBottom = B && B !== 'auto';
+        /* 水平钳位：贴左/右边的只调整与边垂直的坐标；自由 left 也钳 */
+        if (L && L !== 'auto') {
+            var nl = Math.max(m, Math.min(parseFloat(L), vw - r.width - m));
+            bar.style.left = nl + 'px';
+        }
+        if (T && T !== 'auto') {
+            var nt = Math.max(topMin, Math.min(parseFloat(T), vh - r.height - m));
+            bar.style.top = nt + 'px';
+        }
+        if (pinnedRight) {
+            bar.style.right = m + 'px';
+            bar.style.left = 'auto';
+        }
+        if (pinnedBottom) {
+            bar.style.bottom = m + 'px';
+            bar.style.top = 'auto';
+        }
+        void cs;
+    }
+
     /* ---- v50c：左侧撤销条拖拽（独立持久化 img-undo-pos） ---- */
     var UNDO_POS_KEY = 'img-undo-pos';
 
@@ -707,7 +743,7 @@
 
     function setupUndoDrag() {
         if (!undoBarEl) return;
-        S.undoPos = 'left';        S.undoPos = 'left';
+        S.undoPos = 'left';
         try {
             var pos = localStorage.getItem(UNDO_POS_KEY);
             if (pos && pos !== 'left') { S.undoPos = pos; applyUndoPos(pos); }
@@ -1128,7 +1164,13 @@
             if (page.classList.contains('open') && S.img) fitView();
         });
         // 旋转/窗口变化后重读安全区（与 av-ui 同策略）
-        var reapply = function () { if (page.classList.contains('open')) applySafeArea(); };
+        var reapply = function () {
+            if (!page.classList.contains('open')) return;
+            applySafeArea();
+            /* v50d：旋转/改窗后重钳位，防止竖屏存的坐标在横屏落在屏幕外 */
+            reflowFloatBar(dockEl);
+            reflowFloatBar(undoBarEl);
+        };
         window.addEventListener('resize', reapply);
         window.addEventListener('orientationchange', reapply);
     }

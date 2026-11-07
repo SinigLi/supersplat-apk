@@ -823,6 +823,35 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ck('二次返回仍有效', reclose === 'none', reclose);
 
     console.log('\n运行时异常: ' + (errors.length ? errors.join(' | ') : '无'));
+    /* ---- v50d：横竖屏切换重钳位 ----
+     * 前段「二次返回」已把图片页关闭，先重新打开再测。
+     * headless Edge 的 Emulation override 切换后 rect 读数不可靠（实测全 0），
+     * 这里直接模拟旋转的净效果：视口不变，工具条带着「旧朝向的残坐标」
+     * （如竖屏 bottom 区的 top=700，横屏 vh=390 时必然出屏）触发 resize。
+     * 真机旋转正是系统发同一组 resize/orientationchange 事件。 */
+    await ev('window.__img.open("probe图片工程")'); await sleep(700);
+    const barRect = async sel => JSON.parse(await ev("(() => { const r = document.querySelector('" + sel + "').getBoundingClientRect(); return JSON.stringify({ t: Math.round(r.top), b: Math.round(r.bottom), h: Math.round(r.height) }); })()"));
+    /* dock：模拟竖屏偏右下摆放后残留 top=700 */
+    await ev(`(() => {
+      const dock = document.querySelector('#imgPage .img-dock');
+      dock.style.left='auto'; dock.style.right='8px'; dock.style.top='700px'; dock.style.bottom='auto'; dock.style.transform='none';
+    })()`);
+    await ev('window.dispatchEvent(new Event("resize"))'); await sleep(300);
+    const dockAfter = await barRect('#imgPage .img-dock');
+    const VH = JSON.parse(await ev('JSON.stringify(window.innerHeight)'));
+    ck('v50d resize 后 dock top 钳回视口内', dockAfter.t >= 0 && dockAfter.b <= VH + 1, dockAfter);
+
+    /* undo 条：同样摆 top=520（横屏会出屏的残坐标） */
+    await ev(`(() => {
+      const undo = document.querySelector('#imgPage .img-undo-bar');
+      undo.style.left='auto'; undo.style.right='8px'; undo.style.top='520px'; undo.style.bottom='auto'; undo.style.transform='none';
+    })()`);
+    await ev('window.dispatchEvent(new Event("resize"))'); await sleep(300);
+    const undoAfter = await barRect('#imgPage .img-undo-bar');
+    const VH2 = JSON.parse(await ev('JSON.stringify(window.innerHeight)'));
+    ck('v50d resize 后 undo top 钳回视口内', undoAfter.t >= 0 && undoAfter.b <= VH2 + 1, undoAfter);
+
+
     ck('无运行时异常', errors.length === 0, errors.length);
 
     console.log(bad === 0 ? '\n=== probe-v49 ALL PASS ===' : '\n=== probe-v49 FAIL(' + bad + ') ===');
