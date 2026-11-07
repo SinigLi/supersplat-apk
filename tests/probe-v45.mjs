@@ -481,7 +481,7 @@ try {
                 stop: async () => {},
                 getSafeArea: async () => ({ top: 30, left: 0, right: 0, bottom: 9 }),
                 pickCsv: async () => { pickCalls++; return { uri: 'content://document/csv', name: '分镜清单.csv' }; },
-                readText: async (args) => ({ text: args.uri.includes('bad')
+                readText: async (args) => ({ charset: args.uri.includes('bad') ? 'GBK' : 'UTF-8', bytes: 128, text: args.uri.includes('bad')
                     ? '镜号,多参考图\\n1,10\\n2,\\n3,\\n4,\\n'
                     : '镜号,镜头描述,多参考图\\n1,开场,10;20\\n2,变身,\\n3,战斗,\\n4,特写,\\n5,决战,20\\n' })
             };
@@ -527,6 +527,9 @@ try {
             return JSON.stringify({ count: mf.length });
         })()`));
         check('V51-5 不匹配跳过（0 mark）', r3.count === 0, r3);
+
+        const r4 = await evalJs('JSON.stringify({ diag: Array.isArray(window.__av._sbDiag()), n: window.__av._sbDiag().length })');
+        check('V51-6 诊断日志接口可用', JSON.parse(r4).diag && JSON.parse(r4).n >= 3, r4);
     }
 
 } catch (e) {

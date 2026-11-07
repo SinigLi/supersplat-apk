@@ -212,7 +212,7 @@ public class MediaServerPlugin extends Plugin {
         return "";
     }
 
-    /** 读 SAF 文本文件（UTF-8，上限 4MB，防呆）→ {text} */
+    /** 读 SAF 文本文件（自动识别编码：UTF-8/GBK/UTF-16，上限 4MB）→ {text, charset} */
     @PluginMethod
     public void readText(PluginCall call) {
         String u = call.getString("uri");
@@ -230,11 +230,50 @@ public class MediaServerPlugin extends Plugin {
                 bos.write(buf, 0, n);
             }
             in.close();
+            byte[] data = bos.toByteArray();
+            /* 编码检测：BOM 优先；否则 UTF-8 严格解码失败 → GBK；GBK 再失败 → Latin-1 */
+            String charset;
+            if (data.length >= 3 && (data[0] & 0xFF) == 0xEF && (data[1] & 0xFF) == 0xBB && (data[2] & 0xFF) == 0xBF) {
+                charset = "UTF-8";
+            } else if (data.length >= 2 && (data[0] & 0xFF) == 0xFF && (data[1] & 0xFF) == 0xFE) {
+                charset = "UTF-16LE";
+            } else if (data.length >= 2 && (data[0] & 0xFF) == 0xFE && (data[1] & 0xFF) == 0xFF) {
+                charset = "UTF-16BE";
+            } else {
+                charset = detectNoBom(data);
+            }
+            String text = new String(data, charset);
+            /* 去 BOM 字符（String 构造会残留 U+FEFF） */
+            if (text.length() > 0 && text.charAt(0) == '\uFEFF') text = text.substring(1);
             JSObject ret = new JSObject();
-            ret.put("text", new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+            ret.put("text", text);
+            ret.put("charset", charset);
+            ret.put("bytes", data.length);
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("读取失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
+        }
+    }
+
+    /** 无 BOM 时的编码判定：UTF-8 严格解码成功即 UTF-8；否则 GBK（中文
+     *  Windows 记事本默认）；GBK 非法字节再落 Latin-1。 */
+    private String detectNoBom(byte[] data) {
+        if (strictDecode(data, java.nio.charset.StandardCharsets.UTF_8)) return "UTF-8";
+        try {
+            if (strictDecode(data, java.nio.charset.Charset.forName("GBK"))) return "GBK";
+        } catch (Exception e) { /* GBK 不可用（理论上 Android 自带）*/ }
+        return "ISO-8859-1";
+    }
+
+    private boolean strictDecode(byte[] data, java.nio.charset.Charset cs) {
+        try {
+            java.nio.charset.CharsetDecoder dec = cs.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+            dec.decode(java.nio.ByteBuffer.wrap(data));
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

@@ -450,7 +450,24 @@ function build() {
         var backBtn = el('button', 'av-top-btn', '← 返回');
         backBtn.addEventListener('click', back);
         topEl.appendChild(backBtn);
-        topEl.appendChild(el('div', 'av-top-title', ''));
+        var topTitle = el('div', 'av-top-title', '');
+        /* v51b：连点标题 5 次 → 复制分镜清单诊断日志（真机排障入口） */
+        var titleTaps = 0, titleTapTimer = null;
+        topTitle.addEventListener('click', function () {
+            titleTaps++;
+            if (titleTapTimer) clearTimeout(titleTapTimer);
+            titleTapTimer = setTimeout(function () { titleTaps = 0; }, 1200);
+            if (titleTaps >= 5) {
+                titleTaps = 0;
+                var txt = '';
+                try { txt = localStorage.getItem('sb-diag') || '（暂无分镜诊断日志）'; } catch (e) { txt = String(e); }
+                var done = function () { toast('诊断日志已复制，粘贴发给工程师'); };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(txt).then(done).catch(function () { toast(txt.slice(-120)); });
+                } else { toast(txt.slice(-120)); }
+            }
+        });
+        topEl.appendChild(topTitle);
         var saveBtn = el('button', 'av-top-btn', '💾 保存');
         saveBtn.addEventListener('click', function () { saveAll(true); });
         topEl.appendChild(saveBtn);
@@ -999,6 +1016,20 @@ function build() {
         });
     }
 
+    /* ---- v51b：分镜清单诊断日志（真机排障）----
+     * 写 localStorage['sb-diag']（最近 40 条），标题连点 5 次复制全部。 */
+    function sbDiag(msg) {
+        try {
+            var key = 'sb-diag';
+            var arr = [];
+            try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
+            arr.push(new Date().toISOString().slice(11, 19) + ' ' + msg);
+            while (arr.length > 40) arr.shift();
+            localStorage.setItem(key, JSON.stringify(arr));
+        } catch (e) { }
+        dlog('sb: ' + msg);
+    }
+
     /* ---- v51：分镜清单自动关联 ----
      * 老板的分镜工程目录：clips/ 与 分镜清单.csv 同级。SAF 授权的是 clips，
      * 读不到上级 CSV，所以 CSV 走一次性单文件授权（pickCsv，持久化 uri）。
@@ -1009,42 +1040,52 @@ function build() {
 
     function applyStoryboard(csvText) {
         var parsed = window.__storyboard.parseStoryboardCsv(csvText);
-        if (!parsed.ok) { toast('分镜清单不可用：' + parsed.error); return; }
+        if (!parsed.ok) { sbDiag('parse FAIL: ' + parsed.error + ' | head=' + String(csvText).slice(0, 60).replace(/[\r\n]+/g, ' ')); toast('分镜清单不可用：' + parsed.error); return; }
+        sbDiag('parse ok rows=' + parsed.rows.length + ' no=' + parsed.rows.map(function (x) { return x.no; }).join(',') + ' refs=' + parsed.rows.map(function (x) { return x.refs.join('/'); }).join(','));
         var matched = window.__storyboard.matchStoryboard(parsed.rows, S.files);
-        if (!matched.ok) { toast('分镜清单与视频不匹配：' + matched.reason + '，已跳过自动打点'); return; }
+        if (!matched.ok) { sbDiag('match FAIL: ' + matched.reason); toast('分镜清单与视频不匹配：' + matched.reason + '，已跳过自动打点'); return; }
+        sbDiag('match ok marks=' + matched.marks.length + ' ' + JSON.stringify(matched.marks));
         S.marks.marks = window.__storyboard.mergeIntoMarks(S.marks.marks, matched.marks);
         saveAll(false);
         renderTicks(); renderSideHead();
         toast('已按分镜清单自动打点 ' + matched.marks.length + ' 条');
-        dlog('storyboard applied marks=' + matched.marks.length);
+        sbDiag('applied, total marks now ' + S.marks.marks.length);
     }
 
     function tryAutoStoryboard() {
-        if (S.meta.mode !== 'video' || !S.files || !S.files.length) return;
+        sbDiag('enter project=' + S.project + ' mode=' + S.meta.mode + ' files=' + (S.files || []).length + ' csvUri=' + (S.meta.csvUri || 'none'));
+        if (S.meta.mode !== 'video' || !S.files || !S.files.length) { sbDiag('skip: not video or no files'); return; }
         var p = ms();
-        if (!p) return;
+        if (!p) { sbDiag('skip: no plugin'); return; }
         if (S.meta.csvUri) {
+            sbDiag('readText uri=' + S.meta.csvUri);
             p.readText({ uri: S.meta.csvUri }).then(function (r) {
+                sbDiag('readText ok charset=' + (r && r.charset || '?') + ' bytes=' + (r && r.bytes || 0) + ' head=' + String(r && r.text || '').slice(0, 60).replace(/[\r\n]+/g, ' '));
                 applyStoryboard(r && r.text || '');
             }).catch(function (e) {
-                dlog('readText ERR ' + (e && (e.message || e) || e));
+                sbDiag('readText ERR ' + (e && (e.message || e) || e));
                 toast('分镜清单读取失败（重新选择一次即可）：' + (e && e.message || e));
                 S.meta.csvUri = null; saveAll(false);
             });
             return;
         }
-        if (csvAsked) return;   /* 本次会话只打扰一次 */
+        if (csvAsked) { sbDiag('skip: already asked this session'); return; }
         csvAsked = true;
-        if (!p.pickCsv) return; /* 旧插件/桌面 mock 无此方法：跳过 */
+        if (!p.pickCsv) { sbDiag('skip: no pickCsv (old plugin/mock)'); return; }
+        sbDiag('pickCsv asking...');
         p.pickCsv().then(function (r) {
-            if (!r || !r.uri) return;   /* 用户取消：静默 */
+            if (!r || !r.uri) { sbDiag('pickCsv cancelled by user'); return; }
             S.meta.csvUri = r.uri;
             S.meta.csvName = r.name || '';
             saveAll(false);
+            sbDiag('pickCsv ok name=' + (r.name || '') + ' uri=' + r.uri);
             toast('已关联「' + (r.name || '分镜清单.csv') + '」，之后自动比对');
-            return p.readText({ uri: r.uri }).then(function (r2) { applyStoryboard(r2 && r2.text || ''); });
+            return p.readText({ uri: r.uri }).then(function (r2) {
+                sbDiag('readText ok charset=' + (r2 && r2.charset || '?') + ' bytes=' + (r2 && r2.bytes || 0) + ' head=' + String(r2 && r2.text || '').slice(0, 60).replace(/[\r\n]+/g, ' '));
+                applyStoryboard(r2 && r2.text || '');
+            });
         }).catch(function (e) {
-            dlog('pickCsv ERR ' + (e && (e.message || e) || e));
+            sbDiag('pickCsv ERR ' + (e && (e.message || e) || e));
         });
     }
 
@@ -1855,6 +1896,8 @@ function build() {
     /* ---------- 调试钩子 ---------- */
 
     window.__av = {
+        _sbDiag: function () { try { return JSON.parse(localStorage.getItem('sb-diag') || '[]'); } catch (e) { return [String(e)]; } },
+        _sbDiagClear: function () { try { localStorage.removeItem('sb-diag'); } catch (e) { } },
         _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy, nativeOff: nativeThumbDisabled, nativeFails: consecutiveNativeFails }; },
         _refreshFolder: refreshFolder,
         open: open,
