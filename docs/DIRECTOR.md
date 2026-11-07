@@ -4,7 +4,7 @@
 > 代码：`supersplat-main/src/director.ts`（85.8KB / 2198 行）· 面板 UI：`supersplat-apk/www/dock.js`
 > 关联：`DOCK.md`（停靠组 UI）· `docs/PROJECTS.md`（工程存档与恢复）· `docs/RELEASE.md`（构建发版）· `../splat-viewer/docs/MOBILE_DIRECTOR_CONSOLE_PLAN.md`（移植路线）
 
-## 1. 它是什么
+- v50（982c28b）：图片工作台四项大更新（分层/换图/分享双模式/停靠），导演台本身无改动1. 它是什么
 
 把 Blender 导演台的「人偶摆放 / 动作切换 / 3D 游标 / 染色 / 机位」搬进 SuperSplat 编辑器（PlayCanvas）。
 
