@@ -27,6 +27,7 @@
     var L = window.__imgLogic;
     var PJ = window.__projectLogic;
     var OPS = window.__imgOps;
+    var undoBarEl = null;   // v50c：左侧撤销条（模块级，拖拽吸附用）
     var dlog = function () { try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { } };
 
     if (!L) { console.error('[img] img-store.js 未加载'); return; }
@@ -125,6 +126,15 @@
   "/* v50/M4 左侧历史条：撤销/重做独立分组，老板指定 */",
   ".img-undo-bar{position:fixed;left:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:.45rem;z-index:70}",
   ".img-undo-bar .img-grp.off{opacity:.4}",
+  "/* v50c：拖拽把手（对齐 3D 场景 .sd-handle 手感） */",
+  ".img-handle{min-width:18px;min-height:18px;display:flex;align-items:center;justify-content:center;color:#777;font-size:14px;cursor:grab;touch-action:none;flex-shrink:0;letter-spacing:2px;border-radius:10px;}",
+  ".img-handle:active{cursor:grabbing;color:#4a9eff}",
+  ".img-dock.img-dock-top .img-handle,.img-dock.img-dock-bottom .img-handle{writing-mode:vertical-lr}",
+  ".img-undo-bar.img-undo-left{left:10px;right:auto;max-height:calc(100vh - 160px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}",
+  ".img-undo-bar.img-undo-top{top:76px;bottom:auto;transform:none;flex-direction:row;max-width:calc(100vw - 220px);max-height:none;overflow-x:auto;overflow-y:hidden}",
+  ".img-undo-bar.img-undo-bottom{top:auto;bottom:12px;transform:none;flex-direction:row;max-width:calc(100vw - 200px);max-height:none;overflow-x:auto;overflow-y:hidden}",
+  ".img-undo-bar.img-undo-right{left:auto;right:10px}",
+  ".img-undo-bar::-webkit-scrollbar{display:none}",
     ].join("\n");
 
     function embedCss() {
@@ -155,7 +165,8 @@
         panStart: null,
         built: false,
         dirty: false,
-        dockPos: 'right'        // v50/M4：工具 dock 停靠边
+        dockPos: 'right',       // v50/M4：工具 dock 停靠边
+        undoPos: 'left'         // v50c：撤销条停靠边
     };
 
     var page, stage, wrap, baseCv, maskCv, bctx, mctx;
@@ -603,16 +614,19 @@
         } catch (e) { }
     }
 
-    function setupDockDrag() {
-        if (!dockEl) return;
+    /* v50c：通用拖拽吸附——dock 与撤销条共用（把手上 touch-action:none） */
+    function makeDraggable(bar, onEdge, onCommit, getPos, setPos) {
         var drag = null;
-        dockEl.addEventListener('pointerdown', function (e) {
-            /* 面板/列表打开时整条 dock 是交互区，从分组按钮之间的空隙才能拖；
-             * 这里只接受 dock 本体作为事件目标（按钮上的 down 不拖动） */
-            if (e.target !== dockEl) return;
-            try { dockEl.setPointerCapture(e.pointerId); } catch (err) { }
+        bar.addEventListener('pointerdown', function (e) {
+            /* 把手或 bar 本体（非按钮）均可起拖。target 可能是非元素节点
+             * （合成事件冒泡），先确保是 Element 再查类名。 */
+            if (!e.target || e.target.nodeType !== 1 || !e.target.classList) return;
+            var isHandle = e.target.classList.contains('img-handle') ||
+                           (e.target.closest && e.target.closest('.img-handle'));
+            if (!isHandle && e.target !== bar) return;
+            try { bar.setPointerCapture(e.pointerId); } catch (err) { }
             drag = { moved: false, pid: e.pointerId, lastX: e.clientX, lastY: e.clientY, free: null };
-            dockEl.classList.add('img-dragging');
+            bar.classList.add('img-dragging');
         });
         window.addEventListener('pointermove', function (e) {
             if (!drag || e.pointerId !== drag.pid) return;
@@ -622,30 +636,44 @@
             drag.moved = true;
             e.preventDefault();
             var edge = nearestImgEdge(e.clientX, e.clientY);
-            if (edge !== S.dockPos) {
-                S.dockPos = edge;
-                applyImgDockPos(edge);
-                dockEl.offsetHeight;   // 强制重排，让类切换立即生效
+            if (edge !== getPos()) {
+                setPos(edge);
+                onEdge(edge);
+                bar.offsetHeight;   // 强制重排，让类切换立即生效
             }
-            dockEl.style.right = 'auto'; dockEl.style.bottom = 'auto';
-            var r = dockEl.getBoundingClientRect();
+            bar.style.right = 'auto'; bar.style.bottom = 'auto';
+            var r = bar.getBoundingClientRect();
             var nl = Math.max(6, Math.min(e.clientX - r.width / 2, window.innerWidth - r.width - 6));
             var nt = Math.max(60, Math.min(e.clientY - r.height / 2, window.innerHeight - r.height - 6));
-            dockEl.style.transform = 'none';
-            dockEl.style.left = nl + 'px';
-            dockEl.style.top = nt + 'px';
+            bar.style.transform = 'none';
+            bar.style.left = nl + 'px';
+            bar.style.top = nt + 'px';
             drag.free = { left: nl, top: nt };
         }, { passive: false });
         function endDrag(e) {
             if (!drag) return;
             if (e && e.pointerId !== undefined && e.pointerId !== drag.pid) return;
             var moved = drag.moved, free = drag.free;
-            dockEl.classList.remove('img-dragging');
+            bar.classList.remove('img-dragging');
             drag = null;
             if (!moved || !free) return;
-            var r = dockEl.getBoundingClientRect();
+            var r = bar.getBoundingClientRect();
             var m = 8;
-            /* 吸附回边：沿边保留拖到的自由坐标（dock.js 同款钳位） */
+            onCommit(free, r, m);
+        }
+        window.addEventListener('pointerup', endDrag);
+        window.addEventListener('pointercancel', endDrag);
+        window.addEventListener('touchmove', function (e) { if (drag) e.preventDefault(); }, { passive: false });
+    }
+
+    function setupDockDrag() {
+        if (!dockEl) return;
+        /* 把手 pointerdown 冒泡到 dockEl：handle 是 bar 子元素，
+         * e.target 是 handle → isHandle 放行 ✓ */
+        makeDraggable(dockEl, function (edge) {
+            applyImgDockPos(edge);
+        }, function (free, r, m) {
+            /* dock 吸附提交 */
             try { localStorage.setItem(DOCK_POS_KEY, S.dockPos); } catch (err) { }
             if (S.dockPos === 'left') {
                 dockEl.style.left = m + 'px';
@@ -661,10 +689,49 @@
                 dockEl.style.top = Math.max(60, Math.min(free.top, window.innerHeight - r.height - m)) + 'px';
             }
             hint('工具栏已吸附: ' + ({ top: '顶部', bottom: '底部', left: '左侧', right: '右侧' })[S.dockPos]);
-        }
-        window.addEventListener('pointerup', endDrag);
-        window.addEventListener('pointercancel', endDrag);
-        window.addEventListener('touchmove', function (e) { if (drag) e.preventDefault(); }, { passive: false });
+        }, function () { return S.dockPos; }, function (p) { S.dockPos = p; });
+    }
+
+    /* ---- v50c：左侧撤销条拖拽（独立持久化 img-undo-pos） ---- */
+    var UNDO_POS_KEY = 'img-undo-pos';
+
+    function applyUndoPos(pos) {
+        if (!undoBarEl) return;
+        undoBarEl.classList.remove('img-undo-right', 'img-undo-top', 'img-undo-bottom');
+        if (pos === 'right') undoBarEl.classList.add('img-undo-right');
+        else if (pos === 'top') undoBarEl.classList.add('img-undo-top');
+        else if (pos === 'bottom') undoBarEl.classList.add('img-undo-bottom');
+        /* left 是默认 CSS */
+        closePanels();
+    }
+
+    function setupUndoDrag() {
+        if (!undoBarEl) return;
+        S.undoPos = 'left';        S.undoPos = 'left';
+        try {
+            var pos = localStorage.getItem(UNDO_POS_KEY);
+            if (pos && pos !== 'left') { S.undoPos = pos; applyUndoPos(pos); }
+        } catch (e) { }
+        makeDraggable(undoBarEl, function (edge) {
+            S.undoPos = edge;
+            applyUndoPos(edge);
+        }, function (free, r, m) {
+            try { localStorage.setItem(UNDO_POS_KEY, S.undoPos); } catch (err) { }
+            if (S.undoPos === 'left') {
+                undoBarEl.style.left = m + 'px';
+                undoBarEl.style.top = Math.max(60, Math.min(free.top, window.innerHeight - r.height - m)) + 'px';
+            } else if (S.undoPos === 'right') {
+                undoBarEl.style.right = m + 'px'; undoBarEl.style.left = 'auto';
+                undoBarEl.style.top = Math.max(60, Math.min(free.top, window.innerHeight - r.height - m)) + 'px';
+            } else if (S.undoPos === 'top') {
+                undoBarEl.style.top = (76 + 8) + 'px';
+                undoBarEl.style.left = Math.max(m, Math.min(free.left, window.innerWidth - r.width - m)) + 'px';
+            } else {
+                undoBarEl.style.bottom = m + 'px'; undoBarEl.style.top = 'auto';
+                undoBarEl.style.left = Math.max(m, Math.min(free.left, window.innerWidth - r.width - m)) + 'px';
+            }
+            hint('撤销条已吸附: ' + ({ top: '顶部', bottom: '底部', left: '左侧', right: '右侧' })[S.undoPos]);
+        }, function () { return S.undoPos; }, function (p) { S.undoPos = p; });
     }
 
     /* ---------- 图层面板（v50） ---------- */
@@ -877,8 +944,17 @@
         eraseGrp.appendChild(el('span', null, '橡皮'));
         dockEl.appendChild(eraseGrp);
 
+        /* v50c：dock 顶部拖拽把手（对齐 3D 场景 .sd-handle；真机抓得住） */
+        var dockHandle = el('div', 'img-handle', '⠿');
+        dockHandle.title = '拖动可吸附到屏幕边缘';
+        dockEl.insertBefore(dockHandle, dockEl.firstChild);
+
         /* v50/M4：撤销/重做移到左侧独立停靠条（老板指定），不占右侧工具 dock */
-        var undoBar = el('div', 'img-undo-bar');
+        undoBarEl = el('div', 'img-undo-bar img-undo-left');
+        var undoBar = undoBarEl;
+        var undoHandle = el('div', 'img-handle', '⠿');
+        undoHandle.title = '拖动可吸附到屏幕边缘';
+        undoBar.appendChild(undoHandle);
         undoGrp = el('div', 'img-grp off');
         undoGrp.appendChild(el('span', 'ico', '↩️'));
         undoGrp.appendChild(el('span', null, '撤销'));
@@ -1045,7 +1121,8 @@
 
         document.body.appendChild(page);
         bindStageEvents();
-        setupDockDrag();   // v50/M4：拖拽吸附监听（定义过但此前从未挂上，探针实测抓出）
+        setupDockDrag();
+        setupUndoDrag();   // v50c：撤销条拖拽吸附
 
         window.addEventListener('resize', function () {
             if (page.classList.contains('open') && S.img) fitView();

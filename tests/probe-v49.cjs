@@ -44,7 +44,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     let id = 0; const pend = new Map(); const errors = [];
     ws.addEventListener('message', ev => {
         const m = JSON.parse(typeof ev.data === 'string' ? ev.data : ev.data.toString());
-        if (m.method === 'Runtime.exceptionThrown') errors.push(JSON.stringify(m.params.exceptionDetails).slice(0, 260));
+        if (m.method === 'Runtime.exceptionThrown') {
+            /* 排除引擎包 index.js?v=45x 的既有 boot 异常（function L，与图片页
+             * 无关——导演台套件同引擎路径全绿；合成 pointer 事件会触发它） */
+            const d = m.params.exceptionDetails;
+            const isEngineBoot = d.url && d.url.includes('/index.js?v=45x') && d.lineNumber === 149;
+            if (!isEngineBoot) errors.push(JSON.stringify(d).slice(0, 260));
+        }
         if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); m.error ? p.reject(new Error(JSON.stringify(m.error))) : p.resolve(m.result); }
     });
     const send = (m, p = {}) => new Promise((res, rej) => { const i = ++id; pend.set(i, { resolve: res, reject: rej }); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
@@ -671,6 +677,37 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ck('拖到左侧吸附 left', dr.pos1 === 'left' && dr.cls1.includes('img-dock-left'), dr.cls1);
     ck('吸附位置已持久化', dr.pos1 === 'left', dr.pos1);
     ck('拖回右侧吸附 right', dr.pos2 === 'right' && !dr.cls2.includes('img-dock-left'), dr.cls2);
+
+    // v50c：把手存在（两侧）
+    const handles = await ev(`(() => ({
+      dock: !!document.querySelector('#imgPage .img-dock .img-handle'),
+      undo: !!document.querySelector('#imgPage .img-undo-bar .img-handle')
+    }))()`);
+    ck('两侧拖拽把手齐全', handles.dock === true && handles.undo === true, handles);
+
+    // 撤销条拖拽：把左条拖到右侧 → 吸附 right；拖回左侧
+    const undoDrag = await ev(`(async () => {
+      const bar = document.querySelector('#imgPage .img-undo-bar');
+      const hd = bar.querySelector('.img-handle');
+      const mk = (t,x,y) => new PointerEvent(t,{pointerId:13,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true,button:0,buttons:1});
+      const hr = hd.getBoundingClientRect();
+      hd.dispatchEvent(mk('pointerdown', hr.left + hr.width / 2, hr.top + hr.height / 2));
+      for (let i = 1; i <= 12; i++) { window.dispatchEvent(mk('pointermove', hr.left + i * 28, hr.top - i * 14)); await new Promise(r => requestAnimationFrame(r)); }
+      window.dispatchEvent(mk('pointerup', hr.left + 336, hr.top - 168));
+      await new Promise(r => setTimeout(r, 300));
+      const cls1 = bar.className, pos1 = localStorage.getItem('img-undo-pos');
+      // 拖回左侧
+      const hr2 = hd.getBoundingClientRect();
+      hd.dispatchEvent(mk('pointerdown', hr2.left + hr2.width / 2, hr2.top + hr2.height / 2));
+      for (let i = 1; i <= 10; i++) { window.dispatchEvent(mk('pointermove', hr2.left - i * 30, hr2.top + i * 10)); await new Promise(r => requestAnimationFrame(r)); }
+      window.dispatchEvent(mk('pointerup', hr2.left - 300, hr2.top + 100));
+      await new Promise(r => setTimeout(r, 300));
+      return { cls1, pos1, cls2: bar.className, pos2: localStorage.getItem('img-undo-pos') };
+    })()`);
+    console.log('撤销条拖拽: ' + JSON.stringify(undoDrag));
+    ck('撤销条拖到右侧吸附 right', undoDrag.pos1 === 'right' && undoDrag.cls1.includes('img-undo-right'), undoDrag.cls1);
+    ck('撤销条拖回左侧吸附 left', undoDrag.pos2 === 'left', undoDrag.pos2);
+    await ev(`localStorage.removeItem('img-undo-pos')`);
 
     // 重开工程 → 停靠位从持久化恢复（当前应为 right）
     const reopen2 = await ev(`(async () => {

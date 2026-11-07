@@ -109,6 +109,8 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v49c | 图片模式返回按钮失效修复 | 返回前 | `open()` 内联写死 `display:flex`，`back()` 只删 `.open` 类 → 内联样式仍生效、图片页继续盖在列表上，表现为「点返回没反应」；补 `page.style.display = 'none'`（`open()` 失败兜底同补，否则用户被留在半死页面且无返回入口）。探针加 4 条往返断言并把运行时异常计入失败，顺带修掉 `applySafeArea` 延迟重读的 `TypeError`（插件存在性只在入口查一次，定时器回调空手敲门）。`av-ui.js` 无此问题（一直有这行）|
 | v49d | 恢复图片模式 mode 契约（v49c 交付时门禁报警） | 提交后 | 整理代码时删除了 `upsertProject`，连带删掉了 `img-store` 里唯一的 mode 校验；`loadMeta` 读侧仍过滤但 `saveMeta` 写侧失守，坏 meta 会变成永远读不出的死数据。校验移到写侧：`saveMeta` 拒收 `mode!=='image'`，`img-ui` 的 `saveStrokes` 兜一层（笔画已落盘不因 meta 契约中断）。门禁断言改为读/写双向检查。另：交付脚本路径替换失误（`temp/` 拼出 `temp/tools/ci/`）导致第二次失败，从断点续做 zip+飞书，未重跑 CI |
 | v50 | 982c28b | 图片模式大版本：遮罩分层(moyutai.imgmask.v2，含 v1 自动迁移)、换图确认弹窗、分享双模式(默认 PNG/分层 ZIP，隐藏层不导出)、工具栏四边拖拽停靠+左侧撤销条。坑：String.fromCharCode.apply 超 64KB 参数上限炸大 zip → 分块 base64；setupDockDrag 定义未调用 → 拖拽全失效，探针抓出。 |
+| v50b | 061dec5 | 真机反馈修复：图层整行可点激活（原只有名字可点）+ 激活高亮加强；保存改手动（编辑标脏、标题●、返回三选确认）。 |
+| v50c | (本次) | 两侧工具组 ⠿ 把手拖拽吸附（右 dock 四边 + 左撤销条四边独立持久化）、左条纵向滚动。 |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。

@@ -113,12 +113,13 @@ v49 的撤销是「strokes 数组 pop/push」，分层后操作类型变多（�
 | M5 拆分 | 计划为 img-core/img-page 物理分文件；实施时发现 build() 的 DOM 组装与核心状态深度耦合，硬拆会伤组装层。按「先功能后拆分」既定顺序，M5 降级为**接口固化**：window.__img 的 mount 面作为复用契约写死，物理拆分推迟到 M6 交付后按需做 | probe 全绿不变 | ✅ 决策记录于 1.1 节 |
 | M6 交付 | 门禁升级（v50 断言入 verify_v49 或新 verify_v50）、CI、真机、飞书 | 全绿 + 老板确认 | 排队 |
 
-### M3 实施记录（2026-11-07）
+### M4 实施记录（2026-11-07，含 v50b/v50c 真机反馈迭代）
 
-- **探针抓出真机级 bug**：`btoa(String.fromCharCode.apply(null, zipped))` 在 zip >64KB 时抛 RangeError（apply 参数上限 ~65535），600×400 三层工程正好越线；错误被按钮 catch 成 toast，「分享没反应」。修复为 8KB 分块编码，大小无上限。教训：**大 Uint8Array 转 base64 禁止 apply 全量展开**。
-- zip 结构：`<工程名>.png`（干净原图）+ `<工程名>_alpha.png`（挖除图）+ `<工程名>_<层名>.png` ×可见层；fflate `zipSync level 0`（PNG 本身已压缩）。
-- MIME 走 `application/zip`（SaveImagePlugin.shareFile 的白名单校验内）；插件不存在时降级 dataURL share。
-- 「隐藏层不导出」的验证方式：临时建层→隐藏→二次导出→断言 zip 无该层且其余 5 文件仍在（比检查被删又撤销恢复的天空层更直接）。
+- **拖拽吸附四边**：move 用增量阈值（合成事件 movementX 恒 0）、nearestEdge 上下边加权 0.8、松手钳位吸附 + localStorage 持久化（img-dock-pos / img-undo-pos），open() 恢复。
+- **v50b 真机反馈**：图层「切换不了」=点击目标只有名字文本（命中区太窄）→ 整行可点激活 + 激活行 3px 橙色内边条；「自动保存+返回无提醒」→ 手动保存语义（编辑只标脏，标题 ●，返回弹三选确认）。图片/meta 导入仍即时落盘。
+- **v50c 真机反馈**：两侧 dock 补 ⠿ 拖拽把手（对齐 3D 场景 .sd-handle，touch-action:none），左撤销条四边吸附 + 纵向滚动；makeDraggable 泛化共用（getPos/setPos 状态槽隔离——曾经共享 S.dockPos 导致左条吸附乱跳）。
+- **抓出的 bug**：泛化时残留 `if (e.target !== dockEl) return;` 守卫 → 撤销条 pointerdown 全被拒（step-debug 定位）；makeDraggable 入口必须守 `nodeType===1`（合成事件 target 可能非元素）。
+- 探针：v49 全程沿用，**72/72 ALL PASS**（运行时异常断言按 url+lineNumber 排除引擎包 index.js 既有 boot 异常）。
 
 ### M2 实施记录（与原计划的差异）
 
