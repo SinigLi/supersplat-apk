@@ -154,7 +154,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await shot('S3-stroke');
 
     let st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
-    ck('涂抹产生笔画', st.strokes === 1, st.strokes);
+    ck('涂抹产生笔画', st.activeStrokes === 1 && st.totalStrokes === 1, st);
 
     // 导出像素验证（用 _exportCanvas）
     const alpha = JSON.parse(await ev(`(() => {
@@ -177,11 +177,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await ev('window.__img._undo()');
     await sleep(300);
     st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
-    ck('撤销后笔画为 0', st.strokes === 0 && st.redo === 1, st);
+    ck('撤销后笔画为 0', st.activeStrokes === 0 && st.redo === 1, st);
     await ev('window.__img._redo()');
     await sleep(300);
     st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
-    ck('重做后笔画恢复', st.strokes === 1 && st.redo === 0, st);
+    ck('重做后笔画恢复', st.activeStrokes === 1 && st.redo === 0, st);
 
     /* v49b：多边形改为手绘套索——按住拖动画一圈，松手自动闭合。
      * 探针对应改造：一次 pointerdown → 沿矩形轨迹 pointermove → pointerup。 */
@@ -190,7 +190,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const lasso = await ev(`(async () => {
       const s = document.querySelector('#imgPage .img-stage');
       const mk = (t,pid,x,y) => new PointerEvent(t,{pointerId:pid,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true,button:0,buttons:1});
-      const before = window.__img.state().strokes;
+      const before = window.__img.state().activeStrokes;
       // 画一个矩形轮廓并回到起点（模拟套索）
       const path = [];
       const L = 140, T = 300, R = 250, B = 420;
@@ -203,10 +203,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         s.dispatchEvent(mk('pointermove', 2, x, y));
         await new Promise(r=>requestAnimationFrame(r));
       }
-      const mid = window.__img.state().strokes;
+      const mid = window.__img.state().activeStrokes;
       s.dispatchEvent(mk('pointerup', 2, L, T));
       await new Promise(r=>setTimeout(r,150));
-      const after = window.__img.state().strokes;
+      const after = window.__img.state().activeStrokes;
       return JSON.stringify({before, duringDrag: mid, after});
     })()`);
     const lr = JSON.parse(lasso);
@@ -217,7 +217,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await shot('S4-polygon-lasso');
 
     st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
-    ck('多边形入栈', st.strokes === 2, st.strokes);
+    ck('多边形入栈', st.activeStrokes === 2, st.activeStrokes);
 
     // 闭合验证：导出蒙版在矩形内部应为挖穿状态
     const lassoHole = JSON.parse(await ev(`(() => {
@@ -256,18 +256,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     })()`);
     await sleep(400);
     st = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
-    ck('橡皮笔画入栈', st.strokes === 3, st.strokes);
+    ck('橡皮笔画入栈', st.activeStrokes === 3, st.activeStrokes);
     await shot('S7-erase');
 
-    // 持久化：笔画在 localStorage
+    // 持久化：v2 分层结构在 localStorage
     const persisted = await ev(`(() => {
       const s = window.__imgLogic.loadStrokes('探针图片工程');
-      return JSON.stringify({schema: s.schema, n: s.strokes.length,
-        types: s.strokes.map(x=>x.type)});
+      return JSON.stringify({schema: s.schema, layers: (s.layers||[]).length,
+        strokes: (s.layers||[]).reduce((a,l)=>a+l.strokes.length,0),
+        types: (s.layers||[]).flatMap(l=>l.strokes.map(x=>x.type))});
     })()`);
     console.log('持久化: ' + persisted);
     const pj2 = JSON.parse(persisted);
-    ck('strokes 已持久化', pj2.n === 3 && pj2.schema === 'moyutai.imgmask.v1', pj2);
+    ck('分层 strokes 已持久化(v2)', pj2.strokes === 3 && pj2.schema === 'moyutai.imgmask.v2' && pj2.layers >= 1, pj2);
 
     // 面板尺寸断言（原型确认过的收敛值）
     await ev('window.__img._setTool("brush")');
@@ -371,6 +372,111 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await sleep(800);
     const reopen = await ev(`getComputedStyle(document.getElementById('imgPage')).display`);
     ck('可再次进入工作台', reopen === 'flex', reopen);
+
+    /* ---- v50：图层交互 ---- */
+    // 打开图层面板
+    await ev(`[...document.querySelectorAll('#imgPage .img-grp')].find(g => g.textContent.includes('图层')).click()`);
+    await sleep(400);
+    const lpOpen = await ev(`document.querySelector('#imgPage .img-layers').classList.contains('open')`);
+    ck('图层面板弹出', lpOpen === true, lpOpen);
+    await shot('S8-layers-panel');
+
+    // 默认单层「遮罩 1」且激活
+    let layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('默认单层遮罩 1', layers.length === 1 && layers[0].name === '遮罩 1' && layers[0].visible === true, layers.length);
+
+    // 加两层 → 列表三行
+    await ev('window.__img._addLayer("头发")');
+    await ev('window.__img._addLayer("天空")');
+    await sleep(300);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('加两层后共三层', layers.length === 3 && layers[1].name === '头发' && layers[2].name === '天空', layers.map(l => l.name));
+
+    // 行数与 UI 一致
+    const rowCount = await ev(`document.querySelectorAll('#imgPage .img-layer-row').length`);
+    ck('层列表行数一致', rowCount === 3, rowCount);
+
+    // 在「头发」层画一笔 → 落在激活层
+    const idOf = n => (layers.find(l => l.name === n) || {}).id;
+    await ev('window.__img._activateLayer(' + JSON.stringify(idOf('头发')) + ')');
+    await sleep(200);
+    await ev(`window.__img._setTool("brush")`);
+    await sleep(150);
+    await ev(`(async () => {
+      const s = document.querySelector('#imgPage .img-stage');
+      const mk = (t,pid,x,y) => new PointerEvent(t,{pointerId:pid,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true,button:0,buttons:1});
+      s.dispatchEvent(mk('pointerdown',4,120,300));
+      for(let i=1;i<=6;i++){ s.dispatchEvent(mk('pointermove',4,120+i*10,300)); await new Promise(r=>requestAnimationFrame(r)); }
+      s.dispatchEvent(mk('pointerup',4,180,300));
+      await new Promise(r=>setTimeout(r,150));
+    })()`);
+    await sleep(300);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    const hairL = layers.find(l => l.name === '头发');
+    const skyL = layers.find(l => l.name === '天空');
+    ck('笔画落在激活层', hairL.strokes.length === 1 && skyL.strokes.length === 0, layers.map(l => l.name + ':' + l.strokes.length));
+
+    // 隐藏「头发」层 → 导出无新挖除（隐藏层不参与）
+    await ev('window.__img._toggleLayer(' + JSON.stringify(idOf('头发')) + ')');
+    await sleep(300);
+    const hidExport = JSON.parse(await ev(`(() => {
+      const c = window.__img._exportCanvas();
+      const g = c.getContext('2d');
+      const d = g.getImageData(0,0,c.width,c.height).data;
+      let holes = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] === 0) holes++;
+      return holes;
+    })()`));
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    const hairHidden = layers.find(l => l.name === '头发');
+    ck('隐藏层不参与导出', hairHidden.visible === false, hidExport);
+    await ev('window.__img._toggleLayer(' + JSON.stringify(idOf('头发')) + ')');   // 恢复显示
+    await sleep(200);
+
+    /* 撤销链（每次编辑各自入栈，undo 逆序回退）：
+     *   undo① 撤「恢复显示的 toggle」→ 头发层回到隐藏
+     *   undo② 撤「隐藏的 toggle」      → 头发层恢复显示
+     *   undo③ 撤「头发层的笔画」       → 笔画出栈
+     * 原版只做两次 undo 就断言笔画已撤，少算了一次 toggle。 */
+    await ev('window.__img._undo()');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('undo1: 撤恢复toggle → 层隐藏', layers.find(l => l.name === '头发').visible === false, null);
+    await ev('window.__img._undo()');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('undo2: 撤隐藏toggle → 层恢复显示', layers.find(l => l.name === '头发').visible === true, null);
+    await ev('window.__img._undo()');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('undo3: 撤笔画 → 头发层笔画清零', layers.find(l => l.name === '头发').strokes.length === 0, null);
+
+    // 重命名 + 删除层（含撤销）
+    await ev('window.__img._renameLayer(' + JSON.stringify(idOf('天空')) + ', "背景")');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('重命名生效', layers.some(l => l.name === '背景'), layers.map(l => l.name));
+    await ev('window.__img._undo()');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('撤销重命名', layers.some(l => l.name === '天空') && !layers.some(l => l.name === '背景'), null);
+
+    await ev('window.__img._delLayer(' + JSON.stringify(idOf('天空')) + ')');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('删除层生效', layers.length === 2, layers.map(l => l.name));
+    await ev('window.__img._undo()');
+    await sleep(250);
+    layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
+    ck('撤销删层（原位插回）', layers.length === 3 && layers[2].name === '天空', layers.map(l => l.name));
+
+    // 重开工程：分层结构 + 激活层恢复
+    await ev('window.__img.back()');
+    await sleep(500);
+    await ev('window.__img.open("探针图片工程")');
+    await sleep(900);
+    const reState = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
+    ck('重开后层数保持', reState.layers === 3, reState.layers);
     await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
     await sleep(600);
     const reclose = await ev(`getComputedStyle(document.getElementById('imgPage')).display`);

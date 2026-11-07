@@ -26,9 +26,11 @@
 
     var L = window.__imgLogic;
     var PJ = window.__projectLogic;
+    var OPS = window.__imgOps;
     var dlog = function () { try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { } };
 
     if (!L) { console.error('[img] img-store.js 未加载'); return; }
+    if (!OPS) { console.error('[img] img-ops.js 未加载'); return; }
 
     /* ---------- 样式（内嵌注入，v45i 同款自愈模式） ---------- */
 
@@ -102,7 +104,18 @@
 "  z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;",
 "  max-width:92vw;overflow:hidden;text-overflow:ellipsis}",
 ".img-hint.show{opacity:1}",
-".img-hint.err{background:rgba(140,30,30,.92)}"
+".img-hint.err{background:rgba(140,30,30,.92)}",
+/* ---- v50 图层面板 ---- */
+".img-layers{display:none;position:absolute;right:10px;bottom:76px;width:210px;max-height:52vh;overflow:auto;background:rgba(24,26,32,.96);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:8px;z-index:60;box-shadow:0 6px 24px rgba(0,0,0,.5)}",
+".img-layers.open{display:block}",
+".img-layers-top{display:flex;gap:6px;margin-bottom:8px}",
+".img-layers-top .img-sub-btn{flex:1}",
+".img-layers-list{display:flex;flex-direction:column;gap:4px}",
+".img-layer-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.06);cursor:pointer}",
+".img-layer-row.active{background:rgba(255,140,60,.22);outline:1px solid rgba(255,160,80,.55)}",
+".img-layer-eye{font-size:15px;line-height:1;opacity:.55;flex:none;cursor:pointer}",
+".img-layer-eye.on{opacity:1}",
+".img-layer-name{font-size:13px;color:#eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
     ].join("\n");
 
     function embedCss() {
@@ -120,8 +133,8 @@
     var S = {
         project: null,
         meta: null,
-        strokes: [],
-        redo: [],
+        state: null,          // v2 分层状态 {schema, layers[], activeId}，img-ops 纯函数操作它
+        redo: [],             // op 栈（每项是已应用的 op，undo 时取逆）
         invert: false,
         img: null,
         imgW: 0, imgH: 0,
@@ -139,6 +152,12 @@
     var topEl, titleEl, dockEl, drawGrp, eraseGrp, panGrp, undoGrp, redoGrp;
     var drawPanel, erasePanel, btnBrush, btnPoly, btnClear, btnInvert;
     var sizeRange, sizeVal, sizeRange2, sizeVal2, emptyEl, hintEl;
+    var layersGrp, layersPanel, layersListEl;   // v50：图层分组/面板/列表
+
+    /* 当前激活层（确保存在，异常时回落首层） */
+    function curLayer() {
+        return OPS.activeLayer(S.state);
+    }
 
     /* ---------- 小工具 ---------- */
 
@@ -251,13 +270,50 @@
         g.save();
         g.lineCap = 'round';
         g.lineJoin = 'round';
-        g.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
-        g.strokeStyle = 'rgba(' + rgb + ',' + alpha + ')';
 
-        var all = S.strokes.slice();
-        if (S.live) all.push(S.live);
+        /* v50 分层合成：每层先画在自己的离屏 canvas 上（erase 只擦本层），
+         * 可见层依次 source-over 贴到目标。单层时代 erase 是「擦掉下层所有内容」，
+         * 分层后语义变为「只擦本层」——要擦掉下层请关掉本层的显示或用反选。 */
+        var live = S.live;
+        S.live = null;   // live 属于激活层的未定格笔画，单独处理
 
-        all.forEach(function (st) {
+        S.state.layers.forEach(function (lay) {
+            if (!lay.visible) return;
+            var oc = document.createElement('canvas');
+            oc.width = g.canvas.width; oc.height = g.canvas.height;
+            var og = oc.getContext('2d');
+            og.lineCap = 'round'; og.lineJoin = 'round';
+            og.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
+            og.strokeStyle = 'rgba(' + rgb + ',' + alpha + ')';
+            var all = lay.strokes.slice();
+            if (live && lay.id === S.state.activeId) all.push(live);
+            drawStrokes(og, all);
+            g.drawImage(oc, 0, 0);
+        });
+
+        S.live = live;
+        g.restore();
+
+        /* 拖动中的辅助线（轮廓高亮）画在最上面，不参与层合成 */
+        if (showAids && S.live && S.live.type === 'polygon' && S.live.points.length > 1) {
+            g.save();
+            g.globalCompositeOperation = 'source-over';
+            g.beginPath();
+            S.live.points.forEach(function (p, i) {
+                i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]);
+            });
+            g.lineWidth = 1.5 / S.scale;
+            g.setLineDash([7 / S.scale, 5 / S.scale]);
+            g.strokeStyle = 'rgba(255,255,255,.9)';
+            g.stroke();
+            g.setLineDash([]);
+            g.restore();
+        }
+    }
+
+    /* 把一组笔画画到 ctx 上（不 save/restore，由调用方管） */
+    function drawStrokes(g, strokes) {
+        strokes.forEach(function (st) {
             var isErase = (st.type === 'erase');
             g.globalCompositeOperation = isErase ? 'destination-out' : 'source-over';
             if (st.type === 'polygon') {
@@ -277,39 +333,20 @@
                 }
             }
         });
-
         g.globalCompositeOperation = 'source-over';
+    }
 
-        /* 反选：先复制已画蒙版 → 铺满 → 把副本挖掉（等价于整图减已画区） */
-        if (S.invert) {
-            var tmp = document.createElement('canvas');
-            tmp.width = g.canvas.width; tmp.height = g.canvas.height;
-            tmp.getContext('2d').drawImage(g.canvas, 0, 0);
-            g.globalCompositeOperation = 'copy';
-            g.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
-            g.fillRect(0, 0, g.canvas.width, g.canvas.height);
-            g.globalCompositeOperation = 'destination-out';
-            g.drawImage(tmp, 0, 0);
-            g.globalCompositeOperation = 'source-over';
-        }
-
-        if (!showAids) { g.restore(); return; }
-
-        /* 多边形拖动中：把已采样的点描一条高亮轮廓线，
-         * 让用户看清自己正在圈哪里（填充是闭合预览，见上面的 polygon 分支）。 */
-        if (S.live && S.live.type === 'polygon' && S.live.points.length > 1) {
-            g.globalCompositeOperation = 'source-over';
-            g.beginPath();
-            S.live.points.forEach(function (p, i) {
-                i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]);
-            });
-            g.lineWidth = 1.5 / S.scale;
-            g.setLineDash([7 / S.scale, 5 / S.scale]);
-            g.strokeStyle = 'rgba(255,255,255,.9)';
-            g.stroke();
-            g.setLineDash([]);
-        }
-        g.restore();
+    /* 反选是全局属性（不分层）：把「已画区域」整体取反 */
+    function applyInvert(g, rgb, alpha) {
+        var tmp = document.createElement('canvas');
+        tmp.width = g.canvas.width; tmp.height = g.canvas.height;
+        tmp.getContext('2d').drawImage(g.canvas, 0, 0);
+        g.globalCompositeOperation = 'copy';
+        g.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
+        g.fillRect(0, 0, g.canvas.width, g.canvas.height);
+        g.globalCompositeOperation = 'destination-out';
+        g.drawImage(tmp, 0, 0);
+        g.globalCompositeOperation = 'source-over';
     }
 
     function redrawMask() {
@@ -317,6 +354,8 @@
         /* alpha=1：同色不透明覆盖，笔画自我重叠不再累积加深。
          * 整体半透明由 .img-mask 的 CSS opacity 统一承担。 */
         drawMaskInto(mctx, { alpha: 1, rgb: '255,42,42', showAids: true });
+        /* 反选跟在层合成之后（全局取反） */
+        if (S.invert) applyInvert(mctx, '255,42,42', 1);
     }
 
     /* ---------- 图片载入 ---------- */
@@ -388,39 +427,73 @@
     /* ---------- 撤销 / 重做 ---------- */
 
     function updateUndoState() {
-        undoGrp.classList.toggle('on', S.strokes.length > 0);
+        undoGrp.classList.toggle('on', S.done.length > 0);
         redoGrp.classList.toggle('on', S.redo.length > 0);
     }
 
-    function pushStroke(st) {
-        S.strokes.push(st);
+    /* ---------- op 化撤销（v50）----------
+     * S.done: 已应用 op 栈；undo 取逆应用，redo 重应用。
+     * 笔画 op 的逆需要被弹出的笔画本体，存在 op.popped 里。 */
+    function applyAndPush(op) {
+        if (!OPS.applyOp(S.state, op)) return false;
+        S.done.push(op);
         S.redo = [];
         S.dirty = true;
-        saveStrokes();
+        saveAll(false);
         redrawMask();
         updateUndoState();
+        renderLayersPanel();
+        return true;
+    }
+
+    function pushStroke(st) {
+        applyAndPush({ kind: 'stroke', layerId: S.state.activeId, stroke: st });
     }
 
     function undo() {
-        if (!S.strokes.length) { hint('没有可撤销的操作'); return; }
-        S.redo.push(S.strokes.pop());
+        var op = S.done.pop();
+        if (!op) { hint('没有可撤销的操作'); return; }
+        if (op.kind === 'stroke') {
+            op.popped = OPS.applyUnStroke(S.state, op.layerId);   // 弹出并暂存，供 redo
+        } else {
+            var inv = OPS.invertOp(op);
+            if (inv) OPS.applyOp(S.state, inv);
+        }
+        S.redo.push(op);
         S.dirty = true;
-        saveStrokes();
+        saveAll(false);
         redrawMask();
         updateUndoState();
+        renderLayersPanel();
     }
 
     function redo() {
-        if (!S.redo.length) { hint('没有可重做的操作'); return; }
-        S.strokes.push(S.redo.pop());
+        var op = S.redo.pop();
+        if (!op) { hint('没有可重做的操作'); return; }
+        if (op.kind === 'stroke') {
+            if (op.popped) {
+                var lay = OPS.layerById(S.state, op.layerId);
+                if (lay) lay.strokes.push(op.popped);
+            }
+        } else {
+            OPS.applyOp(S.state, op);   // op 带逆信息，重应用即正向
+        }
+        S.done.push(op);
         S.dirty = true;
-        saveStrokes();
+        saveAll(false);
         redrawMask();
         updateUndoState();
+        renderLayersPanel();
     }
 
-    function saveStrokes() {
-        L.saveStrokes(S.project, S.strokes);
+    function saveAll(explicit) {
+        try {
+            L.saveStrokes(S.project, S.state.layers, S.state.activeId);
+            S.dirty = false;
+            if (explicit) toast('已保存「' + S.project + '」（' + S.state.layers.length + ' 层）');
+        } catch (e) {
+            toast('保存失败：' + (e && e.message || e));
+        }
         /* saveMeta 现在会拒收 mode!=='image' 的 meta，这里兜一层：
          * 笔画已经落了，不该因为 meta 契约不符把整个保存流程炸掉。 */
         if (S.meta) {
@@ -463,8 +536,43 @@
     function closePanels() {
         drawPanel.classList.remove('open');
         erasePanel.classList.remove('open');
+        if (layersPanel) layersPanel.classList.remove('open');
         drawGrp.classList.remove('on');
         eraseGrp.classList.remove('on');
+        if (layersGrp) layersGrp.classList.remove('on');
+    }
+
+    /* ---------- 图层面板（v50） ---------- */
+
+    function renderLayersPanel() {
+        if (!layersListEl || !S.state) return;
+        layersListEl.textContent = '';
+        /* 列表顺序：上=顶层（数组尾）。显示开关点击不改变激活层；单击名称激活。 */
+        S.state.layers.slice().reverse().forEach(function (lay) {
+            var row = el('div', 'img-layer-row' + (lay.id === S.state.activeId ? ' active' : ''));
+
+            var eye = el('span', 'img-layer-eye' + (lay.visible ? ' on' : ''), lay.visible ? '👁' : '🚫');
+            eye.title = lay.visible ? '点击隐藏' : '点击显示';
+            eye.addEventListener('click', function (e) {
+                e.stopPropagation();
+                applyAndPush({ kind: 'toggleVisible', layerId: lay.id });
+            });
+            row.appendChild(eye);
+
+            var nm = el('span', 'img-layer-name', lay.name +
+                (lay.strokes.length ? ' (' + lay.strokes.length + ')' : ''));
+            nm.title = '点击激活此层进行编辑';
+            nm.addEventListener('click', function () {
+                if (S.state.activeId !== lay.id) {
+                    S.state.activeId = lay.id;   // 切换激活不是编辑动作，不入撤销栈
+                    renderLayersPanel();
+                    hint('已激活「' + lay.name + '」');
+                }
+            });
+            row.appendChild(nm);
+
+            layersListEl.appendChild(row);
+        });
     }
 
     /* ---------- 指针交互 ---------- */
@@ -646,7 +754,56 @@
         redoGrp.appendChild(el('span', null, '重做'));
         redoGrp.addEventListener('click', redo);
         dockEl.appendChild(redoGrp);
+
+        /* v50 图层分组 */
+        layersGrp = el('div', 'img-grp');
+        layersGrp.appendChild(el('span', 'ico', '🗂️'));
+        layersGrp.appendChild(el('span', null, '图层'));
+        layersGrp.addEventListener('click', function () {
+            var isOpen = layersPanel.classList.contains('open');
+            closePanels();
+            if (!isOpen) {
+                layersPanel.classList.add('open');
+                layersGrp.classList.add('on');
+                renderLayersPanel();
+            }
+        });
+        dockEl.appendChild(layersGrp);
         page.appendChild(dockEl);
+
+        /* 图层悬浮面板（点击后弹出） */
+        layersPanel = el('div', 'img-sub img-layers');
+        var lTop = el('div', 'img-layers-top');
+        var addBtn = el('button', 'img-sub-btn', '➕'); addBtn.title = '新建图层';
+        var delBtn = el('button', 'img-sub-btn', '🗑'); delBtn.title = '删除当前图层';
+        var renBtn = el('button', 'img-sub-btn', '✏️'); renBtn.title = '重命名当前图层';
+        addBtn.addEventListener('click', function () {
+            var nm = '遮罩 ' + (S.state.layers.length + 1);
+            if (applyAndPush({ kind: 'addLayer', layer: { id: OPS.newId(S.state), name: nm, visible: true, strokes: [] }, at: S.state.layers.length })) {
+                hint('已新建「' + nm + '」并激活');
+            }
+        });
+        delBtn.addEventListener('click', function () {
+            var lay = curLayer();
+            if (S.state.layers.length <= 1) { hint('至少要保留一个图层', true); return; }
+            if (!confirm('删除图层「' + lay.name + '」及其全部笔画？')) return;
+            var op = OPS.makeDelLayer(S.state, lay.id);
+            if (op && applyAndPush(op)) hint('已删除「' + lay.name + '」');
+        });
+        renBtn.addEventListener('click', function () {
+            var lay = curLayer();
+            var nm = prompt('重命名图层', lay.name);
+            if (nm === null) return;
+            nm = nm.trim();
+            if (!nm) { hint('名称不能为空', true); return; }
+            if (nm === lay.name) return;
+            applyAndPush({ kind: 'renameLayer', layerId: lay.id, name: nm });
+        });
+        lTop.appendChild(addBtn); lTop.appendChild(delBtn); lTop.appendChild(renBtn);
+        layersPanel.appendChild(lTop);
+        layersListEl = el('div', 'img-layers-list');
+        layersPanel.appendChild(layersListEl);
+        page.appendChild(layersPanel);
 
         /* 绘制子面板 */
         drawPanel = el('div', 'img-sub');
@@ -675,14 +832,13 @@
 
         var g2 = el('div', 'img-grid2');
         btnClear = el('button', 'img-sub-btn', '🗑');
-        btnClear.title = '清空遮罩';
+        btnClear.title = '清空当前层遮罩';
         btnClear.addEventListener('click', function () {
-            if (!S.strokes.length && !S.invert) { hint('遮罩已是空的'); return; }
-            S.strokes = []; S.redo = [];
-            S.dirty = true;
-            saveStrokes();
-            redrawMask(); updateUndoState();
-            hint('已清空遮罩');
+            var lay = curLayer();
+            if (!lay || (!lay.strokes.length && !S.invert)) { hint('遮罩已是空的'); return; }
+            /* 清空 = clearLayer op（快照旧笔画，可撤销） */
+            applyAndPush({ kind: 'clearLayer', layerId: lay.id });
+            hint('已清空「' + lay.name + '」');
         });
         btnInvert = el('button', 'img-sub-btn', '⇄');
         btnInvert.title = '反选：已画/未画互换';
@@ -744,7 +900,7 @@
             S.invert = !S.invert;
             btnInvert.classList.toggle('on', S.invert);
             S.dirty = true;
-            saveStrokes();
+            saveAll(false);
             redrawMask();
             hint(S.invert ? '已反选：画的是「保留」区域' : '已取消反选');
         });
@@ -769,16 +925,6 @@
     }
 
     /* ---------- 保存 / 返回 / 导出 ---------- */
-
-    function saveAll(explicit) {
-        try {
-            saveStrokes();
-            S.dirty = false;
-            if (explicit) toast('已保存「' + S.project + '」（' + S.strokes.length + ' 笔）');
-        } catch (e) {
-            toast('保存失败：' + (e && e.message || e));
-        }
-    }
 
     function back() {
         dlog('back() project=' + S.project);
@@ -841,7 +987,17 @@
             S.meta = L.loadMeta(projectName) || L.emptyMeta(projectName);
             S.invert = !!S.meta.invert;
             btnInvert.classList.toggle('on', S.invert);
-            S.strokes = L.loadStrokes(projectName).strokes.slice();
+            var loaded = L.loadStrokes(projectName);
+            /* v1 老工程在 loadStrokes 里已迁移；若磁盘上仍是 v1 结构，
+             * 这里再兑一道并立即落盘为 v2（下次打开不再走迁移）。 */
+            if (!OPS.isV2(loaded)) {
+                var mig = OPS.migrateV1(loaded);
+                S.state = mig || OPS.emptyState();
+                L.saveStrokes(projectName, S.state.layers, S.state.activeId);
+            } else {
+                S.state = loaded;
+            }
+            S.done = [];
             S.redo = [];
             S.live = null;
             S.tool = 'pan';
@@ -864,7 +1020,8 @@
                     fitView();
                     redrawMask();
                     updateUndoState();
-                    dlog('open ok strokes=' + S.strokes.length);
+                    dlog('open ok layers=' + S.state.layers.length + ' strokes=' +
+                        S.state.layers.reduce(function (a, l) { return a + l.strokes.length; }, 0));
                 }).catch(function (e) {
                     showEmpty(true);
                     toast('图片读取失败：' + (e && e.message || e) + '，可重新导入');
@@ -895,7 +1052,12 @@
             return {
                 project: S.project, mode: 'image',
                 hasImage: !!S.img, imgW: S.imgW, imgH: S.imgH,
-                strokes: S.strokes.length, redo: S.redo.length,
+                layers: S.state.layers.length,
+                activeId: S.state.activeId,
+                activeName: curLayer() ? curLayer().name : null,
+                activeStrokes: curLayer() ? curLayer().strokes.length : 0,
+                totalStrokes: S.state.layers.reduce(function (a, l) { return a + l.strokes.length; }, 0),
+                done: S.done.length, redo: S.redo.length,
                 invert: S.invert, tool: S.tool, size: S.size,
                 scale: S.scale, dirty: S.dirty
             };
@@ -904,6 +1066,30 @@
         _undo: undo,
         _redo: redo,
         _pickImage: pickImage,
+        /* v50 图层 API（探针与后续弹窗复用） */
+        _layers: function () { return JSON.parse(JSON.stringify(S.state.layers)); },
+        _addLayer: function (name) {
+            var id = OPS.newId(S.state);
+            var nm = OPS.sanitizeName(name || ('遮罩 ' + S.state.layers.length), []);
+            return applyAndPush({ kind: 'addLayer', layer: { id: id, name: nm, visible: true, strokes: [] }, at: S.state.layers.length });
+        },
+        _delLayer: function (id) {
+            var op = OPS.makeDelLayer(S.state, id || S.state.activeId);
+            return op ? applyAndPush(op) : false;
+        },
+        _renameLayer: function (id, name) {
+            return applyAndPush({ kind: 'renameLayer', layerId: id || S.state.activeId, name: String(name || '') });
+        },
+        _toggleLayer: function (id) {
+            return applyAndPush({ kind: 'toggleVisible', layerId: id || S.state.activeId });
+        },
+        _activateLayer: function (id) {
+            var l = OPS.layerById(S.state, id);
+            if (!l) return false;
+            S.state.activeId = id;
+            renderLayersPanel();
+            return true;
+        },
         _exportCanvas: function () {
             /* 探针用：返回导出画布，不触发分享 */
             var mc = document.createElement('canvas');

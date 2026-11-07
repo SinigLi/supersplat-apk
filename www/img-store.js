@@ -7,7 +7,8 @@
  *
  * 存储分工：
  *   meta（localStorage img-<名>-meta）  → 模式/图片引用/尺寸/反选标志
- *   strokes（localStorage img-<名>-strokes）→ 笔画路径数组（moyutai.imgmask.v1）
+ *   strokes（localStorage img-<名>-strokes）→ v2 分层结构：layers[]（id/name/visible/strokes）
+ *     + activeId；v1 单数组老数据由 loadStrokes 自动迁移为单层「遮罩 1」
  *   图片字节本身 → projects/<名>/files/<sha1>.<ext>（内容寻址，projects.js putContentFile）
  *
  * 为什么 strokes 放 localStorage 而不是 project.json：
@@ -18,7 +19,7 @@
 (function () {
     'use strict';
 
-    var SCHEMA = 'moyutai.imgmask.v1';
+    var SCHEMA = 'moyutai.imgmask.v2';   // v2：分层（layers[]+activeId）；v1 单 strokes 数组由 loadStrokes 自动迁移
 
     /* ---------- meta ---------- */
 
@@ -70,7 +71,7 @@
     /* ---------- strokes ---------- */
 
     function emptyStrokes() {
-        return { schema: SCHEMA, strokes: [] };
+        return { schema: SCHEMA, layers: [{ id: 'L1', name: '遮罩 1', visible: true, strokes: [] }], activeId: 'L1' };
     }
 
     function loadStrokes(name) {
@@ -78,24 +79,39 @@
             var raw = localStorage.getItem(strokesKey(name));
             if (raw) {
                 var s = JSON.parse(raw);
-                if (s && s.schema === SCHEMA && Array.isArray(s.strokes)) {
-                    /* 校验而非直接信任：损坏的笔画宁可丢弃并记因，也不要让
-                     * drawMaskInto 拿着坏坐标画出一屏鬼东西（NaN 坐标会让
-                     * 整个 canvas 路径失效，表现为「打开工程后蒙版全没了」）。 */
-                    var err = validateStrokes(s.strokes);
-                    if (!err) return s;
-                    try { console.error('[img-store] strokes 校验失败，丢弃：' + err); } catch (e2) { }
+                if (!s) return emptyStrokes();
+                /* v1 老工程：单层 strokes 数组 → 迁移成 v2 单层「遮罩 1」。
+                 * 调用方拿到 v2 后会在下次 saveStrokes 时落盘为 v2。 */
+                if (s.schema === 'moyutai.imgmask.v1' && Array.isArray(s.strokes)) {
+                    var mig = (typeof window !== 'undefined' && window.__imgOps)
+                        ? window.__imgOps.migrateV1(s)
+                        : null;
+                    if (mig) return mig;
+                    /* img-ops 未加载（理论不发生）：降级为 v1 结构，至少不丢数据 */
+                    return s;
+                }
+                if (s.schema === SCHEMA && Array.isArray(s.layers)) {
+                    /* v2 校验：每层结构完整，坏层丢弃并记因，不让坏坐标进渲染 */
+                    var err = validateLayers(s.layers);
+                    if (!err) {
+                        if (!s.activeId || !s.layers.some(function (l) { return l.id === s.activeId; })) {
+                            s.activeId = s.layers[0].id;
+                        }
+                        return s;
+                    }
+                    try { console.error('[img-store] layers 校验失败，丢弃：' + err); } catch (e2) { }
                 }
             }
         } catch (e) { /* */ }
         return emptyStrokes();
     }
 
-    function saveStrokes(name, strokes) {
+    function saveStrokes(name, layers, activeId) {
         try {
             localStorage.setItem(strokesKey(name), JSON.stringify({
                 schema: SCHEMA,
-                strokes: strokes
+                layers: layers,
+                activeId: activeId || (layers[0] && layers[0].id) || null
             }));
         } catch (e) { /* 配额满：笔画太多时可能发生，UI 层提示 */ }
     }
@@ -130,6 +146,24 @@
         return null;
     }
 
+    /* v2 层结构校验：层必须能查、id 唯一、strokes 合法 */
+    function validateLayers(layers) {
+        if (!Array.isArray(layers) || !layers.length) return 'layers 必须是非空数组';
+        var seen = {};
+        for (var i = 0; i < layers.length; i++) {
+            var l = layers[i];
+            if (!l || typeof l !== 'object') return 'layers[' + i + '] 必须是对象';
+            if (!l.id || typeof l.id !== 'string') return 'layers[' + i + '].id 无效';
+            if (seen[l.id]) return 'layers[' + i + '] id 重复: ' + l.id;
+            seen[l.id] = 1;
+            if (typeof l.name !== 'string' || !l.name) return 'layers[' + i + '].name 无效';
+            if (typeof l.visible !== 'boolean') return 'layers[' + i + '].visible 必须是布尔';
+            var err = validateStrokes(l.strokes);
+            if (err) return 'layers[' + i + '](' + l.name + '): ' + err;
+        }
+        return null;
+    }
+
     /* 图片魔数：PNG / JPEG / WebP（file input 没有 accept 过滤，选错文件在这里拦） */
     function sniffImageType(u8) {
         if (u8.length > 8 && u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) return 'png';
@@ -151,6 +185,7 @@
         saveStrokes: saveStrokes,
         validateStroke: validateStroke,
         validateStrokes: validateStrokes,
+        validateLayers: validateLayers,
         sniffImageType: sniffImageType
     };
 })();
