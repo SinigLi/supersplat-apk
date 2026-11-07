@@ -456,6 +456,79 @@ try {
     check('P2 导出 schema', persist.schema, persist.desc);
     check('P3 返回工程列表', persist.backToList && persist.avClosed);
     check('P4 卡片显示视频模式', persist.cardMode, `cards=${persist.cardCount}`);
+
+    /* ---- v51：分镜清单自动打点 ----
+     * csvAsked 是 av-ui 模块级变量（一次会话只弹一次），前段流程已把
+     * v45ui 打开过 → 弹窗预算已用。因此 reload 复位后分三步验证。 */
+    {
+        await evalJs('location.reload(); 1');
+        await sleep(1200);
+        const mk = `
+            window.Capacitor = window.Capacitor || { Plugins: {} };
+            let pickCalls = 0;
+            window.Capacitor.Plugins.MediaServer = {
+                thumb: async () => ({ jpeg: '', width: 96, height: 54 }),
+                probeMeta: async () => ({ ok: true, fps: 25, width: 1280, height: 720, rotation: 0 }),
+                pickFolder: async () => ({ uri: 'content://tree/x', name: 'sb' }),
+                listFiles: async () => ({ files: [
+                    { name: 'clip_01.mp4', size: 1000, docId: 'c1' },
+                    { name: 'clip_02.mp4', size: 1000, docId: 'c2' },
+                    { name: 'clip_03.mp4', size: 1000, docId: 'c3' },
+                    { name: 'clip_04.mp4', size: 1000, docId: 'c4' },
+                    { name: 'clip_05.mp4', size: 1000, docId: 'c5' }
+                ]}),
+                start: async () => ({ port: 45990, count: 5 }),
+                stop: async () => {},
+                getSafeArea: async () => ({ top: 30, left: 0, right: 0, bottom: 9 }),
+                pickCsv: async () => { pickCalls++; return { uri: 'content://document/csv', name: '分镜清单.csv' }; },
+                readText: async (args) => ({ text: args.uri.includes('bad')
+                    ? '镜号,多参考图\\n1,10\\n2,\\n3,\\n4,\\n'
+                    : '镜号,镜头描述,多参考图\\n1,开场,10;20\\n2,变身,\\n3,战斗,\\n4,特写,\\n5,决战,20\\n' })
+            };
+            window.__sbPickCalls = () => pickCalls;
+        `;
+        /* V51-1/2/3：预置 csvUri 的工程，open 即自动读取比对 */
+        const r1 = JSON.parse(await evalJs(`
+        (async () => {
+            ${mk}
+            window.__avLogic.saveMeta({ name: 'v51sb', mode: 'video', folderUri: 'content://tree/x', folderName: 'sb Clips', fps: 25, csvUri: 'content://document/csv' });
+            window.__av.open('v51sb');
+            await new Promise(r => setTimeout(r, 800));
+            const mf = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref');
+            return JSON.stringify({ files: document.querySelectorAll('#avPage .av-item').length, marks: mf.map(m => ({ seg: m.seg, frames: m.frames })), csvUri: (window.__avLogic.loadMeta('v51sb').csvUri || '') });
+        })()`));
+        check('V51-1 清单5视频2组mark', r1.files === 5 && r1.marks.length === 2, r1);
+        check('V51-2 seg1=[10,20] seg5=[20]', JSON.stringify(r1.marks) === '[{"seg":1,"frames":[10,20]},{"seg":5,"frames":[20]}]', r1.marks);
+        check('V51-3 csvUri 已持久化', r1.csvUri.includes('csv'), r1.csvUri);
+
+        /* V51-4：新工程无 csvUri → 首开自动弹一次并应用；重开零弹窗 */
+        const r2 = JSON.parse(await evalJs(`
+        (async () => {
+            window.__avLogic.saveMeta({ name: 'v51pick', mode: 'video', folderUri: 'content://tree/x', folderName: 'sb Clips', fps: 25 });
+            window.__av.open('v51pick');
+            await new Promise(r => setTimeout(r, 800));
+            const first = window.__sbPickCalls();
+            const mf1 = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref').length;
+            window.__av.open('v51pick');
+            await new Promise(r => setTimeout(r, 800));
+            const second = window.__sbPickCalls();
+            const mf2 = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref').length;
+            return JSON.stringify({ first, mf1, second, mf2 });
+        })()`));
+        check('V51-4 首开弹一次+重开零弹窗', r2.first === 1 && r2.second === 1 && r2.mf1 === 2 && r2.mf2 === 2, r2);
+
+        /* V51-5：不匹配清单 → 全跳过 */
+        const r3 = JSON.parse(await evalJs(`
+        (async () => {
+            window.__avLogic.saveMeta({ name: 'v51bad', mode: 'video', folderUri: 'content://tree/x', folderName: 'sb Clips', fps: 25, csvUri: 'content://document/bad' });
+            window.__av.open('v51bad');
+            await new Promise(r => setTimeout(r, 800));
+            const mf = window.__av._S.marks.marks.filter(m => m.type === 'multiframe_ref');
+            return JSON.stringify({ count: mf.length });
+        })()`));
+        check('V51-5 不匹配跳过（0 mark）', r3.count === 0, r3);
+    }
+
 } catch (e) {
     check('EXCEPTION', false, String(e.message || e).slice(0, 160));
 }

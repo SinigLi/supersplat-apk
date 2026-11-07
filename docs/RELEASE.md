@@ -111,6 +111,7 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v50 | 982c28b | 图片模式大版本：遮罩分层(moyutai.imgmask.v2，含 v1 自动迁移)、换图确认弹窗、分享双模式(默认 PNG/分层 ZIP，隐藏层不导出)、工具栏四边拖拽停靠+左侧撤销条。坑：String.fromCharCode.apply 超 64KB 参数上限炸大 zip → 分块 base64；setupDockDrag 定义未调用 → 拖拽全失效，探针抓出。 |
 | v50b | 061dec5 | 真机反馈修复：图层整行可点激活（原只有名字可点）+ 激活高亮加强；保存改手动（编辑标脏、标题●、返回三选确认）。 |
 | v50c | (本次) | 两侧工具组 ⠿ 把手拖拽吸附（右 dock 四边 + 左撤销条四边独立持久化）、左条纵向滚动。 |
+| v51 | (本次) | 分镜清单适配：视频工程关联「分镜清单.csv」（镜号/多参考图），镜号 1..N 连续且数量与视频一致时自动打多参点（CSV 0-based → 显示 1-based）；首次单文件授权持久化，之后全自动；不匹配/缺文件完全跳过。新文件 www/storyboard.js（纯逻辑+27单测）+ MediaServerPlugin.pickCsv/readText。 |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。

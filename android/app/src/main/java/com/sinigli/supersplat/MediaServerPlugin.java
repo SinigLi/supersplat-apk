@@ -157,6 +157,87 @@ public class MediaServerPlugin extends Plugin {
 
     /* ---------- 插件方法 ---------- */
 
+    /* ---------- v51：分镜清单 CSV（单文件授权 + 只读文本）---------- */
+
+    /** SAF 单文件选择器，限定 text/csv 等文本类型；授权持久化 → {uri,name} */
+    @PluginMethod
+    public void pickCsv(PluginCall call) {
+        Activity activity = act();
+        if (activity == null) { call.reject("Activity 不可用"); return; }
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"text/csv", "text/comma-separated-values", "text/plain", "application/csv", "application/vnd.ms-excel"});
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(call, intent, "pickCsvResult");
+    }
+
+    @ActivityCallback
+    private void pickCsvResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        int rc = result.getResultCode();
+        if (rc != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) {
+            call.resolve();   /* 用户取消：null */
+            return;
+        }
+        Uri uri = result.getData().getData();
+        takePersistFile(uri);
+        String name = queryDisplayName(uri);
+        JSObject ret = new JSObject();
+        ret.put("uri", uri.toString());
+        ret.put("name", name);
+        call.resolve(ret);
+    }
+
+    /** 单文件版持久授权（takePersist 是 tree 用的，flag 同理） */
+    private void takePersistFile(Uri uri) {
+        try {
+            cr().takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception e) { /* 无 persistable flag：忽略，listFiles 报错 */ }
+    }
+
+    private String queryDisplayName(Uri uri) {
+        Cursor c = null;
+        try {
+            c = cr().query(uri, null, null, null, null);
+            if (c != null && c.moveToFirst()) {
+                int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) return c.getString(idx);
+            }
+        } catch (Exception e) { /* ignore */ } finally {
+            if (c != null) try { c.close(); } catch (Exception e2) { }
+        }
+        return "";
+    }
+
+    /** 读 SAF 文本文件（UTF-8，上限 4MB，防呆）→ {text} */
+    @PluginMethod
+    public void readText(PluginCall call) {
+        String u = call.getString("uri");
+        if (u == null || u.length() == 0) { call.reject("缺少 uri"); return; }
+        try {
+            Uri uri = Uri.parse(u);
+            InputStream in = cr().openInputStream(uri);
+            if (in == null) { call.reject("文件不可读"); return; }
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[BUF];
+            int n, total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > 4 * 1024 * 1024) { in.close(); call.reject("CSV 超过 4MB 上限"); return; }
+                bos.write(buf, 0, n);
+            }
+            in.close();
+            JSObject ret = new JSObject();
+            ret.put("text", new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("读取失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
+        }
+    }
+
     @PluginMethod
     public void pickFolder(PluginCall call) {
         Activity activity = act();

@@ -999,6 +999,55 @@ function build() {
         });
     }
 
+    /* ---- v51：分镜清单自动关联 ----
+     * 老板的分镜工程目录：clips/ 与 分镜清单.csv 同级。SAF 授权的是 clips，
+     * 读不到上级 CSV，所以 CSV 走一次性单文件授权（pickCsv，持久化 uri）。
+     * csvUri 已记住 → 每次打开工程全自动读取比对；首次自动弹一次选择器，
+     * 取消则本次会话不再打扰。比对失败（镜号数≠视频数/不连续/重复）只
+     * toast 一次原因，绝不部分应用。 */
+    var csvAsked = false;
+
+    function applyStoryboard(csvText) {
+        var parsed = window.__storyboard.parseStoryboardCsv(csvText);
+        if (!parsed.ok) { toast('分镜清单不可用：' + parsed.error); return; }
+        var matched = window.__storyboard.matchStoryboard(parsed.rows, S.files);
+        if (!matched.ok) { toast('分镜清单与视频不匹配：' + matched.reason + '，已跳过自动打点'); return; }
+        S.marks.marks = window.__storyboard.mergeIntoMarks(S.marks.marks, matched.marks);
+        saveAll(false);
+        renderTicks(); renderSideHead();
+        toast('已按分镜清单自动打点 ' + matched.marks.length + ' 条');
+        dlog('storyboard applied marks=' + matched.marks.length);
+    }
+
+    function tryAutoStoryboard() {
+        if (S.meta.mode !== 'video' || !S.files || !S.files.length) return;
+        var p = ms();
+        if (!p) return;
+        if (S.meta.csvUri) {
+            p.readText({ uri: S.meta.csvUri }).then(function (r) {
+                applyStoryboard(r && r.text || '');
+            }).catch(function (e) {
+                dlog('readText ERR ' + (e && (e.message || e) || e));
+                toast('分镜清单读取失败（重新选择一次即可）：' + (e && e.message || e));
+                S.meta.csvUri = null; saveAll(false);
+            });
+            return;
+        }
+        if (csvAsked) return;   /* 本次会话只打扰一次 */
+        csvAsked = true;
+        if (!p.pickCsv) return; /* 旧插件/桌面 mock 无此方法：跳过 */
+        p.pickCsv().then(function (r) {
+            if (!r || !r.uri) return;   /* 用户取消：静默 */
+            S.meta.csvUri = r.uri;
+            S.meta.csvName = r.name || '';
+            saveAll(false);
+            toast('已关联「' + (r.name || '分镜清单.csv') + '」，之后自动比对');
+            return p.readText({ uri: r.uri }).then(function (r2) { applyStoryboard(r2 && r2.text || ''); });
+        }).catch(function (e) {
+            dlog('pickCsv ERR ' + (e && (e.message || e) || e));
+        });
+    }
+
     function refreshFolder() {
         var p = ms();
         if (!p || !S.meta.folderUri) return Promise.reject(new Error('未授权目录'));
@@ -1013,6 +1062,7 @@ function build() {
                 toast('目录里没有' + (S.meta.mode === 'audio' ? '音频' : '视频') + '文件');
             }
             renderSideHead();
+            tryAutoStoryboard();   // v51：文件夹就绪后自动关联分镜清单
             return startServer();
         }).then(function () {
             renderList();
