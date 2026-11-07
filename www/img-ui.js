@@ -63,7 +63,13 @@
 ".img-mask{position:absolute;left:0;top:0;pointer-events:none;opacity:.82}",
 "/* 右侧工具组：复刻 dock 分组样式（.sd-grp-btn 同源） */",
 ".img-dock{position:fixed;right:10px;top:50%;transform:translateY(-50%);",
-"  display:flex;flex-direction:column;gap:.45rem;z-index:70}",
+"  display:flex;flex-direction:column;gap:.45rem;z-index:70;",
+"  max-height:calc(100vh - 140px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}",
+".img-dock::-webkit-scrollbar{display:none}",
+"/* v50/M4 四边停靠（拖拽吸附目标，setupDockDrag 写类名） */",
+".img-dock.img-dock-left{right:auto;left:10px}",
+".img-dock.img-dock-top{top:76px;right:12px;bottom:auto;transform:none;flex-direction:row;max-width:calc(100vw - 180px);max-height:none;overflow-x:auto;overflow-y:hidden}",
+".img-dock.img-dock-bottom{top:auto;bottom:12px;transform:none;flex-direction:row;max-width:calc(100vw - 24px);max-height:none;overflow-x:auto;overflow-y:hidden}",
 ".img-grp{width:2.5rem;height:2.5rem;border-radius:12px;border:1px solid rgba(255,255,255,.1);",
 "  background:#3a3f46;color:#ccc;display:flex;flex-direction:column;align-items:center;",
 "  justify-content:center;font-size:10px;gap:2px;cursor:pointer;position:relative;flex-shrink:0}",
@@ -115,7 +121,10 @@
 ".img-layer-row.active{background:rgba(255,140,60,.22);outline:1px solid rgba(255,160,80,.55)}",
 ".img-layer-eye{font-size:15px;line-height:1;opacity:.55;flex:none;cursor:pointer}",
 ".img-layer-eye.on{opacity:1}",
-".img-layer-name{font-size:13px;color:#eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
+".img-layer-name{font-size:13px;color:#eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+  "/* v50/M4 左侧历史条：撤销/重做独立分组，老板指定 */",
+  ".img-undo-bar{position:fixed;left:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:.45rem;z-index:70}",
+  ".img-undo-bar .img-grp.off{opacity:.4}",
     ].join("\n");
 
     function embedCss() {
@@ -145,7 +154,8 @@
         drawing: false,
         panStart: null,
         built: false,
-        dirty: false
+        dirty: false,
+        dockPos: 'right'        // v50/M4：工具 dock 停靠边
     };
 
     var page, stage, wrap, baseCv, maskCv, bctx, mctx;
@@ -439,7 +449,10 @@
     /* ---------- 撤销 / 重做 ---------- */
 
     function updateUndoState() {
+        /* off=禁用视觉；undo/redo 仍可点（点了提示没有可撤销），只在视觉上区分 */
+        undoGrp.classList.toggle('off', S.done.length === 0);
         undoGrp.classList.toggle('on', S.done.length > 0);
+        redoGrp.classList.toggle('off', S.redo.length === 0);
         redoGrp.classList.toggle('on', S.redo.length > 0);
     }
 
@@ -552,6 +565,101 @@
         drawGrp.classList.remove('on');
         eraseGrp.classList.remove('on');
         if (layersGrp) layersGrp.classList.remove('on');
+    }
+
+    /* ---------- dock 拖拽吸附（v50/M4，对齐 dock.js 手感） ----------
+     * move 用增量判阈值（合成事件 movementX 恒 0）；上下边距离加权 0.8
+     * 更易命中横排；松手按最近边吸附并持久化到 localStorage。
+     * 长按 vs 直接拖：图片页 dock 组都是按钮，直接拖即可，无需长按门限。 */
+    var DOCK_POS_KEY = 'img-dock-pos';
+
+    function nearestImgEdge(x, y) {
+        var dist = { top: y * 0.8, bottom: (window.innerHeight - y) * 0.8, left: x, right: window.innerWidth - x };
+        var keys = Object.keys(dist);
+        keys.sort(function (a, b) { return dist[a] - dist[b]; });
+        return keys[0];
+    }
+
+    function applyImgDockPos(pos) {
+        if (!dockEl) return;
+        dockEl.classList.remove('img-dock-left', 'img-dock-top', 'img-dock-bottom');
+        if (pos === 'left') dockEl.classList.add('img-dock-left');
+        else if (pos === 'top') dockEl.classList.add('img-dock-top');
+        else if (pos === 'bottom') dockEl.classList.add('img-dock-bottom');
+        /* right 是默认 CSS，无需类 */
+        /* 位置切换后子面板重算（子面板贴着 dock 所在边弹出） */
+        closePanels();
+    }
+
+    function restoreImgDockPos() {
+        try {
+            var pos = localStorage.getItem(DOCK_POS_KEY);
+            if (pos && pos !== 'right') applyImgDockPos(pos);
+        } catch (e) { }
+    }
+
+    function setupDockDrag() {
+        if (!dockEl) return;
+        var drag = null;
+        dockEl.addEventListener('pointerdown', function (e) {
+            /* 面板/列表打开时整条 dock 是交互区，从分组按钮之间的空隙才能拖；
+             * 这里只接受 dock 本体作为事件目标（按钮上的 down 不拖动） */
+            if (e.target !== dockEl) return;
+            try { dockEl.setPointerCapture(e.pointerId); } catch (err) { }
+            drag = { moved: false, pid: e.pointerId, lastX: e.clientX, lastY: e.clientY, free: null };
+            dockEl.classList.add('img-dragging');
+        });
+        window.addEventListener('pointermove', function (e) {
+            if (!drag || e.pointerId !== drag.pid) return;
+            var mdx = e.clientX - drag.lastX, mdy = e.clientY - drag.lastY;
+            drag.lastX = e.clientX; drag.lastY = e.clientY;
+            if (!drag.moved && Math.abs(mdx) < 4 && Math.abs(mdy) < 4) return;
+            drag.moved = true;
+            e.preventDefault();
+            var edge = nearestImgEdge(e.clientX, e.clientY);
+            if (edge !== S.dockPos) {
+                S.dockPos = edge;
+                applyImgDockPos(edge);
+                dockEl.offsetHeight;   // 强制重排，让类切换立即生效
+            }
+            dockEl.style.right = 'auto'; dockEl.style.bottom = 'auto';
+            var r = dockEl.getBoundingClientRect();
+            var nl = Math.max(6, Math.min(e.clientX - r.width / 2, window.innerWidth - r.width - 6));
+            var nt = Math.max(60, Math.min(e.clientY - r.height / 2, window.innerHeight - r.height - 6));
+            dockEl.style.transform = 'none';
+            dockEl.style.left = nl + 'px';
+            dockEl.style.top = nt + 'px';
+            drag.free = { left: nl, top: nt };
+        }, { passive: false });
+        function endDrag(e) {
+            if (!drag) return;
+            if (e && e.pointerId !== undefined && e.pointerId !== drag.pid) return;
+            var moved = drag.moved, free = drag.free;
+            dockEl.classList.remove('img-dragging');
+            drag = null;
+            if (!moved || !free) return;
+            var r = dockEl.getBoundingClientRect();
+            var m = 8;
+            /* 吸附回边：沿边保留拖到的自由坐标（dock.js 同款钳位） */
+            try { localStorage.setItem(DOCK_POS_KEY, S.dockPos); } catch (err) { }
+            if (S.dockPos === 'left') {
+                dockEl.style.left = m + 'px';
+                dockEl.style.top = Math.max(60, Math.min(free.top, window.innerHeight - r.height - m)) + 'px';
+            } else if (S.dockPos === 'top') {
+                dockEl.style.top = (76 + 8) + 'px';
+                dockEl.style.left = Math.max(m, Math.min(free.left, window.innerWidth - r.width - m)) + 'px';
+            } else if (S.dockPos === 'bottom') {
+                dockEl.style.bottom = m + 'px'; dockEl.style.top = 'auto';
+                dockEl.style.left = Math.max(m, Math.min(free.left, window.innerWidth - r.width - m)) + 'px';
+            } else {   // right
+                dockEl.style.right = m + 'px'; dockEl.style.left = 'auto';
+                dockEl.style.top = Math.max(60, Math.min(free.top, window.innerHeight - r.height - m)) + 'px';
+            }
+            hint('工具栏已吸附: ' + ({ top: '顶部', bottom: '底部', left: '左侧', right: '右侧' })[S.dockPos]);
+        }
+        window.addEventListener('pointerup', endDrag);
+        window.addEventListener('pointercancel', endDrag);
+        window.addEventListener('touchmove', function (e) { if (drag) e.preventDefault(); }, { passive: false });
     }
 
     /* ---------- 图层面板（v50） ---------- */
@@ -761,17 +869,19 @@
         eraseGrp.appendChild(el('span', null, '橡皮'));
         dockEl.appendChild(eraseGrp);
 
-        undoGrp = el('div', 'img-grp');
+        /* v50/M4：撤销/重做移到左侧独立停靠条（老板指定），不占右侧工具 dock */
+        var undoBar = el('div', 'img-undo-bar');
+        undoGrp = el('div', 'img-grp off');
         undoGrp.appendChild(el('span', 'ico', '↩️'));
         undoGrp.appendChild(el('span', null, '撤销'));
         undoGrp.addEventListener('click', undo);
-        dockEl.appendChild(undoGrp);
-
-        redoGrp = el('div', 'img-grp');
+        undoBar.appendChild(undoGrp);
+        redoGrp = el('div', 'img-grp off');
         redoGrp.appendChild(el('span', 'ico', '↪️'));
         redoGrp.appendChild(el('span', null, '重做'));
         redoGrp.addEventListener('click', redo);
-        dockEl.appendChild(redoGrp);
+        undoBar.appendChild(redoGrp);
+        page.appendChild(undoBar);
 
         /* v50 图层分组 */
         layersGrp = el('div', 'img-grp');
@@ -928,6 +1038,7 @@
 
         document.body.appendChild(page);
         bindStageEvents();
+        setupDockDrag();   // v50/M4：拖拽吸附监听（定义过但此前从未挂上，探针实测抓出）
 
         window.addEventListener('resize', function () {
             if (page.classList.contains('open') && S.img) fitView();
@@ -1133,6 +1244,7 @@
             page.style.zIndex = '1550';
             page.style.display = 'flex';
             applySafeArea();
+            restoreImgDockPos();
 
             if (S.meta.imageFile) {
                 readProjectImage().then(function () {

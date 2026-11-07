@@ -271,9 +271,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ck('分层 strokes 已持久化(v2)', pj2.strokes === 3 && pj2.schema === 'moyutai.imgmask.v2' && pj2.layers >= 1, pj2);
 
     // 面板尺寸断言（原型确认过的收敛值）
+    // M4 后 open() 会 restoreImgDockPos→closePanels；上一轮遗留的 img-dock-pos
+    // 让第一次点击只做了"清遗留态"，这里点两次确保面板处于打开态再量。
     await ev('window.__img._setTool("brush")');
+    await ev(`localStorage.removeItem('img-dock-pos')`);
     await sleep(200);
-    await ev(`document.querySelectorAll('#imgPage .img-grp')[1].click()`);
+    const clickDraw = `[...document.querySelectorAll('#imgPage .img-grp')].find(g => g.textContent.includes('绘制')).click()`;
+    /* 面板是 toggle：点一次开、再点一次关（mini 复现确认）。开一次就量。 */
+    await ev(clickDraw);
     await sleep(350);
     const pb = JSON.parse(await ev(`(() => {
       const r = document.querySelector('#imgPage .img-sub.open').getBoundingClientRect();
@@ -619,6 +624,78 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     // 清理：删掉临时层（还原三层状态）
     await ev('window.__img._delLayer(' + JSON.stringify(tmpId) + ')');
     await sleep(250);
+
+    /* ---- v50/M4：dock 拖拽吸附 + 左侧撤销条 ---- */
+    // 左条独立存在且不与工具 dock 重叠
+    const m4a = await ev(`(() => {
+      const bar = document.querySelector('#imgPage .img-undo-bar');
+      const dock = document.querySelector('#imgPage .img-dock');
+      if (!bar || !dock) return { bar: !!bar, dock: !!dock };
+      const rb = bar.getBoundingClientRect(), rd = dock.getBoundingClientRect();
+      return { bar: true, dock: true, barLeft: Math.round(rb.left), dockRight: Math.round(rd.left),
+               separate: rb.right <= rd.left, barBtns: bar.querySelectorAll('.img-grp').length };
+    })()`);
+    ck('左侧撤销条独立', m4a.bar && m4a.dock && m4a.separate === true, m4a);
+    ck('撤销条含撤销+重做两组', m4a.barBtns === 2, m4a.barBtns);
+
+    // 拖拽吸附：把 dock 拖到左下角 → 吸附 left；再拖回右下 → 吸附 right
+    const dragRes = await ev(`(async () => {
+      const dock = document.querySelector('#imgPage .img-dock');
+      const mk = (t,x,y) => new PointerEvent(t,{pointerId:9,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true,button:0,buttons:1});
+      const r = dock.getBoundingClientRect();
+      const sx = r.left + r.width / 2, sy = r.top + 6;   // dock 本体上沿（非按钮处）
+      // 从 dock 空隙起拖：用 dock 本体 dispatch（按钮会命中按钮，这里取组间 gap）
+      const gapY = (() => { const gs = dock.querySelectorAll('.img-grp'); const last = gs[gs.length-1].getBoundingClientRect(); return last.bottom + 8 < r.bottom ? last.bottom + 8 : r.top - 8; })();
+      dock.dispatchEvent(mk('pointerdown', sx, gapY));
+      for (let i = 1; i <= 12; i++) { window.dispatchEvent(mk('pointermove', sx - i * 25, gapY + i * 18)); await new Promise(r => requestAnimationFrame(r)); }
+      window.dispatchEvent(mk('pointerup', sx - 300, gapY + 216));
+      await new Promise(r => setTimeout(r, 300));
+      const cls1 = dock.className;
+      const pos1 = localStorage.getItem('img-dock-pos');
+      // 拖回右侧
+      const r2 = dock.getBoundingClientRect();
+      dock.dispatchEvent(mk('pointerdown', r2.left + r2.width / 2, r2.top - 8));
+      for (let i = 1; i <= 10; i++) { window.dispatchEvent(mk('pointermove', r2.left + i * 30, r2.top - i * 10)); await new Promise(r => requestAnimationFrame(r)); }
+      window.dispatchEvent(mk('pointerup', r2.left + 300, r2.top - 100));
+      await new Promise(r => setTimeout(r, 300));
+      const cls2 = dock.className;
+      const pos2 = localStorage.getItem('img-dock-pos');
+      return JSON.stringify({ cls1, pos1, cls2, pos2 });
+    })()`);
+    const dr = JSON.parse(dragRes);
+    console.log('拖拽吸附: ' + dragRes);
+    ck('拖到左侧吸附 left', dr.pos1 === 'left' && dr.cls1.includes('img-dock-left'), dr.cls1);
+    ck('吸附位置已持久化', dr.pos1 === 'left', dr.pos1);
+    ck('拖回右侧吸附 right', dr.pos2 === 'right' && !dr.cls2.includes('img-dock-left'), dr.cls2);
+
+    // 重开工程 → 停靠位从持久化恢复（当前应为 right）
+    const reopen2 = await ev(`(async () => {
+      window.__img.back();
+      await new Promise(r => setTimeout(r, 400));
+      window.__img.open('探针图片工程');
+      await new Promise(r => setTimeout(r, 800));
+      const dock = document.querySelector('#imgPage .img-dock');
+      return JSON.stringify({ cls: dock.className, visible: getComputedStyle(dock).display !== 'none' });
+    })()`);
+    const ro = JSON.parse(reopen2);
+    ck('重开后 dock 可见', ro.visible === true, ro);
+
+    // dock 滚动：容器可滚动且不溢出视口
+    const scroll = await ev(`(() => {
+      const dock = document.querySelector('#imgPage .img-dock');
+      const st = getComputedStyle(dock);
+      const r = dock.getBoundingClientRect();
+      return JSON.stringify({ maxH: st.maxHeight, inView: r.bottom <= window.innerHeight + 1, overflowY: st.overflowY });
+    })()`);
+    const sc = JSON.parse(scroll);
+    ck('dock 纵向可滚动', sc.overflowY === 'auto' && sc.maxH !== 'none', sc);
+
+    // 清掉 M4 拖拽持久化，避免污染下一轮探针
+    await ev(`localStorage.removeItem('img-dock-pos')`);
+
+    // 恢复后关闭，继续原返回断言
+    await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
+    await sleep(600);
 
     // 返回后列表可点（维持既有行为）
     await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
