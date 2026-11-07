@@ -405,6 +405,88 @@
         moveDlg.classList.add('open');
     }
 
+    /* ---------- v52b：删除分组三选弹窗 ----------
+     * 仅解除分组：子工程/子分组全部上移到被删分组的父路径
+     * 完整删除：子工程数据 + 子分组一并删除
+     * 取消 */
+    var gdelDlg = null, gdelTarget = '', gdelNameEl = null;
+
+    function ensureGroupDelDlg() {
+        if (gdelDlg) return;
+        gdelDlg = el('div', 'pj-move-dlg');
+        var box = el('div', 'pj-move-box');
+        gdelNameEl = el('div', 'pj-move-title', '');
+        var info = el('div', 'pj-move-path', '');
+        info.id = 'pj-gdel-info';
+        var row = el('div', 'pj-move-btns');
+        var bCancel = el('button', 'pj-move-btn', '取消');
+        bCancel.addEventListener('click', function () { gdelDlg.classList.remove('open'); });
+        var bLoose = el('button', 'pj-move-btn', '仅解除分组');
+        bLoose.addEventListener('click', function () { doGroupDelete(false); });
+        var bFull = el('button', 'pj-move-btn primary', '完整删除');
+        bFull.style.background = '#b3261e';
+        bFull.addEventListener('click', function () { doGroupDelete(true); });
+        row.appendChild(bCancel); row.appendChild(bLoose); row.appendChild(bFull);
+        box.appendChild(gdelNameEl);
+        box.appendChild(info);
+        box.appendChild(row);
+        gdelDlg.appendChild(box);
+        page.appendChild(gdelDlg);
+    }
+
+    function openGroupDeleteDialog(groupId) {
+        var G = window.__groups;
+        var reg = L.loadRegistry();
+        var g = G.findGroup(reg, groupId);
+        if (!g) return;
+        ensureGroupDelDlg();
+        gdelTarget = groupId;
+        var names = G.collectProjectNames(reg, groupId);
+        var childG = G.groupsIn(reg, groupId).length;
+        var childP = G.projectsIn(reg, groupId).length;
+        gdelNameEl.textContent = '删除分组「' + g.name + '」';
+        document.getElementById('pj-gdel-info').textContent =
+            '包含 ' + childP + ' 个工程、' + childG + ' 个子分组' +
+            (names.length ? ('（涉及工程：' + names.join('、') + '）') : '');
+        gdelDlg.classList.add('open');
+    }
+
+    function doGroupDelete(full) {
+        var G = window.__groups;
+        var reg = L.loadRegistry();
+        var g = G.findGroup(reg, gdelTarget);
+        var name = g ? g.name : '';
+        if (full) {
+            var names = G.collectProjectNames(reg, gdelTarget);
+            if (names.length && !confirm('完整删除将连同 ' + names.length + ' 个工程及其数据一并删除，确定？')) return;
+            var res = G.deleteGroupDeep(reg, gdelTarget);
+            if (!res.ok) { toast(res.reason); return; }
+            /* 逐个删工程数据目录 */
+            var chain = Promise.resolve();
+            names.forEach(function (n) {
+                chain = chain.then(function () {
+                    var p = L.pathsFor(n);
+                    return store().remove(p.dir).catch(function () { });
+                });
+            });
+            chain.then(function () {
+                L.saveRegistry(reg);
+                if (curGroup && !G.findGroup(reg, curGroup)) curGroup = '';
+                gdelDlg.classList.remove('open');
+                refreshList();
+                toast('已完整删除「' + name + '」（含 ' + names.length + ' 个工程）');
+            });
+        } else {
+            var res2 = G.dissolveGroup(reg, gdelTarget);
+            if (!res2.ok) { toast(res2.reason); return; }
+            L.saveRegistry(reg);
+            if (curGroup === gdelTarget) curGroup = (g && g.parent) || '';
+            gdelDlg.classList.remove('open');
+            refreshList();
+            toast('已解除「' + name + '」分组（子节点上移）');
+        }
+    }
+
     function longPress(elx, fn) {
         var timer = null, moved = false, sx = 0, sy = 0;
         elx.addEventListener('touchstart', function (e) {
@@ -462,6 +544,12 @@
             var cnt = G.projectsIn(reg, g.id).length + G.groupsIn(reg, g.id).length;
             info.appendChild(el('div', 'pj-sub', cnt ? cnt + ' 个内容' : '空分组'));
             card.appendChild(info);
+            var gdel = el('button', 'pj-del', '🗑');
+            gdel.addEventListener('click', function (e) {
+                e.stopPropagation();
+                openGroupDeleteDialog(g.id);
+            });
+            card.appendChild(gdel);
             card.addEventListener('click', function () {
                 if (multiMode) { toggleSel(key); return; }
                 curGroup = g.id;
@@ -592,6 +680,8 @@
                 hasModel: false
             };
             await store().write(p.meta, new TextEncoder().encode(JSON.stringify(meta)));
+            /* v52b：在子分组里新建的工程落在当前浏览的分组 */
+            meta.group = curGroup || '';
             L.saveRegistry(L.upsertProject(L.loadRegistry(), meta));
 
             hideWait();

@@ -677,6 +677,47 @@ try {
         check('V52-5 点按钮自动进多选+取消退出', r5.autoMulti && r5.backNormal, r5);
     }
 
+    /* ---- v52b：分组删除 + 新建工程落当前分组 ---- */
+    {
+        const r6 = JSON.parse(await evalJs(`
+        (async () => {
+            /* V52-4 结束时还停在分组内 → 回到根层 */
+            const crumbBtn = document.querySelector('.pj-crumb-btn');
+            if (crumbBtn) { crumbBtn.click(); await new Promise(r => setTimeout(r, 250)); }
+            const reg = window.__projectLogic.loadRegistry();
+            /* 分组卡应有 🗑 删除按钮 */
+            const gcard = [...document.querySelectorAll('.pj-card')].find(x => x.classList.contains('pj-gcard'));
+            const hasDel = gcard && [...gcard.querySelectorAll('button')].some(b => b.textContent.includes('🗑'));
+            /* upsertProject 保留 groups */
+            const testReg = { projects: [{ name: 'v52a', mode: 'model', group: 'zz' }], groups: [{ id: 'zz', name: 'Z', parent: '' }] };
+            const out = window.__projectLogic.upsertProject(testReg, { name: 'v52w', mode: 'image', updatedAt: 'x', hasModel: false });
+            const groupsKept = Array.isArray(out.groups) && out.groups.length === 1;
+            const newEntry = out.projects.find(p => p.name === 'v52w');
+            return JSON.stringify({ hasDel, groupsKept, newGroup: newEntry ? (newEntry.group || '') : null });
+        })()`));
+        check('V52-6 分组卡有删除按钮', r6.hasDel, r6);
+        check('V52-7 upsert 保留 groups', r6.groupsKept, r6);
+
+        /* 三选弹窗：点 gcard 🗑 → 弹窗出现 → 仅解除分组 */
+        const r7 = JSON.parse(await evalJs(`
+        (async () => {
+            const gcard = [...document.querySelectorAll('.pj-card')].find(x => x.classList.contains('pj-gcard'));
+            const delBtn = [...gcard.querySelectorAll('button')].find(b => b.textContent.includes('🗑'));
+            delBtn.click();
+            await new Promise(r => setTimeout(r, 250));
+            const dlg = document.querySelector('.pj-move-dlg.open');
+            const btns = dlg ? [...dlg.querySelectorAll('.pj-move-btn')].map(b => b.textContent) : [];
+            /* 点「仅解除分组」 */
+            const loose = [...dlg.querySelectorAll('.pj-move-btn')].find(b => b.textContent === '仅解除分组');
+            if (loose) loose.click();
+            await new Promise(r => setTimeout(r, 300));
+            const reg = window.__projectLogic.loadRegistry();
+            return JSON.stringify({ btns, dlgClosed: !dlg || !dlg.classList.contains('open'), groupsLeft: (reg.groups || []).length });
+        })()`));
+        check('V52-8 三选弹窗+仅解除分组', r7.btns.join().includes('仅解除分组') && r7.btns.join().includes('完整删除') && r7.btns.join().includes('取消') && r7.groupsLeft === 0, r7);
+    }
+
+
 
 
 } catch (e) {

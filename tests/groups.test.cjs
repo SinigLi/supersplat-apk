@@ -72,5 +72,40 @@ ck('createWith 空名', !G.createGroupWithNodes(r4, '', '').ok);
 /* 坏 schema 容忍 */
 ck('null groups 容忍', (() => { const r = { projects: [] }; G.groupsOf(r); return Array.isArray(r.groups) && r.groups.length === 0; })());
 
+/* ---------- v52b 删除分组 ---------- */
+(() => {
+    const r = { projects: [
+        { name: 'p1', mode: 'video', group: 'ga' },
+        { name: 'p2', mode: 'video', group: 'gb' },
+        { name: 'p3', mode: 'video', group: '' }
+    ], groups: [
+        { id: 'ga', name: 'A', parent: '' },
+        { id: 'gb', name: 'B', parent: 'ga' }
+    ] };
+    const d1 = G.dissolveGroup(r, 'ga');
+    ck('dissolve 移子上移', d1.ok && d1.moved.groups === 1 && d1.moved.projects === 1, d1);
+    ck('dissolve 后分组删了', !G.findGroup(r, 'ga'));
+    ck('dissolve 后 B 上移到根', G.findGroup(r, 'gb').parent === '');
+    ck('dissolve 后 p1 到根', r.projects.find(p => p.name === 'p1').group === '');
+    ck('dissolve 不存在的组', !G.dissolveGroup(r, 'nope').ok);
+
+    const r2 = { projects: [
+        { name: 'q1', mode: 'video', group: 'x' },
+        { name: 'q2', mode: 'video', group: 'y' },
+        { name: 'q3', mode: 'video', group: '' }
+    ], groups: [
+        { id: 'x', name: 'X', parent: '' },
+        { id: 'y', name: 'Y', parent: 'x' }
+    ] };
+    const names = G.collectProjectNames(r2, 'x');
+    ck('collectProjectNames 含子组', names.includes('q1') && names.includes('q2') && !names.includes('q3'), names);
+    const d2 = G.deleteGroupDeep(r2, 'x');
+    ck('deleteDeep ok', d2.ok && d2.removedGroups === 2, d2);
+    ck('deleteDeep 工程清单', d2.projects.includes('q1') && d2.projects.includes('q2'));
+    ck('deleteDeep 后无分组', r2.groups.length === 0);
+    ck('deleteDeep 后仅剩根工程', r2.projects.length === 1 && r2.projects[0].name === 'q3');
+    ck('deleteDeep 不存在的组', !G.deleteGroupDeep(r2, 'x').ok);
+})();
+
 console.log(bad === 0 ? '\n=== groups ALL PASS ===' : '\n=== groups FAIL(' + bad + ') ===');
 process.exit(bad === 0 ? 0 : 1);

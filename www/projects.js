@@ -161,18 +161,25 @@
         if (!entry || !entry.name) throw new Error('项目名无效');
         var rest = (reg.projects || []).filter(function (p) { return p.name !== entry.name; });
         // v45：mode 进索引（model/video/audio），列表卡片显示类型角标
-        return {
-            projects: [{
-                name: entry.name,
-                mode: entry.mode || 'model',
-                updatedAt: entry.updatedAt,
-                hasModel: !!entry.hasModel
-            }].concat(rest)
-        };
+        /* v52b：保留 groups 等顶层字段（此前重建对象丢 groups → 分组全消失） */
+        var prevGroup = null;
+        (reg.projects || []).forEach(function (p) { if (p.name === entry.name) prevGroup = p.group || ''; });
+        var out = Object.assign({}, reg);
+        out.projects = [{
+            name: entry.name,
+            mode: entry.mode || 'model',
+            updatedAt: entry.updatedAt,
+            hasModel: !!entry.hasModel,
+            group: entry.group != null ? entry.group : prevGroup
+        }].concat(rest);
+        return out;
     }
 
     function removeProject(reg, name) {
-        return { projects: (reg.projects || []).filter(function (p) { return p.name !== name; }) };
+        /* v52b：同样保留 groups 等顶层字段 */
+        var out = Object.assign({}, reg);
+        out.projects = (reg.projects || []).filter(function (p) { return p.name !== name; });
+        return out;
     }
 
     /* ---------- 校验 ---------- */

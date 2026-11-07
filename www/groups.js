@@ -163,7 +163,54 @@
         return made;
     }
 
-    var api = { newId: newId, groupsOf: groupsOf, findGroup: findGroup, pathOf: pathOf, pathText: pathText, groupNameTaken: groupNameTaken, groupsIn: groupsIn, projectsIn: projectsIn, createGroup: createGroup, isDescendantOrSelf: isDescendantOrSelf, validateMove: validateMove, moveNodes: moveNodes, createGroupWithNodes: createGroupWithNodes };
+    /* ---------- v52b：删除分组 ---------- */
+
+    /* 仅解除分组：直接子节点全部移到被删分组的父路径，然后删除该分组节点。
+     * 返回 {ok, moved:{groups:n, projects:n}} 或 {ok:false, reason} */
+    function dissolveGroup(reg, id) {
+        var g = findGroup(reg, id);
+        if (!g) return { ok: false, reason: '分组不存在' };
+        var parent = g.parent || '';
+        var movedG = 0, movedP = 0;
+        groupsOf(reg).forEach(function (x) { if (x.parent === id) { x.parent = parent; movedG++; } });
+        (reg.projects || []).forEach(function (p) { if ((p.group || '') === id) { p.group = parent; movedP++; } });
+        var arr = groupsOf(reg);
+        var idx = arr.indexOf(g);
+        if (idx >= 0) arr.splice(idx, 1);
+        return { ok: true, moved: { groups: movedG, projects: movedP } };
+    }
+
+    /* 完整删除：递归收集子分组 + 子工程。
+     * collectProjectNames(reg, id) → 工程名数组（UI 层负责删工程数据）。
+     * deleteGroupDeep(reg, id) → 原地删除分组节点与全部子孙分组节点、
+     * 把子孙工程从 projects 数组移除。返回 {ok, removedGroups:n, projects:[names]} */
+    function collectGroupIds(reg, id) {
+        var out = [id];
+        groupsOf(reg).forEach(function (x) {
+            if (x.parent === id) {
+                out = out.concat(collectGroupIds(reg, x.id));
+            }
+        });
+        return out;
+    }
+
+    function collectProjectNames(reg, id) {
+        var ids = collectGroupIds(reg, id);
+        return (reg.projects || []).filter(function (p) { return ids.indexOf(p.group || '') >= 0; }).map(function (p) { return p.name; });
+    }
+
+    function deleteGroupDeep(reg, id) {
+        var g = findGroup(reg, id);
+        if (!g) return { ok: false, reason: '分组不存在' };
+        var ids = collectGroupIds(reg, id);
+        var names = collectProjectNames(reg, id);
+        var arr = groupsOf(reg);
+        for (var i = arr.length - 1; i >= 0; i--) { if (ids.indexOf(arr[i].id) >= 0) arr.splice(i, 1); }
+        reg.projects = (reg.projects || []).filter(function (p) { return ids.indexOf(p.group || '') < 0; });
+        return { ok: true, removedGroups: ids.length, projects: names };
+    }
+
+    var api = { newId: newId, groupsOf: groupsOf, findGroup: findGroup, pathOf: pathOf, pathText: pathText, groupNameTaken: groupNameTaken, groupsIn: groupsIn, projectsIn: projectsIn, createGroup: createGroup, isDescendantOrSelf: isDescendantOrSelf, validateMove: validateMove, moveNodes: moveNodes, createGroupWithNodes: createGroupWithNodes, dissolveGroup: dissolveGroup, collectGroupIds: collectGroupIds, collectProjectNames: collectProjectNames, deleteGroupDeep: deleteGroupDeep };
     global.__groups = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
