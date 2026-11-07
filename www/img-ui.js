@@ -152,6 +152,7 @@
     var topEl, titleEl, dockEl, drawGrp, eraseGrp, panGrp, undoGrp, redoGrp;
     var drawPanel, erasePanel, btnBrush, btnPoly, btnClear, btnInvert;
     var sizeRange, sizeVal, sizeRange2, sizeVal2, emptyEl, hintEl;
+    var reloadBtnEl;                             // v50：顶栏「换图」
     var layersGrp, layersPanel, layersListEl;   // v50：图层分组/面板/列表
 
     /* 当前激活层（确保存在，异常时回落首层） */
@@ -401,6 +402,17 @@
                     var u8 = new Uint8Array(fr.result);
                     var kind = L.sniffImageType(u8);
                     if (!kind) { hint('不是图片文件（支持 PNG/JPG/WebP/GIF/BMP）', true); return; }
+
+                    /* v50 换图三选（老板 2026-11-07 确认）：已有图且已有笔画时问一下。
+                     * 取消 = 什么都不动；清空 = 一次性 op（可撤销）；保留 = 笔画不动
+                     * （坐标是原图像素系，尺寸变了会错位，选保留的人自己负责微调）。 */
+                    var hadStrokes = !!(S.img && S.state &&
+                        S.state.layers.some(function (l) { return l.strokes.length > 0; }));
+                    if (hadStrokes) {
+                        var c = confirm('已有笔画，换图后怎么处理？\n\n「确定」= 保留笔画继续编辑\n「取消」= 放弃换图\n（清空笔画请在换图后点 🙑 清空当前层，可撤销）');
+                        if (!c) { hint('已取消换图'); return; }
+                    }
+
                     showEmpty(false);
                     hint('导入中…');
                     var p = PJ.pathsFor(S.project);
@@ -698,6 +710,12 @@
         topEl.appendChild(backBtn);
         titleEl = el('div', 'img-title', '');
         topEl.appendChild(titleEl);
+        var reloadBtn = el('button', 'img-top-btn', '🔄 换图');
+        reloadBtn.title = '更换图片（v50）';
+        reloadBtn.addEventListener('click', pickImage);
+        reloadBtn.style.display = 'none';   // 有图后才显示（showEmpty 控制）
+        topEl.appendChild(reloadBtn);
+        reloadBtnEl = reloadBtn;
         var saveBtn = el('button', 'img-top-btn', '💾 保存');
         saveBtn.addEventListener('click', function () { saveAll(true); });
         topEl.appendChild(saveBtn);
@@ -922,6 +940,8 @@
 
     function showEmpty(show) {
         emptyEl.style.display = show ? 'flex' : 'none';
+        /* 「换图」只在有图时显示；空态时用空态大按钮导入 */
+        if (reloadBtnEl) reloadBtnEl.style.display = show ? 'none' : '';
     }
 
     /* ---------- 保存 / 返回 / 导出 ---------- */

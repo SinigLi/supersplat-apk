@@ -477,6 +477,63 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await sleep(900);
     const reState = JSON.parse(await ev('JSON.stringify(window.__img.state())'));
     ck('重开后层数保持', reState.layers === 3, reState.layers);
+
+    /* ---- v50/M2：换图入口与三选流程 ---- */
+    // 顶栏「换图」按钮可见（有图状态）
+    const reloadInfo = JSON.parse(await ev(`(() => {
+      const btn = [...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('换图'));
+      if (!btn) return JSON.stringify({ exists: false });
+      return JSON.stringify({ exists: true, visible: btn.style.display !== 'none' });
+    })()`));
+    ck('顶栏换图按钮可见', reloadInfo.exists === true && reloadInfo.visible === true, reloadInfo);
+
+    // 换图三选：mock confirm 返回 false（取消）→ meta 不变
+    const beforeMeta = JSON.parse(await ev(`JSON.stringify(window.__imgLogic.loadMeta('探针图片工程'))`));
+    const cancelRes = await ev(`(async () => {
+      let asked = false;
+      window.confirm = function () { asked = true; return false; };
+      window.__probePick = window.__img._pickImage;
+      // 直接模拟 onchange：构造 File 触发完整流程
+      const buf = new Uint8Array(8);
+      // PNG 魔数
+      buf[0]=0x89; buf[1]=0x50; buf[2]=0x4E; buf[3]=0x47; buf[4]=0x0D; buf[5]=0x0A; buf[6]=0x1A; buf[7]=0x0A;
+      return 'prepared';
+    })()`);
+    // 取消路径验证：mock confirm=false，通过注入 File 触发
+    const cancelPick = await ev(`(async () => {
+      let confirmAsked = false, confirmRet = false;
+      window.confirm = function () { confirmAsked = true; return confirmRet; };
+      // 拦截 putContentFile：取消后不该被调
+      let putCalled = false;
+      const orig = window.__projectLogic.putContentFile;
+      window.__projectLogic.putContentFile = async function () { putCalled = true; return orig.apply(this, arguments); };
+      // 触发真实 pickImage：mock createElement，给 pickImage 实际拿到的那只
+      // input 装 files（旧写法把 files 装在外层变量上，pickImage 读自己建的
+      // 那只 → files undefined → !f 提前 return，confirm 根本不会弹）。
+      const png = new Uint8Array([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,6,0,0,0,0x1F,0x15,0xC4,0x89,0,0,0,10,73,68,65,84,120,0x01,0x63,0,1,0,0,5,0,1,0x0D,0x0A,0x2D,0xB4,0,0,0,0,73,69,78,68,0xAE,0x42,0x60,0x82]);
+      const file = new File([png], 'new.png', { type: 'image/png' });
+      const origCreate = document.createElement.bind(document);
+      document.createElement = function (tag) {
+        const el = origCreate(tag);
+        if (tag === 'input') {
+          try { Object.defineProperty(el, 'files', { value: [file] }); } catch (e) { }
+          setTimeout(() => { if (el.onchange) el.onchange({ target: el }); }, 0);
+        }
+        return el;
+      };
+      window.__img._pickImage();
+      await new Promise(r => setTimeout(r, 600));
+      document.createElement = origCreate;
+      window.__projectLogic.putContentFile = orig;
+      return JSON.stringify({ confirmAsked, putCalled });
+    })()`);
+    const cp = JSON.parse(cancelPick);
+    const afterMeta = JSON.parse(await ev(`JSON.stringify(window.__imgLogic.loadMeta('探针图片工程'))`));
+    ck('取消换图：弹出确认', cp.confirmAsked === true, cp);
+    ck('取消换图：不写新图', cp.putCalled === false, cp);
+    ck('取消换图：meta 不变', afterMeta.imageFile === beforeMeta.imageFile, afterMeta.imageFile);
+
+    // 返回后列表可点（维持既有行为）
     await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
     await sleep(600);
     const reclose = await ev(`getComputedStyle(document.getElementById('imgPage')).display`);
