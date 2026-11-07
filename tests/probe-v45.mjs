@@ -566,6 +566,119 @@ try {
         check('V51-7 播放条刻度+列表▦徽标', r5.ticks === 2 && r5.badge && r5.marks.length === 2 && r5.marks[0].seg === '1', r5);
     }
 
+    /* ---- v52：工程列表分组管理 ---- */
+    {
+        const r1 = JSON.parse(await evalJs(`
+        (async () => {
+            const reg0 = window.__projectLogic.loadRegistry();
+            reg0.projects = [
+                { name: 'v52a', mode: 'model', updatedAt: '2026-11-07T10:00:00', hasModel: false },
+                { name: 'v52b', mode: 'video', updatedAt: '2026-11-07T09:00:00', hasModel: false },
+                { name: 'v52c', mode: 'image', updatedAt: '2026-11-07T08:00:00', hasModel: false }
+            ];
+            reg0.groups = [];
+            window.__projectLogic.saveRegistry(reg0);
+            window.__projects.list();
+            await new Promise(r => setTimeout(r, 200));
+            const cards = document.querySelectorAll('.pj-card');
+            const gbar = document.querySelector('.pj-gbar');
+            const cancel = document.querySelector('.pj-cancel');
+            return JSON.stringify({ cards: cards.length, gbar: !!gbar, cancelHidden: cancel && cancel.style.display === 'none', hasGroups: !!window.__groups });
+        })()`));
+        console.log('V52D1 ' + JSON.stringify(r1));
+        check('V52-1 底部条+列表就绪', r1.cards === 3 && r1.gbar && r1.cancelHidden && r1.hasGroups, r1);
+
+        const r2 = JSON.parse(await evalJs(`
+        (async () => {
+            const card = document.querySelectorAll('.pj-card')[0];
+            card.dispatchEvent(new Event('contextmenu', { cancelable: true }));
+            await new Promise(r => setTimeout(r, 300));
+            const cancel = document.querySelector('.pj-cancel');
+            const selCard = document.querySelector('.pj-card.sel');
+            return JSON.stringify({ cancelShown: cancel && cancel.style.display === 'flex', sel: !!selCard, selName: selCard ? selCard.querySelector('.pj-name').textContent : '' });
+        })()`));
+        console.log('V52D2 ' + JSON.stringify(r2));
+        check('V52-2 长按进入多选+选中', r2.cancelShown && r2.sel && r2.selName === 'v52a', r2);
+
+        const r3 = JSON.parse(await evalJs(`
+        (async () => {
+            const dbgPre = window.__projects._dbg();
+            /* 把另外 2 个工程也选上（重查 DOM） */
+            const names = ['v52b', 'v52c'];
+            names.forEach(n => {
+                const c = [...document.querySelectorAll('.pj-card')].find(x => x.querySelector('.pj-name') && x.querySelector('.pj-name').textContent === n);
+                if (c) c.click();
+            });
+            const dbgMid = window.__projects._dbg();
+            let promptCalled = 0;
+            window.prompt = function () { promptCalled++; return '今日精选'; };
+            const gbtn = [...document.querySelectorAll('.pj-gbar-btn')].find(b => b.textContent.includes('新建分组'));
+            let btnClicked = 0;
+            gbtn.addEventListener('click', function () { btnClicked++; });
+            gbtn.click();   /* 真实路径：click → onGroupNewClick → prompt → 建组 */
+            await new Promise(r => setTimeout(r, 400));
+            const reg = window.__projectLogic.loadRegistry();
+            const grp = (reg.groups || []).find(g => g.name === '今日精选');
+            return JSON.stringify({ groups: (reg.groups || []).length, inGroup: grp ? window.__groups.projectsIn(reg, grp.id).length : 0, multiOff: document.querySelector('.pj-cancel').style.display === 'none', promptCalled: promptCalled, btnClicked: btnClicked });
+        })()`));
+        console.log('V52D3 ' + JSON.stringify(r3));
+        check('V52-3 新建分组并放入选中', r3.groups === 1 && r3.inGroup === 3 && r3.multiOff, r3);
+
+        const r4 = JSON.parse(await evalJs(`
+        (async () => {
+            /* 进入分组（非多选点分组卡）→ 长按选 1 工程 → 移动到根 */
+            /* V52-3 结束时可能仍在多选（multiOff 断言可豁免），先确保退出 */
+            const cancelBtn = document.querySelector('.pj-cancel');
+            if (cancelBtn.style.display !== 'none') cancelBtn.click();
+            await new Promise(r => setTimeout(r, 200));
+            const gcard = [...document.querySelectorAll('.pj-card')].find(x => x.classList.contains('pj-gcard'));
+            if (!gcard) return JSON.stringify({ err: 'no gcard' });
+            gcard.click();
+            await new Promise(r => setTimeout(r, 250));
+            const crumb = document.querySelector('.pj-crumb');
+            const crumbShown = crumb && crumb.style.display === 'flex';
+            const card = document.querySelector('.pj-card:not(.pj-gcard)');
+            if (!card) return JSON.stringify({ err: 'no proj card', crumbShown });
+            card.dispatchEvent(new Event('contextmenu', { cancelable: true }));
+            await new Promise(r => setTimeout(r, 250));
+            const sel2 = document.querySelector('.pj-card.sel');
+            if (sel2) sel2.click();  /* contextmenu 已 toggle 一次，再点会取消 → 修正：这里不点 */
+            /* 上面误操作会取消选中——改为若已选中则不点 */
+            const stillSel = document.querySelector('.pj-card.sel');
+            if (!stillSel) { card.dispatchEvent(new Event('contextmenu', { cancelable: true })); }
+            [...document.querySelectorAll('.pj-gbar-btn')].find(b => b.textContent.includes('移动到分组')).click();
+            await new Promise(r => setTimeout(r, 250));
+            const upItem = document.querySelector('.pj-move-item');
+            if (upItem) upItem.click();
+            await new Promise(r => setTimeout(r, 150));
+            const okBtn = [...document.querySelectorAll('.pj-move-btn')].find(b => b.textContent.includes('移动到这里'));
+            if (okBtn) okBtn.click();
+            await new Promise(r => setTimeout(r, 300));
+            const reg = window.__projectLogic.loadRegistry();
+            const inRoot = window.__groups.projectsIn(reg, '').length;
+            const grp2 = (reg.groups || []).find(g => g.name === '今日精选');
+            const inGroup = grp2 ? window.__groups.projectsIn(reg, grp2.id).length : -1;
+            return JSON.stringify({ crumbShown, inRoot, inGroup });
+        })()`));
+        console.log('V52D4 ' + JSON.stringify(r4));
+        check('V52-4 移动到分组（子层→根）', r4.crumbShown && r4.inRoot === 1 && r4.inGroup === 2, r4);
+
+        const r5 = JSON.parse(await evalJs(`
+        (async () => {
+            [...document.querySelectorAll('.pj-gbar-btn')].find(b => b.textContent.includes('新建分组')).click();
+            await new Promise(r => setTimeout(r, 150));
+            const cancel = document.querySelector('.pj-cancel');
+            const shown = cancel.style.display === 'flex';
+            cancel.click();
+            await new Promise(r => setTimeout(r, 150));
+            return JSON.stringify({ autoMulti: shown, backNormal: cancel.style.display === 'none' });
+        })()`));
+        console.log('V52D5 ' + JSON.stringify(r5));
+        check('V52-5 点按钮自动进多选+取消退出', r5.autoMulti && r5.backNormal, r5);
+    }
+
+
+
 } catch (e) {
     check('EXCEPTION', false, String(e.message || e).slice(0, 160));
 }

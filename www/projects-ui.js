@@ -23,7 +23,7 @@
 
     /* ===================== DOM ===================== */
 
-    var page, listEl, emptyEl, barEl, toastEl;
+    var page, listEl, emptyEl, barEl, toastEl, crumbEl, gbarEl, cancelBtn;
 
     function el(tag, cls, text) {
         var e = document.createElement(tag);
@@ -60,6 +60,25 @@
 
         listEl = el('div', 'pj-list');
         page.appendChild(listEl);
+
+        /* v52：分组管理 —— 路径条 / 底部操作条 / 多选取消钮 */
+        crumbEl = el('div', 'pj-crumb');
+        crumbEl.style.display = 'none';
+        page.appendChild(crumbEl);
+
+        gbarEl = el('div', 'pj-gbar');
+        var gNewBtn = el('button', 'pj-gbar-btn', '📁 新建分组');
+        gNewBtn.addEventListener('click', function () { onGroupNewClick(); });
+        var gMoveBtn = el('button', 'pj-gbar-btn', '📦 移动到分组');
+        gMoveBtn.addEventListener('click', function () { onGroupMoveClick(); });
+        gbarEl.appendChild(gNewBtn);
+        gbarEl.appendChild(gMoveBtn);
+        page.appendChild(gbarEl);
+
+        cancelBtn = el('button', 'pj-cancel', '✕ 取消选择');
+        cancelBtn.style.display = 'none';
+        cancelBtn.addEventListener('click', function () { setMulti(false); toast('已退出多选'); });
+        page.appendChild(cancelBtn);
 
         emptyEl = el('div', 'pj-empty');
         emptyEl.innerHTML = '<div class="pj-empty-ico">📁</div><div>还没有工程</div>' +
@@ -265,65 +284,246 @@
     addEventListener('resize', syncEditorBar);
     addEventListener('orientationchange', syncEditorBar);
 
+    /* ===================== v52 分组管理 ===================== */
+
+    var curGroup = '';        /* 当前浏览的分组 id，'' = 根 */
+    var multiMode = false;    /* 多选模式 */
+    var selSet = {};          /* key -> true；工程 'p:名'，分组 'g:id' */
+
+    function selKeys() { return Object.keys(selSet); }
+    function selCount() { return selKeys().length; }
+
+    function selNodes() {
+        return selKeys().map(function (k) {
+            return k.charAt(0) === 'p' ? { type: 'project', name: k.slice(2) } : { type: 'group', id: k.slice(2) };
+        });
+    }
+
+    function setMulti(on) {
+        multiMode = on;
+        if (!on) selSet = {};
+        if (cancelBtn) cancelBtn.style.display = on ? 'flex' : 'none';
+        if (gbarEl) gbarEl.classList.toggle('multi', on);
+        refreshList();
+    }
+
+    function toggleSel(key) {
+        if (selSet[key]) delete selSet[key]; else selSet[key] = true;
+        refreshList();
+    }
+
+    /* ---------- v52：新建分组 / 移动到分组 ---------- */
+
+    function ensureMultiOrToast() {
+        /* 老板规则：非多选点按钮 → 自动进入多选模式 */
+        if (!multiMode) { setMulti(true); toast('已进入多选，选好后点本按钮执行'); return false; }
+        if (!selCount()) { toast('先长按选择要处理的节点'); return false; }
+        return true;
+    }
+
+    function onGroupNewClick() {
+        if (!ensureMultiOrToast()) return;
+        var G = window.__groups;
+        var reg = L.loadRegistry();
+        var input = prompt('在「' + G.pathText(reg, curGroup) + '」下新建分组：', '新建分组');
+        if (input == null) return;
+        var made = G.createGroupWithNodes(reg, input, curGroup, selNodes());
+        if (!made.ok) { toast('新建分组失败：' + made.reason); return; }
+        L.saveRegistry(reg);
+        setMulti(false);
+        toast('已创建「' + input + '」并放入 ' + selCount() + ' 个节点');
+        refreshList();
+    }
+
+    function onGroupMoveClick() {
+        if (!ensureMultiOrToast()) return;
+        openMoveDialog();
+    }
+
+    /* 目标路径选择弹窗（层级列表 + 确认移动） */
+    var moveDlg = null, moveTarget = '', moveListEl = null, movePathEl = null;
+
+    function ensureMoveDlg() {
+        if (moveDlg) return;
+        moveDlg = el('div', 'pj-move-dlg');
+        var box = el('div', 'pj-move-box');
+        movePathEl = el('div', 'pj-move-path', '');
+        moveListEl = el('div', 'pj-move-list', '');
+        var row = el('div', 'pj-move-btns');
+        var cancelB = el('button', 'pj-move-btn', '取消');
+        cancelB.addEventListener('click', function () { moveDlg.classList.remove('open'); });
+        var okB = el('button', 'pj-move-btn primary', '移动到这里');
+        okB.addEventListener('click', function () {
+            var G = window.__groups;
+            var reg = L.loadRegistry();
+            var chk = G.validateMove(reg, selNodes(), moveTarget);
+            if (!chk.ok) { movePathEl.textContent = '⚠ ' + chk.reason; return; }
+            G.moveNodes(reg, selNodes(), moveTarget);
+            L.saveRegistry(reg);
+            moveDlg.classList.remove('open');
+            setMulti(false);
+            toast('已移动到「' + G.pathText(reg, moveTarget) + '」');
+            refreshList();
+        });
+        row.appendChild(cancelB); row.appendChild(okB);
+        box.appendChild(el('div', 'pj-move-title', '选择目标分组'));
+        box.appendChild(movePathEl);
+        box.appendChild(moveListEl);
+        box.appendChild(row);
+        moveDlg.appendChild(box);
+        page.appendChild(moveDlg);
+    }
+
+    function renderMoveList() {
+        var G = window.__groups;
+        var reg = L.loadRegistry();
+        moveListEl.innerHTML = '';
+        movePathEl.textContent = '目标：' + G.pathText(reg, moveTarget);
+        if (moveTarget) {
+            var up = el('div', 'pj-move-item', '⬆ 上一级');
+            up.addEventListener('click', function () {
+                var g = G.findGroup(reg, moveTarget);
+                moveTarget = (g && g.parent) || '';
+                renderMoveList();
+            });
+            moveListEl.appendChild(up);
+        }
+        G.groupsIn(reg, moveTarget).forEach(function (g) {
+            var it = el('div', 'pj-move-item', '📁 ' + g.name);
+            it.addEventListener('click', function () { moveTarget = g.id; renderMoveList(); });
+            moveListEl.appendChild(it);
+        });
+        if (!G.groupsIn(reg, moveTarget).length) {
+            moveListEl.appendChild(el('div', 'pj-move-empty', '（此层没有子分组，点「移动到这里」完成）'));
+        }
+    }
+
+    function openMoveDialog() {
+        ensureMoveDlg();
+        moveTarget = curGroup;
+        renderMoveList();
+        moveDlg.classList.add('open');
+    }
+
+    function longPress(elx, fn) {
+        var timer = null, moved = false, sx = 0, sy = 0;
+        elx.addEventListener('touchstart', function (e) {
+            var t = e.touches[0];
+            sx = t.clientX; sy = t.clientY; moved = false;
+            timer = setTimeout(function () { if (!moved) { timer = null; fn(); } }, 500);
+        }, { passive: true });
+        elx.addEventListener('touchmove', function (e) {
+            var t = e.touches[0];
+            if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) { moved = true; if (timer) { clearTimeout(timer); timer = null; } }
+        }, { passive: true });
+        var clear = function () { if (timer) { clearTimeout(timer); timer = null; } };
+        elx.addEventListener('touchend', clear);
+        elx.addEventListener('touchcancel', clear);
+        /* 桌面：右键长按等价 */
+        elx.addEventListener('contextmenu', function (e) { e.preventDefault(); fn(); });
+    }
+
+    /* ---------- A2: 底部条/取消按钮/路径条 ---------- */
     /* ===================== 列表 ===================== */
 
     function refreshList() {
         var reg = L.loadRegistry();
-        var items = reg.projects || [];
+        var G = window.__groups;
+        var groups = G ? G.groupsIn(reg, curGroup) : [];
+        var items = G ? G.projectsIn(reg, curGroup) : (reg.projects || []);
         listEl.innerHTML = '';
-        emptyEl.style.display = items.length ? 'none' : 'flex';
+        var total = items.length;
+        emptyEl.style.display = total ? 'none' : 'flex';
 
+        /* 路径条 */
+        if (crumbEl) {
+            crumbEl.innerHTML = '';
+            if (curGroup && G) {
+                var up = el('button', 'pj-crumb-btn', '⬆ 上级');
+                up.addEventListener('click', function () {
+                    var g = G.findGroup(reg, curGroup);
+                    curGroup = (g && g.parent) || '';
+                    refreshList();
+                });
+                crumbEl.appendChild(up);
+                crumbEl.appendChild(el('div', 'pj-crumb-path', G.pathText(reg, curGroup)));
+            }
+            crumbEl.style.display = (curGroup && G) ? 'flex' : 'none';
+        }
+
+        /* 分组卡片 */
+        groups.forEach(function (g) {
+            var key = 'g:' + g.id;
+            var card = el('div', 'pj-card pj-gcard' + (multiMode && selSet[key] ? ' sel' : ''));
+            var icon = el('div', 'pj-thumb-empty', multiMode && selSet[key] ? '✅' : '📁');
+            card.appendChild(icon);
+            var info = el('div', 'pj-info');
+            info.appendChild(el('div', 'pj-name', g.name));
+            var cnt = G.projectsIn(reg, g.id).length + G.groupsIn(reg, g.id).length;
+            info.appendChild(el('div', 'pj-sub', cnt ? cnt + ' 个内容' : '空分组'));
+            card.appendChild(info);
+            card.addEventListener('click', function () {
+                if (multiMode) { toggleSel(key); return; }
+                curGroup = g.id;
+                refreshList();
+            });
+            longPress(card, function () { if (!multiMode) setMulti(true); toggleSel(key); });
+            listEl.appendChild(card);
+        });
+
+        /* 工程卡片（沿用原渲染，加多选态） */
         items.forEach(function (item) {
-            var card = el('div', 'pj-card');
+            var key = 'p:' + item.name;
+            var card = el('div', 'pj-card' + (multiMode ? ' selectable' : '') + (multiMode && selSet[key] ? ' sel' : ''));
 
-            var thumb = el('div', 'pj-thumb-empty', '🔮');
+            var thumb = el('div', 'pj-thumb-empty', multiMode && selSet[key] ? '✅' : '🔮');
             card.appendChild(thumb);
 
             if (item.hasModel) {
                 var p = L.pathsFor(item.name);
                 store().read(p.thumb).then(function (u8) {
-                    var url = URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' }));
-                    var img = document.createElement('img');
-                    img.className = 'pj-thumb';
-                    img.src = url;
-                    img.onload = function () { URL.revokeObjectURL(url); };
-                    thumb.replaceWith(img);
+                    if (u8 && u8.length) {
+                        var blob = new Blob([u8], { type: 'image/png' });
+                        thumb.textContent = '';
+                        thumb.style.background = 'url(' + URL.createObjectURL(blob) + ') center/cover no-repeat';
+                    }
                 }).catch(function () { /* 没缩略图就留占位 */ });
             }
 
             var info = el('div', 'pj-info');
             info.appendChild(el('div', 'pj-name', item.name));
-            // v49：image 角标（video/audio 走 AV 链路已有分支，3D 保持原文案）
             var modeTxt = item.mode === 'video' ? '🎬 视频' :
                 item.mode === 'audio' ? '🎵 音频' :
                 item.mode === 'image' ? '🖼 图片' :
                 (item.hasModel ? '已有模型' : '空工程');
-            var sub = el('div', 'pj-sub',
-                modeTxt +
-                ' · ' + String(item.updatedAt || '').slice(0, 16).replace('T', ' '));
-            info.appendChild(sub);
+            info.appendChild(el('div', 'pj-sub', modeTxt + ' · ' + String(item.updatedAt || '').slice(0, 16).replace('T', ' ')));
             card.appendChild(info);
 
-            var del = el('button', 'pj-del', '🗑');
-            del.addEventListener('click', function (e) {
-                e.stopPropagation();
-                if (!confirm('删除工程「' + item.name + '」？模型数据会一并删除。')) return;
-                var p = L.pathsFor(item.name);
-                store().remove(p.dir).then(function () {
-                    // v49：图片工程的 localStorage 残留（meta/strokes）一并清掉；
-                    // AV 的 av-* 键同理（v45 时没清，属于已知遗留，这里顺手补齐图片侧）
-                    if (item.mode === 'image' && window.__imgLogic) {
-                        window.__imgLogic.deleteMeta(item.name);
-                    }
-                    L.saveRegistry(L.removeProject(L.loadRegistry(), item.name));
-                    refreshList();
+            if (!multiMode) {
+                var del = el('button', 'pj-del', '🗑');
+                del.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    if (!confirm('删除工程「' + item.name + '」？模型数据会一并删除。')) return;
+                    var p = L.pathsFor(item.name);
+                    store().remove(p.dir).then(function () {
+                        var reg2 = L.loadRegistry();
+                        reg2.projects = reg2.projects.filter(function (x) { return x.name !== item.name; });
+                        L.saveRegistry(reg2);
+                        refreshList();
+                        toast('已删除「' + item.name + '」');
+                    }).catch(function (e2) { toast('删除失败：' + (e2 && e2.message || e2)); });
                 });
-            });
-            card.appendChild(del);
+                card.appendChild(del);
+            }
 
-            card.addEventListener('click', function () { openProject(item.name); });
+            card.addEventListener('click', function () {
+                if (multiMode) { toggleSel(key); return; }
+                openProject(item.name);
+            });
+            longPress(card, function () { if (!multiMode) setMulti(true); toggleSel(key); });
             listEl.appendChild(card);
         });
+        if (!total && !groups.length) emptyEl.style.display = 'flex';
     }
 
     /* ===================== 场景 ===================== */
@@ -742,6 +942,10 @@
         open: openProject,
         create: createProject,
         back: backToProjects,
-        list: refreshList
+        list: refreshList,
+        _dbg: function () { return { multiMode: multiMode, sel: selKeys(), curGroup: curGroup }; },
+        _setMulti: setMulti,
+        _toggleSel: toggleSel,
+        _onGroupNew: onGroupNewClick
     };
 })();
