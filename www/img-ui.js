@@ -118,7 +118,7 @@
 ".img-layers-top .img-sub-btn{flex:1}",
 ".img-layers-list{display:flex;flex-direction:column;gap:4px}",
 ".img-layer-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.06);cursor:pointer}",
-".img-layer-row.active{background:rgba(255,140,60,.22);outline:1px solid rgba(255,160,80,.55)}",
+".img-layer-row.active{background:rgba(255,140,60,.22);outline:1px solid rgba(255,160,80,.55);box-shadow:inset 3px 0 0 #ff9d4d}",
 ".img-layer-eye{font-size:15px;line-height:1;opacity:.55;flex:none;cursor:pointer}",
 ".img-layer-eye.on{opacity:1}",
 ".img-layer-name{font-size:13px;color:#eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
@@ -454,6 +454,14 @@
         undoGrp.classList.toggle('on', S.done.length > 0);
         redoGrp.classList.toggle('off', S.redo.length === 0);
         redoGrp.classList.toggle('on', S.redo.length > 0);
+        markTitle();
+    }
+
+    /* 标题栏 ● = 未保存（v50b 手动保存语义） */
+    function markTitle() {
+        if (!titleEl || !S.project) return;
+        var base = S.project + (S.img ? ' · ' + S.imgW + '×' + S.imgH : '');
+        titleEl.textContent = base + (S.dirty ? ' ●' : '');
     }
 
     /* ---------- op 化撤销（v50）----------
@@ -463,8 +471,7 @@
         if (!OPS.applyOp(S.state, op)) return false;
         S.done.push(op);
         S.redo = [];
-        S.dirty = true;
-        saveAll(false);
+        S.dirty = true;   // v50b：只标脏，不即时落盘（老板要求返回时提醒保存）
         redrawMask();
         updateUndoState();
         renderLayersPanel();
@@ -485,8 +492,7 @@
             if (inv) OPS.applyOp(S.state, inv);
         }
         S.redo.push(op);
-        S.dirty = true;
-        saveAll(false);
+        S.dirty = true;   // v50b：只标脏
         redrawMask();
         updateUndoState();
         renderLayersPanel();
@@ -504,8 +510,7 @@
             OPS.applyOp(S.state, op);   // op 带逆信息，重应用即正向
         }
         S.done.push(op);
-        S.dirty = true;
-        saveAll(false);
+        S.dirty = true;   // v50b：只标脏
         redrawMask();
         updateUndoState();
         renderLayersPanel();
@@ -679,16 +684,19 @@
             });
             row.appendChild(eye);
 
-            var nm = el('span', 'img-layer-name', lay.name +
-                (lay.strokes.length ? ' (' + lay.strokes.length + ')' : ''));
-            nm.title = '点击激活此层进行编辑';
-            nm.addEventListener('click', function () {
+            /* v50b：整行可点激活——真机反馈「切换不了」，原来只有名字文本可点
+             * （行右侧空白点了没反应），移动端命中区域太窄。行点击=激活，
+             * 眼睛自己 stopPropagation 不受影响。 */
+            row.title = '点击激活此层进行编辑';
+            row.addEventListener('click', function () {
                 if (S.state.activeId !== lay.id) {
                     S.state.activeId = lay.id;   // 切换激活不是编辑动作，不入撤销栈
                     renderLayersPanel();
                     hint('已激活「' + lay.name + '」');
                 }
             });
+            var nm = el('span', 'img-layer-name', lay.name +
+                (lay.strokes.length ? ' (' + lay.strokes.length + ')' : ''));
             row.appendChild(nm);
 
             layersListEl.appendChild(row);
@@ -1027,8 +1035,7 @@
             if (!S.img) { hint('先导入图片', true); return; }
             S.invert = !S.invert;
             btnInvert.classList.toggle('on', S.invert);
-            S.dirty = true;
-            saveAll(false);
+            S.dirty = true;   // v50b：只标脏
             redrawMask();
             hint(S.invert ? '已反选：画的是「保留」区域' : '已取消反选');
         });
@@ -1059,7 +1066,37 @@
 
     function back() {
         dlog('back() project=' + S.project);
-        saveAll(false);
+        /* v50b：手动保存语义——脏则先问（老板反馈：自动保存+无提醒直接退出不行） */
+        if (S.dirty) {
+            showBackConfirm();
+            return;
+        }
+        doBack();
+    }
+
+    /* 返回确认：保存并退出 / 不保存退出 / 取消 */
+    function showBackConfirm() {
+        var mask = el('div', 'pj-dlg-mask');
+        var box = el('div', 'pj-dlg');
+        box.appendChild(el('div', 'pj-dlg-title', '有未保存的修改'));
+        box.appendChild(el('div', 'pj-dlg-hint', '笔画/图层改动还没有保存'));
+        var col = el('div', 'pj-dlg-col');
+        var b1 = el('button', 'pj-dlg-btn pj-primary', '💾 保存并退出');
+        var b2 = el('button', 'pj-dlg-btn', '不保存退出');
+        var b3 = el('button', 'pj-dlg-btn', '取消');
+        col.appendChild(b1); col.appendChild(b2); col.appendChild(b3);
+        box.appendChild(col);
+        mask.appendChild(box);
+        document.body.appendChild(mask);
+        requestAnimationFrame(function () { mask.classList.add('open'); });
+        var close = function () { mask.classList.remove('open'); setTimeout(function () { mask.remove(); }, 200); };
+        b1.addEventListener('click', function () { close(); saveAll(true); doBack(); });
+        b2.addEventListener('click', function () { close(); S.dirty = false; doBack(); });
+        b3.addEventListener('click', close);
+        mask.addEventListener('click', function (e) { if (e.target === mask) close(); });
+    }
+
+    function doBack() {
         page.classList.remove('open');
         /* 必须同时清掉内联 display：open() 里为绕开样式表缓存把 display:flex
          * 内联写死在 page.style 上，而 .open 只是一个类。只 remove('open') 的话
@@ -1316,6 +1353,7 @@
         _toggleLayer: function (id) {
             return applyAndPush({ kind: 'toggleVisible', layerId: id || S.state.activeId });
         },
+        _saveNow: function () { saveAll(true); },
         _activateLayer: function (id) {
             var l = OPS.layerById(S.state, id);
             if (!l) return false;

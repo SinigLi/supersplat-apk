@@ -260,6 +260,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await shot('S7-erase');
 
     // 持久化：v2 分层结构在 localStorage
+    await ev('window.__img._saveNow()');   // v50b：读盘前显式保存
     const persisted = await ev(`(() => {
       const s = window.__imgLogic.loadStrokes('探针图片工程');
       return JSON.stringify({schema: s.schema, layers: (s.layers||[]).length,
@@ -475,6 +476,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     layers = JSON.parse(await ev('JSON.stringify(window.__img._layers())'));
     ck('撤销删层（原位插回）', layers.length === 3 && layers[2].name === '天空', layers.map(l => l.name));
 
+    await ev('window.__img._saveNow()');   // v50b：重开前显式保存
     // 重开工程：分层结构 + 激活层恢复
     await ev('window.__img.back()');
     await sleep(500);
@@ -484,6 +486,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ck('重开后层数保持', reState.layers === 3, reState.layers);
 
     /* ---- v50/M2：换图入口与三选流程 ---- */
+    await ev('window.__img._saveNow()');   // v50b：换图前保存，确保有笔画状态
     // 顶栏「换图」按钮可见（有图状态）
     const reloadInfo = JSON.parse(await ev(`(() => {
       const btn = [...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('换图'));
@@ -539,6 +542,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ck('取消换图：meta 不变', afterMeta.imageFile === beforeMeta.imageFile, afterMeta.imageFile);
 
     /* ---- v50/M3：分享双模式 ---- */
+    await ev('window.__img._saveNow()');
     // 点分享 → 弹窗出现（两个模式按钮）
     await ev(`[...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('分享')).click()`);
     await sleep(400);
@@ -692,6 +696,84 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     // 清掉 M4 拖拽持久化，避免污染下一轮探针
     await ev(`localStorage.removeItem('img-dock-pos')`);
+
+    /* ---- v50b：手动保存语义 + 整行激活 ---- */
+    // 清掉此前段落残留的弹窗 mask（close 的 200ms remove 延迟会短暂堆叠）
+    await ev(`document.querySelectorAll('.pj-dlg-mask').forEach(m => m.remove())`);
+    // 先制造脏状态：画一笔（不再自动落盘）
+    await ev('window.__img._setTool("brush")');
+    await sleep(200);
+    await ev(`(async () => {
+      const s = document.querySelector('#imgPage .img-stage');
+      const mk = (t,pid,x,y) => new PointerEvent(t,{pointerId:11,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true,button:0,buttons:1});
+      s.dispatchEvent(mk('pointerdown',11,110,320));
+      for(let i=1;i<=4;i++){ s.dispatchEvent(mk('pointermove',11,110+i*10,320)); await new Promise(r=>requestAnimationFrame(r)); }
+      s.dispatchEvent(mk('pointerup',11,150,320));
+    })()`);
+    await sleep(300);
+    // 脏状态落盘检查：读 localStorage 里的 strokes 应不含这笔（v50b 前 saveAll(false) 即时写）
+    const disk1 = await ev(`(() => {
+      const raw = localStorage.getItem('img-探针图片工程-strokes');
+      const s = raw ? JSON.parse(raw) : null;
+      return s ? s.layers.reduce((n, l) => n + l.strokes.length, 0) : -1;
+    })()`);
+    ck('编辑后不即时落盘（手动保存语义）', disk1 >= 0 && disk1 < 8, disk1);
+    // 标题带 ●
+    const ttl = await ev(`document.querySelector('#imgPage .img-title') ? document.querySelector('#imgPage .img-title').textContent : [...document.querySelectorAll('#imgPage .img-top *')].map(x=>x.textContent).join('|')`);
+    ck('标题栏有未保存标记', String(ttl).includes('●'), ttl);
+
+    // back() → 弹三选确认（不直接退）
+    await ev(`[...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('返回')).click()`);
+    await sleep(400);
+    const dlg3 = await ev(`(() => {
+      const m = document.querySelector('.pj-dlg-mask.open');
+      if (!m) return { open: false };
+      return { open: true, btns: [...m.querySelectorAll('.pj-dlg-btn')].map(b => b.textContent) };
+    })()`);
+    ck('脏返回弹确认', dlg3.open === true, dlg3);
+    ck('三选按钮齐全', dlg3.btns && dlg3.btns.length === 3 && dlg3.btns.some(x => x.includes('保存')) && dlg3.btns.some(x => x.includes('不保存')) && dlg3.btns.some(x => x.includes('取消')), dlg3.btns);
+    // 点「保存并退出」
+    await ev(`[...document.querySelectorAll('.pj-dlg-mask.open .pj-dlg-btn')].find(b => b.textContent.includes('保存并退出')).click()`);
+    await sleep(600);
+    const afterSave = await ev(`(() => {
+      const raw = localStorage.getItem('img-探针图片工程-strokes');
+      const s = raw ? JSON.parse(raw) : null;
+      return { closed: getComputedStyle(document.getElementById('imgPage')).display === 'none', strokes: s ? s.layers.reduce((n, l) => n + l.strokes.length, 0) : -1 };
+    })()`);
+    ck('保存并退出：已退且落盘', afterSave.closed === true && afterSave.strokes >= 4, afterSave);
+
+    // 重进 → 不脏 → back 直接退（无弹窗）
+    await ev('window.__img.open("探针图片工程")');
+    await sleep(800);
+    const dirtyDbg = await ev(`({ dirty: window.__img.state().dirty, title: document.querySelector('#imgPage .img-title').textContent, dlgCount: document.querySelectorAll('.pj-dlg-mask').length })`);
+    console.log('不脏返回前诊断: ' + JSON.stringify(dirtyDbg));
+    await ev(`[...document.querySelectorAll('#imgPage .img-top-btn')].find(b => b.textContent.includes('返回')).click()`);
+    await sleep(400);
+    const dlgNone = await ev(`(() => {
+      /* 精确特征：back 确认弹窗的标题是「有未保存的修改」；
+       * 通用 .pj-dlg-mask 可能含其它残留（remove 延迟 200ms）。 */
+      const m = [...document.querySelectorAll('.pj-dlg-mask')].find(x => x.textContent.includes('有未保存的修改'));
+      return { dialog: !!m, pageHidden: getComputedStyle(document.getElementById('imgPage')).display === 'none' };
+    })()`);
+    ck('不脏返回直接退（无弹窗）', dlgNone.dialog === false && dlgNone.pageHidden === true, dlgNone);
+
+    // 整行激活：点行右侧空白也能切换
+    await ev('window.__img.open("探针图片工程")');
+    await sleep(800);
+    await ev(`[...document.querySelectorAll('#imgPage .img-grp')].find(g => g.textContent.includes('图层')).click()`);
+    await sleep(400);
+    const rowClick = await ev(`(async () => {
+      const row = [...document.querySelectorAll('#imgPage .img-layer-row')].find(r => r.textContent.includes('天空'));
+      if (!row) return JSON.stringify({ found: false });
+      const r = row.getBoundingClientRect();
+      // 点行的最右侧（原名字 span 之外）
+      const cx = r.right - 8, cy = r.top + r.height / 2;
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: cx, clientY: cy }));
+      await new Promise(r2 => setTimeout(r2, 300));
+      return JSON.stringify({ found: true, active: window.__img.state().activeName });
+    })()`);
+    const rc = JSON.parse(rowClick);
+    ck('整行可点激活（行右侧空白）', rc.found === true && rc.active === '天空', rc);
 
     // 恢复后关闭，继续原返回断言
     await ev(`document.querySelector('#imgPage .img-top-btn').click()`);
