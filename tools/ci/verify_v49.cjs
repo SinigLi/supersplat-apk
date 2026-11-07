@@ -72,6 +72,27 @@ ck('v49c open() 失败兜底也清', (imgUi.match(/page\.style\.display\s*=\s*'n
 /* applySafeArea 的延迟重读要自己复查插件存在性，否则卸载后定时器抛 TypeError */
 ck('v49c 安全区重读自检插件', /var read = function \(\) \{[\s\S]{0,400}?if \(!\s*p\s*\|\|\s*!\s*p\.getSafeArea\s*\)\s*return/.test(imgUi));
 
+/* ---- v50：分层遮罩 + 可复用编辑器 ---- */
+ck('index.html 引用 img-ops', indexHtml.includes('img-ops.js'));
+ck('v2 schema 标记', imgStore.includes('moyutai.imgmask.v2'));
+ck('v1 迁移入口', imgStore.includes('moyutai.imgmask.v1') && imgUi.includes('migrateV1'));
+const imgOps = readEntry('assets/public/img-ops.js');
+ck('img-ops 在包里', imgOps.length > 1000, imgOps.length);
+ck('ops 六种齐全', ['stroke', 'addLayer', 'delLayer', 'renameLayer', 'toggleVisible', 'clearLayer'].every(k => imgOps.includes("'" + k + "'")));
+ck('ops 逆操作求逆', imgOps.includes('function invertOp'));
+ck('最后一层不许删', imgOps.includes('state.layers.length === 1') || imgOps.includes('layers.length === 1'));
+ck('层列表面板', imgUi.includes('img-layers'));
+ck('层显隐眼睛', imgUi.includes('img-layer-eye'));
+ck('换图入口', imgUi.includes('换图'));
+ck('换图确认弹窗', imgUi.includes('hadStrokes') && imgUi.includes('confirm('));
+ck('分享双模式弹窗', imgUi.includes('showShareDialog'));
+ck('分层 zip 导出', imgUi.includes('exportLayersZip') && imgUi.includes('zipSync'));
+ck('zip base64 分块（apply 上限修复）', imgUi.includes('subarray(bi, bi + CH)') || /subarray\(/.test(imgUi));
+ck('拖拽吸附监听已接线', imgUi.includes('setupDockDrag();'));
+ck('吸附持久化', imgUi.includes('img-dock-pos'));
+ck('左侧撤销条', imgUi.includes('img-undo-bar'));
+ck('dock 纵向滚动', /maxHeight[^;]*;/.test(imgUi) && imgUi.includes('overflow'));
+
 console.log('\n--- 不许回退：AV/导演台/导航 ---');
 const dock = readEntry('assets/public/dock.js');
 const av = readEntry('assets/public/av-ui.js');
@@ -93,5 +114,5 @@ for (const dp of dexPaths) {
 }
 for (const k of Object.keys(want)) ck('dex has ' + k, want[k]);
 
-console.log(bad === 0 ? '\n=== v49 GATE ALL PASS ===' : '\n=== v49 GATE FAIL(' + bad + ') ===');
+console.log(bad === 0 ? '\n=== v50 GATE ALL PASS ===' : '\n=== v50 GATE FAIL(' + bad + ') ===');
 process.exit(bad === 0 ? 0 : 1);
