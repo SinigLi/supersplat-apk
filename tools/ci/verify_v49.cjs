@@ -91,7 +91,7 @@ ck('zip base64 分块（apply 上限修复）', imgUi.includes('subarray(bi, bi 
 ck('拖拽吸附监听已接线', imgUi.includes('setupDockDrag();'));
 ck('吸附持久化', imgUi.includes('img-dock-pos'));
 ck('左侧撤销条', imgUi.includes('img-undo-bar'));
-ck('dock 纵向滚动', /maxHeight[^;]*;/.test(imgUi) && imgUi.includes('overflow'));
+ck('dock 纵向滚动', imgUi.includes('max-height:calc(100vh') && imgUi.includes('overflow-y:auto'));
 
 console.log('\n--- 不许回退：AV/导演台/导航 ---');
 const dock = readEntry('assets/public/dock.js');
