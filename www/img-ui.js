@@ -28,6 +28,10 @@
     var PJ = window.__projectLogic;
     var OPS = window.__imgOps;
     var undoBarEl = null;   // v50c：左侧撤销条（模块级，拖拽吸附用）
+    var backBtnEl = null;       // v53：返回键引用（tagMode 下隐藏）
+    var btnTagConfirm = null;   // v53：打标模式顶部确认
+    var btnTagCancel = null;    // v53：打标模式顶部取消
+    var tagBarEl = null;        // v53：底部打标工具组
     var dlog = function () { try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { } };
 
     if (!L) { console.error('[img] img-store.js 未加载'); return; }
@@ -528,6 +532,8 @@
     }
 
     function saveAll(explicit) {
+        /* v53 tagMode：笔画写 av-tagmask-*，绝不碰 img-* 存储（隔离红线） */
+        if (S.tagMode) { saveTagStrokes(); S.dirty = false; return; }
         try {
             L.saveStrokes(S.project, S.state.layers, S.state.activeId);
             S.dirty = false;
@@ -927,6 +933,17 @@
         var backBtn = el('button', 'img-top-btn', '← 返回');
         backBtn.addEventListener('click', back);
         topEl.appendChild(backBtn);
+        backBtnEl = backBtn;
+
+        /* v53：打标模式顶部确认/取消（默认隐藏，openTagMode 控制） */
+        btnTagConfirm = el('button', 'img-top-btn primary', '✅ 确认打标');
+        btnTagConfirm.style.display = 'none';
+        btnTagConfirm.addEventListener('click', function () { finishTag(true); });
+        topEl.appendChild(btnTagConfirm);
+        btnTagCancel = el('button', 'img-top-btn', '✖ 取消');
+        btnTagCancel.style.display = 'none';
+        btnTagCancel.addEventListener('click', function () { finishTag(false); });
+        topEl.appendChild(btnTagCancel);
         titleEl = el('div', 'img-title', '');
         topEl.appendChild(titleEl);
         var reloadBtn = el('button', 'img-top-btn', '🔄 换图');
@@ -1184,6 +1201,7 @@
     /* ---------- 保存 / 返回 / 导出 ---------- */
 
     function back() {
+        if (S.tagMode) { toast('打标模式请用顶部 ✅确认 / ✖取消'); return; }
         dlog('back() project=' + S.project);
         /* v50b：手动保存语义——脏则先问（老板反馈：自动保存+无提醒直接退出不行） */
         if (S.dirty) {
@@ -1434,8 +1452,215 @@
         }
     }
 
-    window.__img = {
+        /* ---------- v53 角色打标运行模式（M4） ---------- */
+    /* ctx = { project, seg, frame, at, kind, existing, cards, onDone, onCancel }
+     * 底图 = ctx.frameCanvas（av-ui 抽帧 canvas）；层 = 角色；
+     * 笔画 = localStorage 'av-<proj>-tagmask-<maskKey>'（imgmask.v2 结构）。 */
+
+    function tagMaskKey() {
+        var tm = S.tagMode;
+        return 'av-' + tm.project + '-tagmask-' + (tm.existing ? tm.existing.id : tm.seg + '_' + tm.frame);
+    }
+
+    function saveTagStrokes() {
+        try {
+            localStorage.setItem(tagMaskKey(), JSON.stringify({ schema: 'moyutai.imgmask.v2', layers: S.state.layers, activeId: S.state.activeId }));
+        } catch (e) { toast('打标笔画保存失败：' + (e && e.message || e)); }
+    }
+
+    function loadTagStrokes() {
+        try {
+            var raw = localStorage.getItem(tagMaskKey());
+            if (raw) {
+                var o = JSON.parse(raw);
+                if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) return o;
+            }
+        } catch (e) { /* */ }
+        return null;
+    }
+
+    function tagEntries() {
+        /* 从层与选择组 entries：只收「启用」的角色；有笔画的层带 mask 标记（M5 导出时解析路径） */
+        var tm = S.tagMode;
+        return tm.enabled.map(function (cardId) {
+            var card = tm.cards.cards.filter(function (c) { return c.id === cardId; })[0];
+            if (!card) return null;
+            var lay = S.state.layers.filter(function (l) { return l.name === card.name; })[0];
+            var hasStrokes = !!(lay && lay.strokes.length);
+            return {
+                cardId: card.id,
+                name: card.name,
+                orig_char_desc: tm.orig[card.id] || '',
+                dest_char_desc: tm.dest[card.id] || '',
+                mask: hasStrokes ? ('pending:' + card.id) : null
+            };
+        }).filter(Boolean);
+    }
+
+    function finishTag(ok) {
+        if (!ok) {
+            /* 脏确认：本次进入打标模式后画过笔画（undo 栈非空）才提示 */
+            var drew = S.done && S.done.length > 0;
+            if (drew && !window.confirm('有未确认的笔画改动，确定放弃？')) return;
+        }
+        var entries = ok ? tagEntries() : null;
+        var tm = S.tagMode;
+        /* 退出 tagMode：清运行态 */
+        S.tagMode = null;
+        tagBarEl.style.display = 'none';
+        btnTagConfirm.style.display = 'none';
+        btnTagCancel.style.display = 'none';
+        backBtnEl.style.display = '';
+        S.tagBarBuilt = false;
+        /* 恢复图片工程状态（若有）：仅清槽位，下次 open() 重载 */
+        S.meta = null; S.state = null; S.img = null; S.done = []; S.redo = [];
+        page.classList.remove('open');
+        page.style.display = 'none';
+        var pj = document.getElementById('pjPage');
+        if (pj) pj.classList.add('open');
+        if (ok && tm.onDone) tm.onDone(entries);
+        if (!ok && tm.onCancel) tm.onCancel();
+    }
+
+    function buildTagBar() {
+        if (S.tagBarBuilt) return;
+        S.tagBarBuilt = true;
+        var tm = S.tagMode;
+        tagBarEl = el('div', 'img-tagbar');
+        /* 角色多选列表 */
+        tagBarEl.appendChild(el('div', 'img-tagbar-sec', '角色（勾选=启用打标）'));
+        tm.cards.cards.forEach(function (c) {
+            var row = el('label', 'img-tagbar-row');
+            var cb = el('input');
+            cb.type = 'checkbox';
+            cb.checked = tm.enabled.indexOf(c.id) >= 0;
+            cb.addEventListener('change', function () {
+                var i2 = tm.enabled.indexOf(c.id);
+                if (cb.checked && i2 < 0) tm.enabled.push(c.id);
+                if (!cb.checked && i2 >= 0) tm.enabled.splice(i2, 1);
+                switchTagLayer(c);
+            });
+            row.appendChild(cb);
+            row.appendChild(el('span', 'img-tagbar-name', c.name + (c.tag ? ' · ' + c.tag : '')));
+            tagBarEl.appendChild(row);
+        });
+        /* 双描述（每角色独立值：直接用 map cardId→string，默认空；选择列表datalist 提示） */
+        tagBarEl.appendChild(el('div', 'img-tagbar-sec', '原角色描述'));
+        tagOrigIn = el('input', 'img-tagbar-in');
+        tagOrigIn.placeholder = '从默认列表选或输入';
+        var origDl = el('datalist'); origDl.id = 'imgTagOrigDl';
+        tm.cards.orig_char_descs.forEach(function (d) { var o = el('option'); o.value = d; origDl.appendChild(o); });
+        tagBarEl.appendChild(tagOrigIn);
+        tagBarEl.appendChild(origDl);
+        tagBarEl.appendChild(el('div', 'img-tagbar-sec', '替换角色描述'));
+        tagDestIn = el('input', 'img-tagbar-in');
+        tagDestIn.placeholder = '从默认列表选或输入';
+        var destDl = el('datalist'); destDl.id = 'imgTagDestDl';
+        tm.cards.dest_char_descs.forEach(function (d) { var o = el('option'); o.value = d; destDl.appendChild(o); });
+        tagBarEl.appendChild(tagDestIn);
+        tagBarEl.appendChild(destDl);
+        /* 描述输入绑定当前活动角色的层（选角色时切换） */
+        tagOrigIn.addEventListener('input', function () { setCurDesc('orig', tagOrigIn.value); });
+        tagDestIn.addEventListener('input', function () { setCurDesc('dest', tagDestIn.value); });
+        page.appendChild(tagBarEl);
+        tagBarEl.style.display = 'flex';
+    }
+
+    function curTagCard() {
+        /* 当前活动层对应的卡（层名=角色名） */
+        var lay = (S.state && S.state.layers) ? S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] : null;
+        if (!lay) return null;
+        return S.tagMode.cards.cards.filter(function (c) { return c.name === lay.name; })[0] || null;
+    }
+
+    function setCurDesc(kind, val) {
+        var c = curTagCard();
+        if (!c) return;
+        S.tagMode[kind][c.id] = val;
+    }
+
+    function switchTagLayer(card) {
+        /* 建/切角色层（层名=角色名）；载入该角色已存描述 */
+        var lay = S.state.layers.filter(function (l) { return l.name === card.name; })[0];
+        if (!lay) {
+            lay = { id: OPS.newId ? OPS.newId() : ('l' + Date.now().toString(36)), name: card.name, visible: true, strokes: [] };
+            S.state.layers.push(lay);
+        }
+        S.state.activeId = lay.id;
+        S.tagMode.orig[card.id] = S.tagMode.orig[card.id] || '';
+        S.tagMode.dest[card.id] = S.tagMode.dest[card.id] || '';
+        if (tagOrigIn) tagOrigIn.value = S.tagMode.orig[card.id] || '';
+        if (tagDestIn) tagDestIn.value = S.tagMode.dest[card.id] || '';
+        redrawMask(); updateUndoState(); saveTagStrokes();
+    }
+
+    function openTagMode(ctx) {
+        try {
+            build();
+            /* 退出普通图片会话的残留 */
+            S.meta = null; S.done = []; S.redo = []; S.live = null;
+            S.project = ctx.project;
+            S.tagMode = {
+                project: ctx.project, seg: ctx.seg, frame: ctx.frame, at: ctx.at, kind: ctx.kind,
+                existing: ctx.existing || null, cards: ctx.cards,
+                onDone: ctx.onDone, onCancel: ctx.onCancel,
+                enabled: (ctx.existing && ctx.existing.chars || []).map(function (c) { return c.cardId; }),
+                orig: {}, dest: {}
+            };
+            /* 既有描述快照回填 */
+            (ctx.existing && ctx.existing.chars || []).forEach(function (c) {
+                S.tagMode.orig[c.cardId] = c.orig_char_desc || '';
+                S.tagMode.dest[c.cardId] = c.dest_char_desc || '';
+            });
+            /* 底图 = 帧截图 canvas */
+            S.img = ctx.frameCanvas;
+            S.imgW = ctx.frameCanvas.width;
+            S.imgH = ctx.frameCanvas.height;
+            /* 层：existing 优先读 tagmask 草稿，否则按既有 chars 建层 */
+            var draft = loadTagStrokes();
+            if (draft) {
+                S.state = { schema: 'moyutai.imgmask.v2', layers: draft.layers, activeId: draft.activeId };
+            } else {
+                S.state = { schema: 'moyutai.imgmask.v2', layers: [], activeId: null };
+                (ctx.existing && ctx.existing.chars || []).forEach(function (c) {
+                    S.state.layers.push({ id: 'l' + c.cardId.slice(2, 10), name: c.name, visible: true, strokes: [] });
+                });
+                S.state.activeId = S.state.layers.length ? S.state.layers[0].id : null;
+            }
+            S.dirty = false;
+            S.tool = 'pan';
+            setTool('pan');
+            titleEl.textContent = ctx.project + ' · 角色打标 · 第 ' + (ctx.frame + 1) + ' 帧';
+            showEmpty(false);
+            page.classList.add('open');
+            page.style.position = 'fixed';
+            page.style.inset = '0';
+            page.style.zIndex = '1550';
+            page.style.display = 'flex';
+            applySafeArea();
+            fitView();
+            redrawMask();
+            updateUndoState();
+            buildTagBar();
+            /* 顶部确认/取消替换返回键 */
+            backBtnEl.style.display = 'none';
+            btnTagConfirm.style.display = '';
+            btnTagCancel.style.display = '';
+            /* 默认激活第一个启用角色 */
+            if (S.tagMode.enabled.length) {
+                var first = S.tagMode.cards.cards.filter(function (c) { return c.id === S.tagMode.enabled[0]; })[0];
+                if (first) switchTagLayer(first);
+            }
+            hint('打标：勾选角色后用画笔/多边形画区域；不画也可只填描述');
+        } catch (e) {
+            toast('打标打开失败：' + (e && e.message || e), true);
+            dlog('openTagMode error: ' + (e && e.stack || e));
+        }
+    }
+
+window.__img = {
         open: open,
+        openTagMode: openTagMode,
         back: back,
         state: function () {
             return {
