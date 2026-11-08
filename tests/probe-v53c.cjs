@@ -16,7 +16,7 @@ const av = fs.readFileSync(WS + 'www/av-ui.js', 'utf8');
 
 check('tagOrigIn 模块级声明', img.includes('var tagOrigIn = null'));
 check('tagDestIn 模块级声明', img.includes('var tagDestIn = null'));
-check('buildTagBar 赋值 tagOrigIn', img.includes(`tagOrigIn = el('input', 'img-tagbar-in')`));
+check('描述输入框在描述面板内（v53e 收纳）', img.includes("origIn = el('input', 'img-tag-in')") && img.includes("destIn = el('input', 'img-tag-in')"));
 check('chip 工厂 mkCharChip', av.includes('function mkCharChip()'));
 check('renderPos 重绘后重挂 chip', /posEl\.appendChild\(mkThumbToggle\(\)\);\s*\n\s*posEl\.appendChild\(mkCharChip\(\)\);/.test(av));
 check('build() 首挂用工厂（无双绑定）', av.includes(`posEl.appendChild(mkCharChip()); /* v53b/c`) || (av.includes('posEl.appendChild(mkCharChip());') && !av.includes(`var charChip = el('span'`)));
