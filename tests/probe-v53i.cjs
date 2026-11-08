@@ -23,7 +23,7 @@ check('描述面板按钮上方定位（v53h）', img.includes('r.left + r.width
 check('描述面板默认列表下拉仍在', img.includes('tm.cards.orig_char_descs.forEach'));
 /* 回归 */
 check('handle ⠿', img.includes(`el('div', 'img-handle', '⠿')`));
-check('层管理锁定（tagMode 置灰禁用，v53j）', img.includes('b.disabled = true;') && img.includes('img-sub-btn-off'));
+check('层管理锁定（tagMode 渲染时同步置灰，v53l）', img.includes('b.disabled = !!S.tagMode;') && img.includes('img-sub-btn-off'));
 check('切换角色安全 id', img.includes(`lay = { id: 'L' + Date.now().toString(36)`));
 
 console.log('========================');

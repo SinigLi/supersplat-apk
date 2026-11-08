@@ -162,6 +162,7 @@
   ".img-tag-desc-panel{position:fixed;z-index:80;width:min(78vw,300px);background:rgba(24,26,32,0.97);border:1px solid #3a3a3d;border-radius:12px;padding:10px 12px;color:#e6eef9;display:flex;flex-direction:column;gap:6px}",
   ".img-tag-desc-title{font-size:11px;color:#8fa3bd}",
   ".img-layers-top .img-sub-btn-off{opacity:0.35;pointer-events:none}",
+  ".img-layer-eye.img-layer-eye-off{opacity:0.35}",
   ".img-tag-confirm{background:rgba(70,160,90,0.55)!important}",
   ".img-tag-cancel{background:rgba(170,70,70,0.5)!important}"
     ].join("\n");
@@ -805,6 +806,13 @@
 
     function renderLayersPanel() {
         if (!layersListEl || !S.state) return;
+        /* v53l：同步顶部三按钮的锁定态（build 只发生一次，tagMode 可能后开） */
+        if (layersPanel) {
+            layersPanel.querySelectorAll('.img-layers-top button').forEach(function (b) {
+                b.disabled = !!S.tagMode;
+                b.classList.toggle('img-sub-btn-off', !!S.tagMode);
+            });
+        }
         layersListEl.textContent = '';
         /* 列表顺序：上=顶层（数组尾）。显示开关点击不改变激活层；单击名称激活。 */
         S.state.layers.slice().reverse().forEach(function (lay) {
@@ -812,8 +820,11 @@
 
             var eye = el('span', 'img-layer-eye' + (lay.visible ? ' on' : ''), lay.visible ? '👁' : '🚫');
             eye.title = lay.visible ? '点击隐藏' : '点击显示';
+            var ro = !!S.tagMode; /* v53l：打标模式层列表只读 */
+            if (ro) eye.classList.add('img-layer-eye-off');
             eye.addEventListener('click', function (e) {
                 e.stopPropagation();
+                if (ro) { toast('打标模式下层由「启用/取消打标」控制'); return; }
                 applyAndPush({ kind: 'toggleVisible', layerId: lay.id });
             });
             row.appendChild(eye);
@@ -823,6 +834,7 @@
              * 眼睛自己 stopPropagation 不受影响。 */
             row.title = '点击激活此层进行编辑';
             row.addEventListener('click', function () {
+                if (S.tagMode) { toast('打标模式下换层用底部「启用打标」'); return; }
                 if (S.state.activeId !== lay.id) {
                     S.state.activeId = lay.id;   // 切换激活不是编辑动作，不入撤销栈
                     renderLayersPanel();
@@ -1078,13 +1090,8 @@
         /* 图层悬浮面板（点击后弹出） */
         layersPanel = el('div', 'img-sub img-layers');
         var lTop = el('div', 'img-layers-top');
-        /* v53h/j：打标模式下层管理锁定——按钮置灰禁用（增/删/改由底部启用/取消打标控制） */
-        if (S.tagMode) {
-            lTop.querySelectorAll('button').forEach(function (b) {
-                b.disabled = true;
-                b.classList.add('img-sub-btn-off');
-            });
-        }
+        /* v53h/j/l：打标模式下层管理锁定——按钮置灰禁用（每次 renderLayersPanel 同步，
+         * 因面板可能在普通图片模式先 build，tagMode 复用时必须刷新状态） */
         var addBtn = el('button', 'img-sub-btn', '➕'); addBtn.title = '新建图层';
         var delBtn = el('button', 'img-sub-btn', '🗑'); delBtn.title = '删除当前图层';
         var renBtn = el('button', 'img-sub-btn', '✏️'); renBtn.title = '重命名当前图层';
