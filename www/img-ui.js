@@ -154,6 +154,7 @@
   ".img-undo-bar::-webkit-scrollbar{display:none}",
   /* ===== v53e 打标底条（复用 .img-dock 垂直 grp 条 + 拖拽吸附） ===== */
   ".img-tagbar{display:none;z-index:55}",
+  ".img-tagbar.img-dock-bottom{left:50%;right:auto;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);top:auto;max-height:52vh}",
   ".img-tagbar.open{display:flex}",
   ".img-grp-tag{padding:4px 6px}",
   ".img-tagbar-select{background:rgba(255,255,255,0.07);border:1px solid #3a3a3d;border-radius:8px;color:#e6eef9;font-size:12px;padding:4px 6px;max-width:150px;box-sizing:border-box}",
@@ -1064,6 +1065,8 @@
         /* 图层悬浮面板（点击后弹出） */
         layersPanel = el('div', 'img-sub img-layers');
         var lTop = el('div', 'img-layers-top');
+        /* v53h：打标模式下层管理锁定（增/删/改由底部启用/取消打标控制） */
+        if (S.tagMode) lTop.style.display = 'none';
         var addBtn = el('button', 'img-sub-btn', '➕'); addBtn.title = '新建图层';
         var delBtn = el('button', 'img-sub-btn', '🗑'); delBtn.title = '删除当前图层';
         var renBtn = el('button', 'img-sub-btn', '✏️'); renBtn.title = '重命名当前图层';
@@ -1560,7 +1563,7 @@
         var tm = S.tagMode;
 
         tagBarEl = el('div', 'img-dock img-tagbar');
-        tagBarEl.appendChild(el('div', 'img-handle', '钜'));
+        tagBarEl.appendChild(el('div', 'img-handle', '⠿'));
 
         /* 角色 select（grp 包裹，与 dock 视觉一致） */
         var selGrp = el('div', 'img-grp img-grp-tag');
@@ -1588,6 +1591,8 @@
             if (!tm_enabledHas(c.id)) tm.enabled.push(c.id);
             switchTagLayer(c);
             saveTagStrokes();
+            renderLayersPanel();
+            layersPanel.classList.add('open');
             toast('已启用「' + c.name + '」打标，画区域即遮罩');
         });
         tagBarEl.appendChild(g1);
@@ -1606,6 +1611,8 @@
             var lay = S.state.layers.filter(function (l) { return l.name === c.name; })[0];
             if (lay) { lay.strokes = []; redrawMask(); }
             saveTagStrokes();
+            renderLayersPanel();
+            layersPanel.classList.add('open');
             toast('已取消「' + c.name + '」打标');
         });
         tagBarEl.appendChild(g2);
@@ -1689,7 +1696,15 @@
         destIn.addEventListener('input', function () { tm.dest[card.id] = destIn.value; });
 
         page.appendChild(panel);
-        placePanel(panel, anchorBtn);
+        /* v53h：描述面板定位在按钮上方水平居中（placePanel 左弹出在屏左会出屏） */
+        var r = anchorBtn.getBoundingClientRect();
+        requestAnimationFrame(function () {
+            var w = panel.offsetWidth || 280;
+            var left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 8));
+            var top = Math.max(8, r.top - panel.offsetHeight - 10);
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+        });
     }
 
     function syncDescInputs(card) {
