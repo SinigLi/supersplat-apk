@@ -19,6 +19,7 @@
 
 
     var L = window.__avLogic;
+    var CC = window.__charcards;
     if (!L) { console.error('[av] __avLogic 未加载'); return; }
 
     /* ---------- v45e 排障埋点（老板 07:21 反馈：点视频工程只横屏不出界面；
@@ -102,7 +103,7 @@
     }
 
     var page, topEl, bodyEl, sideEl, listEl, mainEl, videoEl,
-        ovlEl, btnSplit, btnMerge, btnMulti, stepVal, fpsBox,
+        ovlEl, btnSplit, btnMerge, btnMulti, btnChar, stepVal, fpsBox, charDlgEl,
         tlWrap, posEl, tlRange, ticksEl, btnPlay, btnPrev, btnNext,
         railEl, audioCv, emptyHint, emptyTitle, toastTimer = null,
     fpsEditing = false;
@@ -220,6 +221,36 @@
 
     /* v45k：av.css 内嵌注入——不再依赖外部样式表加载（WebView 缓存不可控），
      * 每次打开工作台同步注入全量样式；APK 换版必然带最新样式。 */
+
+/* v53 角色打标：工具行按钮 + 卡对话框 + 列表徽标 */
+var AV_CSS_V53 = [
+'/* ===== v53 角色打标 ===== */',
+'.av-charbtn { background: rgba(88, 60, 140, 0.45); border-color: rgba(150, 110, 220, 0.4); }',
+'.av-charbtn.on { background: rgba(120, 80, 200, 0.55); }',
+'.av-b-char { background: rgba(120, 80, 200, 0.5); }',
+'.av-chardlg { position: fixed; inset: 0; z-index: 1700; display: none; }',
+'.av-chardlg.open { display: block; }',
+'.av-chardlg-mask { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }',
+'.av-chardlg-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);',
+'  width: min(92vw, 420px); max-height: 82vh; overflow-y: auto; background: #1d1d1f;',
+'  border: 1px solid #3a3a3d; border-radius: 14px; padding: 14px 16px; color: #e6eef9; }',
+'.av-chardlg-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }',
+'.av-chardlg-sec { font-size: 12px; color: #8fa3bd; margin: 10px 0 4px; }',
+'.av-chardlg-list { display: flex; flex-direction: column; gap: 4px; }',
+'.av-chardlg-item { display: flex; align-items: center; justify-content: space-between;',
+'  padding: 5px 9px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 13px; }',
+'.av-chardlg-empty { color: #5f6b79; font-size: 12px; padding: 4px 8px; }',
+'.av-chardlg-del { border: none; background: rgba(200,70,70,0.25); color: #ff9c9c;',
+'  border-radius: 6px; padding: 2px 8px; font-size: 12px; }',
+'.av-chardlg-row { display: flex; gap: 6px; margin-top: 6px; }',
+'.av-chardlg-in { flex: 1; background: rgba(255,255,255,0.07); border: 1px solid #3a3a3d;',
+'  border-radius: 8px; padding: 7px 9px; color: #e6eef9; font-size: 13px; }',
+'.av-chardlg-btn { border: none; background: rgba(60, 90, 140, 0.5); color: #e6eef9;',
+'  border-radius: 8px; padding: 7px 12px; font-size: 13px; }',
+'.av-chardlg-foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }',
+'.av-tick-char { background: #ff9ce0; width: 5px; }'
+].join('\n');
+
     function embedAvCss() {
         try {
             [].slice.call(document.querySelectorAll('link[rel="stylesheet"][href*="av.css"]')).forEach(function (l) { l.parentNode.removeChild(l); });
@@ -230,8 +261,8 @@
             st.id = 'avCssEmbed';
             document.head.appendChild(st);
         }
-        if (st.textContent !== AV_CSS) {
-            st.textContent = AV_CSS;
+        if (st.textContent !== AV_CSS + AV_CSS_V53) {
+            st.textContent = AV_CSS + AV_CSS_V53;
             dlog('av.css embedded ' + AV_CSS.length + 'B');
         }
     }
@@ -556,6 +587,9 @@ function build() {
 
         // ===== 工具行（#5 顺序：⤴并入前段 | ✂分割点 | ▦多帧点 | fps）=====
         ovlEl = el('div', 'av-ovl');
+        btnChar = el('button', 'av-ovl-btn av-charbtn', '⚑ 角色打标');
+        btnChar.addEventListener('click', openTagEditor);
+        ovlEl.appendChild(btnChar);
         btnMerge = el('button', 'av-ovl-btn', '⤴ 并入前段');
         btnMerge.addEventListener('click', toggleMerge);
         ovlEl.appendChild(btnMerge);
@@ -982,6 +1016,7 @@ function build() {
             card.appendChild(info);
             if (hasMerge(f.label)) card.appendChild(el('div', 'av-item-badge', '⤴'));
             if (hasMulti(f.label)) card.appendChild(el('div', 'av-item-badge', '▦'));
+            if (hasCharRef(f.label)) card.appendChild(el('div', 'av-item-badge av-b-char', '🎭'));
             var n = countSplits(f.label);
             if (n) card.appendChild(el('div', 'av-item-badge av-b-split', '✂' + n));
             card.addEventListener('click', function () { selectFile(i); });
@@ -1001,7 +1036,11 @@ function build() {
         });
         return n;
     }
-    function hasMerge(seg) {
+        function hasCharRef(seg) {
+        return S.marks.marks.some(function (m) { return m.type === 'char_ref' && m.seg === seg; });
+    }
+
+function hasMerge(seg) {
         return S.marks.marks.some(function (m) { return m.type === 'merge_prev' && m.seg === seg; });
     }
     /* v51c：该段是否存在多帧参考点（列表徽标用） */
@@ -1567,6 +1606,11 @@ function build() {
                 });
             }
             // v46：音频参考点是秒，直接映射
+            if (m.type === 'char_ref') {
+                var kc = el('i', 'av-tick av-tick-char');
+                kc.style.left = (m.at / d * 100) + '%';
+                ticksEl.appendChild(kc);
+            }
             if (m.type === 'multiframe_ref' && Array.isArray(m.secs)) {
                 m.secs.forEach(function (s2) {
                     if (s2 <= d) {
@@ -1585,6 +1629,162 @@ function build() {
     }
 
     /* ---------- 标记 ---------- */
+
+    /* ---------- 角色打标（v53） ---------- */
+
+    function resolveTagTarget() {
+        if (S.cur < 0 || !curSeg()) return { ok: false, why: '先选择片段' };
+        var seg = curSeg();
+        var f = effFps();
+        var tA = curTime();
+        var fr = L.frameAt(tA, f);
+        if (S.meta.mode === 'audio') return { ok: false, why: '音频模式无帧概念，不支持角色打标' };
+        var hits = S.marks.marks.filter(function (m) {
+            return m.seg === seg && m.type === 'split' && L.frameAt(m.at, f) === fr;
+        });
+        if (hits.length) return { ok: true, seg: seg, frame: fr, at: hits[0].at, kind: 'split' };
+        var multi = S.marks.marks.find(function (m) {
+            return m.seg === seg && m.type === 'multiframe_ref' && (m.frames || []).indexOf(fr) >= 0;
+        });
+        if (multi) return { ok: true, seg: seg, frame: fr, at: L.secAtFrame(fr, f), kind: 'multi' };
+        var merged = S.marks.marks.find(function (m) { return m.type === 'merge_prev' && m.seg === seg; });
+        if (merged) return { ok: false, why: '该片段已并入前段，首帧不能再打标' };
+        return { ok: true, seg: seg, frame: 0, at: 0, kind: 'first' };
+    }
+
+    function openTagEditor() {
+        if (!S.project) { toast('未打开工程'); return; }
+        var cards = L.loadChars(S.project);
+        if (!cards.cards.length) { toast('先设定角色卡'); openCharDialog(); return; }
+        var tgt = resolveTagTarget();
+        if (!tgt.ok) { toast(tgt.why); return; }
+        var existing = L.findCharRefAt(S.marks, tgt.seg, tgt.frame, effFps());
+        if (window.__img && window.__img.openTagMode) {
+            window.__img.openTagMode({
+                project: S.project, seg: tgt.seg, frame: tgt.frame, at: tgt.at,
+                kind: tgt.kind, existing: existing || null, cards: cards,
+                onDone: function (entries) {
+                    L.upsertCharRef(S.marks, tgt.seg, tgt.at, entries);
+                    saveAll(false);
+                    renderTicks(); renderList(); renderPos();
+                    toast('已保存角色打标（' + entries.length + ' 个角色）');
+                },
+                onCancel: function () { }
+            });
+        } else {
+            toast('打标页模块未就绪（M4 接入）');
+        }
+    }
+
+    function openCharDialog() {
+        if (!charDlgEl) buildCharDialog();
+        refreshCharDialog();
+        charDlgEl.classList.add('open');
+    }
+    function closeCharDialog() { if (charDlgEl) charDlgEl.classList.remove('open'); }
+
+    function buildCharDialog() {
+        charDlgEl = el('div', 'av-chardlg');
+        charDlgEl.innerHTML =
+            '<div class="av-chardlg-mask"></div>' +
+            '<div class="av-chardlg-card">' +
+            '<div class="av-chardlg-title">🎭 角色卡</div>' +
+            '<div class="av-chardlg-sec">角色列表</div>' +
+            '<div class="av-chardlg-list av-charlist"></div>' +
+            '<div class="av-chardlg-row"><input class="av-chardlg-in av-newchar" placeholder="新角色名"><button class="av-chardlg-btn av-addchar">添加角色</button></div>' +
+            '<div class="av-chardlg-sec">原角色描述（打标时选）</div>' +
+            '<div class="av-chardlg-list av-origlist"></div>' +
+            '<div class="av-chardlg-row"><input class="av-chardlg-in av-neworig" placeholder="新原角色描述"><button class="av-chardlg-btn av-addorig">添加</button></div>' +
+            '<div class="av-chardlg-sec">替换角色描述（打标时选）</div>' +
+            '<div class="av-chardlg-list av-destlist"></div>' +
+            '<div class="av-chardlg-row"><input class="av-chardlg-in av-newdest" placeholder="新替换角色描述"><button class="av-chardlg-btn av-adddest">添加</button></div>' +
+            '<div class="av-chardlg-foot">' +
+            '<button class="av-chardlg-btn av-loadcards">📁 加载本地角色卡</button>' +
+            '<button class="av-chardlg-btn av-exportcards">导出角色卡</button>' +
+            '<button class="av-chardlg-btn av-closedlg">取消</button>' +
+            '</div></div>';
+        document.body.appendChild(charDlgEl);
+        charDlgEl.querySelector('.av-chardlg-mask').addEventListener('click', closeCharDialog);
+        charDlgEl.querySelector('.av-closedlg').addEventListener('click', closeCharDialog);
+        charDlgEl.querySelector('.av-addchar').addEventListener('click', function () {
+            var inp = charDlgEl.querySelector('.av-newchar');
+            var cards = L.loadChars(S.project);
+            try { CC.addCard(cards, inp.value); L.saveChars(S.project, cards); refreshCharDialog(); inp.value = ''; }
+            catch (e) { toast(e.message); }
+        });
+        charDlgEl.querySelector('.av-addorig').addEventListener('click', function () {
+            var inp = charDlgEl.querySelector('.av-neworig');
+            var cards = L.loadChars(S.project);
+            try { CC.addOrigDesc(cards, inp.value); L.saveChars(S.project, cards); refreshCharDialog(); inp.value = ''; }
+            catch (e) { toast(e.message); }
+        });
+        charDlgEl.querySelector('.av-adddest').addEventListener('click', function () {
+            var inp = charDlgEl.querySelector('.av-newdest');
+            var cards = L.loadChars(S.project);
+            try { CC.addDestDesc(cards, inp.value); L.saveChars(S.project, cards); refreshCharDialog(); inp.value = ''; }
+            catch (e) { toast(e.message); }
+        });
+        charDlgEl.querySelector('.av-exportcards').addEventListener('click', exportCharCards);
+        charDlgEl.querySelector('.av-loadcards').addEventListener('click', importCharCards);
+    }
+
+    function refreshCharDialog() {
+        if (!charDlgEl) return;
+        var cards = L.loadChars(S.project);
+        var mk = function (sel, items, kind) {
+            var box = charDlgEl.querySelector(sel);
+            box.innerHTML = '';
+            if (!items.length) { box.innerHTML = '<div class="av-chardlg-empty">（空）</div>'; return; }
+            items.forEach(function (it) {
+                var row = el('div', 'av-chardlg-item');
+                row.appendChild(el('span', 'av-chardlg-txt', typeof it === 'string' ? it : (it.name + (it.tag ? ' · ' + it.tag : ''))));
+                var del = el('button', 'av-chardlg-del', '✕');
+                del.addEventListener('click', function () {
+                    var c2 = L.loadChars(S.project);
+                    if (kind === 'orig') CC.removeOrigDesc(c2, it);
+                    else if (kind === 'dest') CC.removeDestDesc(c2, it);
+                    else CC.removeCard(c2, it.id);
+                    L.saveChars(S.project, c2);
+                    refreshCharDialog();
+                });
+                row.appendChild(del);
+                box.appendChild(row);
+            });
+        };
+        mk('.av-charlist', cards.cards, 'card');
+        mk('.av-origlist', cards.orig_char_descs, 'orig');
+        mk('.av-destlist', cards.dest_char_descs, 'dest');
+    }
+
+    function exportCharCards() {
+        if (!S.project) { toast('未打开工程'); return; }
+        var json = CC.exportCards(L.loadChars(S.project));
+        var name = 'charcards-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '.json';
+        var sp = window.MediaServer;
+        if (sp && sp.share) {
+            sp.share({ data: 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(json))), filename: name })
+                .then(function () { toast('已导出角色卡'); })
+                .catch(function () { toast('导出失败', true); });
+        } else {
+            var w = window.open('', '_blank');
+            if (w) w.document.write('<title>charcards</title><pre>' + json.replace(/</g, '&lt;') + '</pre>');
+        }
+    }
+
+    function importCharCards() {
+        if (!S.project) { toast('未打开工程'); return; }
+        var sp = window.MediaServer;
+        if (!(sp && sp.pickCsv)) { toast('原生文件选择不可用'); return; }
+        sp.pickCsv().then(function (r) {
+            if (!r || !r.text) { toast('未选择文件'); return; }
+            var cards = L.loadChars(S.project);
+            var res = CC.importCards(cards, r.text);
+            if (!res) { toast('角色卡格式无效（需要 moyutai.charcards.v1）', true); return; }
+            L.saveChars(S.project, cards);
+            refreshCharDialog();
+            toast('已导入，现有 ' + cards.cards.length + ' 个角色');
+        }).catch(function () { toast('读取失败', true); });
+    }
 
     function markSplit() {
         if (S.cur < 0) { toast('先选择片段'); return; }
