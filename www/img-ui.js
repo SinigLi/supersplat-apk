@@ -1725,9 +1725,10 @@
 
     function switchTagLayer(card) {
         /* 建/切角色层（层名=角色名）；载入该角色已存描述 */
+        if (!S.state) { dlog('switchTagLayer: no state, skip'); return; }
         var lay = S.state.layers.filter(function (l) { return l.name === card.name; })[0];
         if (!lay) {
-            lay = { id: OPS.newId ? OPS.newId() : ('l' + Date.now().toString(36)), name: card.name, visible: true, strokes: [] };
+            lay = { id: 'L' + Date.now().toString(36), name: card.name, visible: true, strokes: [] };
             S.state.layers.push(lay);
         }
         S.state.activeId = lay.id;
