@@ -171,6 +171,63 @@
 
     function emptyMarks() { return { version: 1, marks: [] }; }
 
+    /* ---------- 角色打标（v53）：chars 存取 + char_ref ---------- */
+    /* char_ref = { id, type:'char_ref', seg:<段label>, at:<段内秒>,
+     *              chars:[{ cardId, name, orig_char_desc, dest_char_desc, mask }] }
+     * 同段同帧唯一：upsertCharRef 命中即整体替换（Q6 续编）。 */
+
+    function charsKey(name) { return 'av-' + name + '-chars'; }
+
+    function loadChars(name) {
+        try {
+            var raw = localStorage.getItem(charsKey(name));
+            if (raw) {
+                var c = JSON.parse(raw);
+                if (c && c.schema === 'moyutai.charcards.v1' && Array.isArray(c.cards)) return c;
+            }
+        } catch (e) { /* */ }
+        return { schema: 'moyutai.charcards.v1', orig_char_descs: [], dest_char_descs: [], cards: [] };
+    }
+
+    function saveChars(name, cards) {
+        if (!cards || cards.schema !== 'moyutai.charcards.v1' || !Array.isArray(cards.cards)) throw new Error('角色卡数据无效');
+        try { localStorage.setItem(charsKey(name), JSON.stringify(cards)); } catch (e) {
+            throw new Error('角色卡保存失败（存储配额？）');
+        }
+    }
+
+    function roundFrame2(at, fps) { return Math.round(at * fps); }
+
+    function findCharRefAt(marks, seg, frame, fps) {
+        var hit = null;
+        (marks.marks || []).forEach(function (m) {
+            if (m.type !== 'char_ref' || m.seg !== seg) return;
+            if (roundFrame2(m.at, fps) === frame) hit = m;
+        });
+        return hit;
+    }
+
+    function upsertCharRef(marks, seg, at, chars) {
+        var fps = 25; /* 由调用方传 fps 时精确；这里 marks 存秒，帧换算在导出 */
+        var i, m;
+        for (i = 0; i < marks.marks.length; i++) {
+            m = marks.marks[i];
+            if (m.type === 'char_ref' && m.seg === seg && Math.abs(m.at - at) < 1e-9) {
+                m.chars = chars;
+                return m;
+            }
+        }
+        m = { id: 'cr-' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), type: 'char_ref', seg: seg, at: at, chars: chars };
+        marks.marks.push(m);
+        return m;
+    }
+
+    function removeCharRef(marks, id) {
+        var before = marks.marks.length;
+        marks.marks = marks.marks.filter(function (m) { return !(m.type === 'char_ref' && m.id === id); });
+        return marks.marks.length < before;
+    }
+
     function loadMarks(name) {
         try {
             var raw = localStorage.getItem(marksKey(name));
@@ -263,6 +320,12 @@
             }
             if (m.note && !node.note) node.note = m.note;
             if (m.type === 'merge_prev') { node.merge_prev = true; return; }
+            if (m.type === 'char_ref') {
+                /* v53：收集到段级暂存，order 组装后按帧挂载（见下方 mountChars） */
+                if (!node._charRefs) node._charRefs = [];
+                node._charRefs.push(m);
+                return;
+            }
             if (m.type === 'split') {
                 if (meta.mode === 'audio') {
                     /* v46：音频无帧概念，只写秒（at_seconds），不产出无意义的 at_frame */
@@ -306,6 +369,43 @@
             var f = (files || []).filter(function (x) { return x.name.replace(/\.[^.]+$/, '') === name; })[0];
             return f ? (f.seq != null ? f.seq : -1) : -1;
         };
+        /* v53：char_ref → 导出挂载（只增不改：无 char_ref 时零输出差异）
+         * 规则：at 帧号 = 段首帧(0) → target.chars（merge_prev 段跳过）；
+         *       与某 split/multiframe point 帧相同 → 挂该 point.chars；
+         *       其余帧（无对应 point）→ 也挂 target.chars 但带 at_frame 字段。
+         * mask 路径由 UI 层在导出前解析成相对路径后写入 entry.mask。 */
+        order.forEach(function (node) {
+            if (!node._charRefs || !node._charRefs.length) { delete node._charRefs; return; }
+            var refs = node._charRefs; delete node._charRefs;
+            var mergePrev = !!node.merge_prev;
+            refs.forEach(function (ref) {
+                var fr = frameAt(ref.at, fps);
+                var entries = (ref.chars || []).map(function (c) {
+                    var e = { name: c.name, orig_char_desc: c.orig_char_desc || '', dest_char_desc: c.dest_char_desc || '' };
+                    if (c.mask) e.mask = c.mask;
+                    return e;
+                });
+                if (!entries.length) return;
+                if (fr === 0) {
+                    if (mergePrev) return;               /* merge_prev 段无段级 chars（老板定稿） */
+                    if (!node.chars) node.chars = entries;
+                    return;
+                }
+                var pt = null;
+                (node.points || []).some(function (p) {
+                    var pf = p.type === 'split' ? p.at_frame : (p.type === 'multiframe' ? p.at_frame : -1);
+                    if (pf === fr) { pt = p; return true; }
+                    return false;
+                });
+                if (pt) { pt.chars = entries; }
+                else {
+                    /* 无对应 point：挂 target.chars，条目带 at_frame（保留帧信息） */
+                    if (!node.chars) node.chars = [];
+                    entries[0].at_frame = fr;
+                    node.chars.push(entries[0]);
+                }
+            });
+        });
         order.sort(function (a, b) { return seqOf(b.target) - seqOf(a.target); });
         return {
             schema: 'moyutai.marks.v3',
@@ -347,6 +447,11 @@
         emptyMarks: emptyMarks,
         loadMarks: loadMarks,
         saveMarks: saveMarks,
+        loadChars: loadChars,
+        saveChars: saveChars,
+        findCharRefAt: findCharRefAt,
+        upsertCharRef: upsertCharRef,
+        removeCharRef: removeCharRef,
         frameAt: frameAt,
         secAtFrame: secAtFrame,
         snapT: snapT,
