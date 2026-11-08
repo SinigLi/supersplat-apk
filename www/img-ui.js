@@ -29,10 +29,22 @@
     var OPS = window.__imgOps;
     var undoBarEl = null;   // v50c：左侧撤销条（模块级，拖拽吸附用）
     var backBtnEl = null;       // v53：返回键引用（tagMode 下隐藏）
+    var saveBtnEl = null;       // v53：tagMode 下隐藏
+    var shareBtnEl = null;      // v53：tagMode 下隐藏
     var btnTagConfirm = null;   // v53：打标模式顶部确认
     var btnTagCancel = null;    // v53：打标模式顶部取消
     var tagBarEl = null;        // v53：底部打标工具组
-    var dlog = function () { try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { } };
+    var dlog = function () {
+        try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { }
+        try {
+            var cap = window.Capacitor;
+            var p = cap && cap.Plugins && cap.Plugins.DebugLog;
+            if (p && p.append) {
+                var r = p.append({ text: '[img] ' + [].slice.call(arguments).join(' ') });
+                if (r && r.catch) r.catch(function () { });
+            }
+        } catch (e2) { }
+    };
 
     if (!L) { console.error('[img] img-store.js 未加载'); return; }
     if (!OPS) { console.error('[img] img-ops.js 未加载'); return; }
@@ -955,9 +967,11 @@
         var saveBtn = el('button', 'img-top-btn', '💾 保存');
         saveBtn.addEventListener('click', function () { saveAll(true); });
         topEl.appendChild(saveBtn);
+        saveBtnEl = saveBtn;
         var shareBtn = el('button', 'img-top-btn primary', '📤 分享');
         shareBtn.addEventListener('click', showShareDialog);
         topEl.appendChild(shareBtn);
+        shareBtnEl = shareBtn;
         page.appendChild(topEl);
 
         stage = el('div', 'img-stage');
@@ -1507,10 +1521,15 @@
         var tm = S.tagMode;
         /* 退出 tagMode：清运行态 */
         S.tagMode = null;
-        tagBarEl.style.display = 'none';
-        btnTagConfirm.style.display = 'none';
-        btnTagCancel.style.display = 'none';
-        backBtnEl.style.display = '';
+        if (tagBarEl) tagBarEl.style.display = 'none';
+        if (btnTagConfirm) btnTagConfirm.style.display = 'none';
+        if (btnTagCancel) btnTagCancel.style.display = 'none';
+        /* 恢复图片模式按钮（下次 open() 再按 meta 重算 showEmpty） */
+        if (backBtnEl) backBtnEl.style.display = '';
+        if (saveBtnEl) saveBtnEl.style.display = '';
+        if (shareBtnEl) shareBtnEl.style.display = '';
+        if (reloadBtnEl) reloadBtnEl.style.display = '';
+        if (undoBarEl) undoBarEl.style.display = '';
         S.tagBarBuilt = false;
         /* 恢复图片工程状态（若有）：仅清槽位，下次 open() 重载 */
         S.meta = null; S.state = null; S.img = null; S.done = []; S.redo = [];
@@ -1616,6 +1635,12 @@
             S.img = ctx.frameCanvas;
             S.imgW = ctx.frameCanvas.width;
             S.imgH = ctx.frameCanvas.height;
+            /* v53b：帧图铺底（loadImageFromBytes 同款三件套），否则白屏 */
+            baseCv.width = S.imgW; baseCv.height = S.imgH;
+            maskCv.width = S.imgW; maskCv.height = S.imgH;
+            bctx.clearRect(0, 0, S.imgW, S.imgH);
+            bctx.drawImage(ctx.frameCanvas, 0, 0);
+            dlog('tagmode frameCanvas ' + S.imgW + 'x' + S.imgH + ' key=' + (S.tagMode.existing ? S.tagMode.existing.id : S.tagMode.seg + '_' + S.tagMode.frame));
             /* 层：existing 优先读 tagmask 草稿，否则按既有 chars 建层 */
             var draft = loadTagStrokes();
             if (draft) {
@@ -1632,6 +1657,14 @@
             setTool('pan');
             titleEl.textContent = ctx.project + ' · 角色打标 · 第 ' + (ctx.frame + 1) + ' 帧';
             showEmpty(false);
+            /* v53b：顶栏切到打标模式（图片模式按钮全藏，返回/保存/分享/换图） */
+            if (backBtnEl) backBtnEl.style.display = 'none';
+            if (saveBtnEl) saveBtnEl.style.display = 'none';
+            if (shareBtnEl) shareBtnEl.style.display = 'none';
+            if (reloadBtnEl) reloadBtnEl.style.display = 'none';
+            if (undoBarEl) undoBarEl.style.display = 'none';
+            if (btnTagConfirm) btnTagConfirm.style.display = '';
+            if (btnTagCancel) btnTagCancel.style.display = '';
             page.classList.add('open');
             page.style.position = 'fixed';
             page.style.inset = '0';

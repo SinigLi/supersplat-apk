@@ -248,7 +248,8 @@ var AV_CSS_V53 = [
 '.av-chardlg-btn { border: none; background: rgba(60, 90, 140, 0.5); color: #e6eef9;',
 '  border-radius: 8px; padding: 7px 12px; font-size: 13px; }',
 '.av-chardlg-foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }',
-'.av-tick-char { background: #ff9ce0; width: 5px; }'
+'.av-tick-char { background: #ff9ce0; width: 5px; }',
+'.av-char-chip { background: rgba(120, 80, 200, 0.5); border-color: rgba(160, 120, 230, 0.5); color: #e6dcff; cursor: pointer; }'
 ].join('\n');
 
     function embedAvCss() {
@@ -627,6 +628,13 @@ function build() {
         // #3：时间/帧数悬浮播放器右上角（独立于底条，避免被挤位）
         // v45l：右上角信息条（帧/时间 + fps 芯片，点芯片进入编辑）
         posEl = el('div', 'av-pos-top');
+        /* v53b：🎭 角色卡设定入口（视频模式右上角信息条最左） */
+        var charChip = el('span', 'av-fps-chip av-char-chip', '🎭 角色卡');
+        charChip.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openCharDialog();
+        });
+        posEl.appendChild(charChip);
         posEl.addEventListener('click', function (e) {
             if (S.meta.mode !== 'video') return;
             if (e.target && e.target.classList && e.target.classList.contains('av-thumb-toggle')) { toggleThumbs(); return; }
@@ -1693,10 +1701,13 @@ function hasMerge(seg) {
 
     function openTagEditor() {
         if (!S.project) { toast('未打开工程'); return; }
+        dlog('tag: openTagEditor project=' + S.project);
         var cards = L.loadChars(S.project);
         if (!cards.cards.length) { toast('先设定角色卡'); openCharDialog(); return; }
         var tgt = resolveTagTarget();
         if (!tgt.ok) { toast(tgt.why); return; }
+        dlog('tag: target seg=' + tgt.seg + ' frame=' + tgt.frame + ' kind=' + tgt.kind +
+            ' existing=' + (existing ? existing.id : 'new'));
         var existing = L.findCharRefAt(S.marks, tgt.seg, tgt.frame, effFps());
         if (!(window.__img && window.__img.openTagMode)) { toast('打标页模块未就绪'); return; }
         var f = S.files[S.cur];
@@ -1716,6 +1727,7 @@ function hasMerge(seg) {
                     onCancel: function () { }
                 });
             }).catch(function (e) { toast('抽帧失败：' + (e && e.message || e), true); });
+            dlog('tag: captureTagFrame done/openfail ' + (e && e.message || e));
         })();
     }
 
