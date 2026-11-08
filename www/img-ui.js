@@ -875,11 +875,13 @@
              * 与涂抹共用拖动采点，只是收尾时闭合而不是留成开放路径。
              * 半径采样阈值调小（0.06 而非 0.12）：轮廓要贴合手指轨迹，
              * 太稀会在拐角处切角。 */
-            /* v53j：打标模式下未启用当前角色层时禁止落笔（不自动建层，提示先启用打标） */
+            /* v53j/v53k：打标模式下未启用当前角色时禁止落笔。
+             * enabled 存的是 cardId；激活层通过层名（=card.name）映射回 card 判断。 */
             if (S.tagMode) {
                 var act = (S.state && S.state.layers) ? S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] : null;
+                var actCard = act ? S.tagMode.cards.cards.filter(function (c) { return c.name === act.name; })[0] : null;
                 var enabledIds = S.tagMode.enabled || [];
-                if (!act || enabledIds.indexOf(act.id) < 0) {
+                if (!act || !actCard || enabledIds.indexOf(actCard.id) < 0) {
                     toast('先在底部点「启用打标」再画');
                     S.drawing = false;
                     return;
