@@ -1658,9 +1658,34 @@
         }
     }
 
+    /* v53 M5：给定层结构 + 尺寸 → 白区透底 canvas（与 buildLayerCanvas 同语义，
+     * 但不依赖 S：供视频导出时栅格化打标遮罩）。layerName 匹配层名或层 id。 */
+    function renderTagMaskCanvas(layers, w, h, layerName) {
+        var lay = layers.filter(function (l) { return l.name === layerName; })[0]
+            || layers.filter(function (l) { return l.id === layerName; })[0];
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        if (!lay) return c;
+        var g = c.getContext('2d');
+        g.lineCap = 'round'; g.lineJoin = 'round';
+        g.fillStyle = '#fff'; g.strokeStyle = '#fff';
+        drawStrokes(g, lay.strokes);
+        return c;
+    }
+
+    function canvasToPngU8(canvas) {
+        var b64 = canvas.toDataURL('image/png').split(',')[1];
+        var bin = atob(b64);
+        var u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return u8;
+    }
+
 window.__img = {
         open: open,
         openTagMode: openTagMode,
+        renderTagMaskCanvas: renderTagMaskCanvas,
+        canvasToPngU8: canvasToPngU8,
         back: back,
         state: function () {
             return {

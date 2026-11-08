@@ -2037,13 +2037,98 @@ function hasMerge(seg) {
 
     /* ---------- 导出 ---------- */
 
-    function exportJson() {
+    /* ---------- v53 M5：导出时栅格化打标遮罩 ---------- */
+    /* 遍历 char_ref，把 mask==='pending:<cardId>' 的条目栅格化落盘：
+     * 抽帧（原分辨率）→ __img.renderTagMaskCanvas（白区透底）→ PNG u8 →
+     * putContentFile('png') → 条目 mask 改为 'masks/<target>/<frame>_<cardId>.png'
+     * （zip 内路径，同时内容寻址落 files/ 备查——zip 打包用 PNG 字节直用）。
+     * 返回 { pngByPath: {path: u8}, count } */
+    async function resolveTagMasks() {
+        var PNG_BY_PATH = {};
+        var count = 0;
+        var imgMod = window.__img;
+        var PJ = window.__projects && window.__projects._pj ? window.__projects._pj : null;
+        if (!imgMod || !imgMod.renderTagMaskCanvas) throw new Error('打标渲染模块未就绪');
+        var refs = S.marks.marks.filter(function (m) { return m.type === 'char_ref'; });
+        for (var ri = 0; ri < refs.length; ri++) {
+            var ref = refs[ri];
+            var f = S.files.filter(function (x) { return x.label === ref.seg; })[0];
+            if (!f) continue;
+            var frame = L.frameAt(ref.at, effFps());
+            var need = (ref.chars || []).filter(function (c) { return c.mask && String(c.mask).indexOf('pending:') === 0; });
+            if (!need.length) continue;
+            var frameCanvas = await captureTagFrame(f.name, frame, effFps());
+            for (var ci = 0; ci < need.length; ci++) {
+                var ent = need[ci];
+                var cardId = String(ent.mask).slice('pending:'.length);
+                var canvas = imgMod.renderTagMaskCanvas(
+                    loadTagMaskLayers(ref, cardId), frameCanvas.width, frameCanvas.height, ent.name);
+                var u8 = imgMod.canvasToPngU8(canvas);
+                var path = 'masks/' + ref.seg + '/' + frame + '_' + cardId + '.png';
+                PNG_BY_PATH[path] = u8;
+                ent.mask = path;
+                count++;
+                /* 内容寻址备份（导出 zip 之外的持久层，重导出不重写） */
+                try {
+                    var pjMod = window.__projectLogic;
+                    if (pjMod && pjMod.pathsFor && pjMod.putContentFile) {
+                        await pjMod.putContentFile(pjMod.pathsFor(S.project), 'png', u8);
+                    }
+                } catch (e2) { dlog('tagmask backup skip: ' + (e2 && e2.message || e2)); }
+            }
+        }
+        return { pngByPath: PNG_BY_PATH, count: count };
+    }
+
+    /* 读某 char_ref 某角色的 tagmask 层结构（与 img-ui loadTagStrokes 同 key 规则） */
+    function loadTagMaskLayers(ref, cardId) {
+        var key = 'av-' + S.project + '-tagmask-' + ref.id;
+        try {
+            var raw = localStorage.getItem(key);
+            if (raw) {
+                var o = JSON.parse(raw);
+                if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) return o.layers;
+            }
+        } catch (e) { /* */ }
+        return [];
+    }
+
+    async function exportJson() {
         if (!S.project) return;
+        toast('正在整理打标遮罩…');
+        var resolved = await resolveTagMasks();
         var json = L.buildExport(S.meta, S.marks, S.files);
         var text = JSON.stringify(json, null, 2);
         var sp = savePlug();
         var name = 'marks-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '-' +
-            new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + '.json';
+            new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) +
+            (resolved.count > 0 ? '.zip' : '.json');
+        /* v53：有遮罩 → fflate zip（marks.json + masks/*.png）；无遮罩 → 裸 JSON（原链路） */
+        if (resolved.count > 0) {
+            if (!window.fflate) { toast('fflate 未加载，无法打包遮罩', true); return; }
+            var entries = { 'marks.json': window.fflate.strToU8(text) };
+            Object.keys(resolved.pngByPath).forEach(function (p) { entries[p] = resolved.pngByPath[p]; });
+            var zipped = window.fflate.zipSync(entries, { level: 0 });  /* PNG 已压缩 */
+            var bin = ''; var CH = 8192;
+            for (var zi = 0; zi < zipped.length; zi += CH) {
+                bin += String.fromCharCode.apply(null, zipped.subarray(zi, zi + CH));
+            }
+            var zb64 = btoa(bin);
+            if (sp && sp.shareFile) {
+                sp.shareFile({ data: zb64, filename: name, mime: 'application/zip' })
+                    .then(function () { toast('已导出打标包（' + resolved.count + ' 张遮罩）'); })
+                    .catch(function (e2) { toast('分享失败：' + (e2 && e2.message || e2)); });
+            } else {
+                var blob = new Blob([zipped], { type: 'application/zip' });
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = name;
+                a.click();
+                setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+                toast('打标包已下载（' + resolved.count + ' 张遮罩）');
+            }
+            return;
+        }
         if (sp && sp.shareFile) {
             var b64 = btoa(unescape(encodeURIComponent(text)));
             sp.shareFile({ data: b64, filename: name, mime: 'application/json' })
