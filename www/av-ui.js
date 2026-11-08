@@ -1652,6 +1652,45 @@ function hasMerge(seg) {
         return { ok: true, seg: seg, frame: 0, at: 0, kind: 'first' };
     }
 
+    /* v53：抽帧（原分辨率 canvas）。serverPort HTTP 流 + seeked 抓帧，
+     * 与缩略图同链路；失败 reject（openTagEditor 捕获 toast）。 */
+    function captureTagFrame(fileName, frame, fps) {
+        return new Promise(function (resolve, reject) {
+            if (S.serverPort <= 0) { reject(new Error('本地服务未启动，无法抽帧')); return; }
+            var v = document.createElement('video');
+            var done = false;
+            var timer = setTimeout(function () { finish(null, '抽帧超时'); }, 12000);
+            function finish(canvas, err) {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e2) { }
+                if (canvas) resolve(canvas); else reject(new Error(err || '抽帧失败'));
+            }
+            try {
+                v.muted = true;
+                v.playsInline = true;
+                v.preload = 'auto';
+                v.crossOrigin = 'anonymous';
+                v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(fileName);
+                v.addEventListener('loadeddata', function () {
+                    var tSec = L.secAtFrame(frame, fps || effFps());
+                    try { v.currentTime = Math.min(tSec, Math.max(0, (v.duration || 0) - 0.05)); } catch (e) { finish(null, 'seek err'); }
+                });
+                v.addEventListener('seeked', function () {
+                    try {
+                        var c = document.createElement('canvas');
+                        c.width = v.videoWidth || 640;
+                        c.height = v.videoHeight || 360;
+                        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+                        finish(c, null);
+                    } catch (e) { finish(null, 'canvas err: ' + (e && e.message || e)); }
+                });
+                v.addEventListener('error', function () { finish(null, 'video load err'); });
+            } catch (e) { finish(null, 'setup err'); }
+        });
+    }
+
     function openTagEditor() {
         if (!S.project) { toast('未打开工程'); return; }
         var cards = L.loadChars(S.project);
@@ -1659,21 +1698,25 @@ function hasMerge(seg) {
         var tgt = resolveTagTarget();
         if (!tgt.ok) { toast(tgt.why); return; }
         var existing = L.findCharRefAt(S.marks, tgt.seg, tgt.frame, effFps());
-        if (window.__img && window.__img.openTagMode) {
-            window.__img.openTagMode({
-                project: S.project, seg: tgt.seg, frame: tgt.frame, at: tgt.at,
-                kind: tgt.kind, existing: existing || null, cards: cards,
-                onDone: function (entries) {
-                    L.upsertCharRef(S.marks, tgt.seg, tgt.at, entries);
-                    saveAll(false);
-                    renderTicks(); renderList(); renderPos();
-                    toast('已保存角色打标（' + entries.length + ' 个角色）');
-                },
-                onCancel: function () { }
-            });
-        } else {
-            toast('打标页模块未就绪（M4 接入）');
-        }
+        if (!(window.__img && window.__img.openTagMode)) { toast('打标页模块未就绪'); return; }
+        var f = S.files[S.cur];
+        (function () {
+            toast('正在抽帧…');
+            captureTagFrame(f.name, tgt.frame, effFps()).then(function (frameCanvas) {
+                window.__img.openTagMode({
+                    project: S.project, seg: tgt.seg, frame: tgt.frame, at: tgt.at,
+                    kind: tgt.kind, existing: existing || null, cards: cards,
+                    frameCanvas: frameCanvas,
+                    onDone: function (entries) {
+                        L.upsertCharRef(S.marks, tgt.seg, tgt.at, entries);
+                        saveAll(false);
+                        renderTicks(); renderList(); renderPos();
+                        toast('已保存角色打标（' + entries.length + ' 个角色）');
+                    },
+                    onCancel: function () { }
+                });
+            }).catch(function (e) { toast('抽帧失败：' + (e && e.message || e), true); });
+        })();
     }
 
     function openCharDialog() {
