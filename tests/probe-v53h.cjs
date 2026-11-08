@@ -16,7 +16,7 @@ check('启用打标打开层列表', /renderLayersPanel\(\);\s*\n\s*layersPanel\
 check('取消打标打开层列表', /renderLayersPanel\(\);\s*\n\s*layersPanel\.classList\.add\('open'\);\s*\n\s*toast\('已取消「/.test(img));
 check('层列表 active 高亮当前层（既有）', img.includes(`lay.id === S.state.activeId ? ' active'`));
 /* ③ 打标模式锁层管理 */
-check('tagMode 隐藏层管理按钮行', img.includes(`if (S.tagMode) lTop.style.display = 'none';`));
+check('层管理锁定（tagMode 置灰禁用，v53j）', img.includes('b.disabled = true;') && img.includes('img-sub-btn-off'));
 /* ④ 描述按钮修复 */
 check('描述面板按钮上方居中定位', img.includes('panel.offsetHeight - 10') && img.includes('r.left + r.width / 2 - w / 2'));
 check('描述面板不再用 placePanel', !img.includes(`placePanel(panel, anchorBtn);`));

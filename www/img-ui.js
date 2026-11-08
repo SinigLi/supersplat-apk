@@ -161,6 +161,7 @@
   ".img-tag-in{background:rgba(255,255,255,0.07);border:1px solid #3a3a3d;border-radius:8px;color:#e6eef9;font-size:12px;padding:6px 8px;width:100%;box-sizing:border-box}",
   ".img-tag-desc-panel{position:fixed;z-index:80;width:min(78vw,300px);background:rgba(24,26,32,0.97);border:1px solid #3a3a3d;border-radius:12px;padding:10px 12px;color:#e6eef9;display:flex;flex-direction:column;gap:6px}",
   ".img-tag-desc-title{font-size:11px;color:#8fa3bd}",
+  ".img-layers-top .img-sub-btn-off{opacity:0.35;pointer-events:none}",
   ".img-tag-confirm{background:rgba(70,160,90,0.55)!important}",
   ".img-tag-cancel{background:rgba(170,70,70,0.5)!important}"
     ].join("\n");
@@ -874,6 +875,16 @@
              * 与涂抹共用拖动采点，只是收尾时闭合而不是留成开放路径。
              * 半径采样阈值调小（0.06 而非 0.12）：轮廓要贴合手指轨迹，
              * 太稀会在拐角处切角。 */
+            /* v53j：打标模式下未启用当前角色层时禁止落笔（不自动建层，提示先启用打标） */
+            if (S.tagMode) {
+                var act = (S.state && S.state.layers) ? S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] : null;
+                var enabledIds = S.tagMode.enabled || [];
+                if (!act || enabledIds.indexOf(act.id) < 0) {
+                    toast('先在底部点「启用打标」再画');
+                    S.drawing = false;
+                    return;
+                }
+            }
             S.drawing = true;
             var kind = S.tool === 'erase' ? 'erase' : (S.tool === 'polygon' ? 'polygon' : 'brush');
             S.live = { type: kind, size: S.size, points: [[ip.x, ip.y]] };
@@ -1065,8 +1076,13 @@
         /* 图层悬浮面板（点击后弹出） */
         layersPanel = el('div', 'img-sub img-layers');
         var lTop = el('div', 'img-layers-top');
-        /* v53h：打标模式下层管理锁定（增/删/改由底部启用/取消打标控制） */
-        if (S.tagMode) lTop.style.display = 'none';
+        /* v53h/j：打标模式下层管理锁定——按钮置灰禁用（增/删/改由底部启用/取消打标控制） */
+        if (S.tagMode) {
+            lTop.querySelectorAll('button').forEach(function (b) {
+                b.disabled = true;
+                b.classList.add('img-sub-btn-off');
+            });
+        }
         var addBtn = el('button', 'img-sub-btn', '➕'); addBtn.title = '新建图层';
         var delBtn = el('button', 'img-sub-btn', '🗑'); delBtn.title = '删除当前图层';
         var renBtn = el('button', 'img-sub-btn', '✏️'); renBtn.title = '重命名当前图层';
@@ -1499,6 +1515,16 @@
     function loadTagStrokes() {
         try {
             var raw = localStorage.getItem(tagMaskKey());
+            /* v53j：确认打标后 existing 从 null 变 ref，主 key 随之变化——
+             * fallback 读首次绘制的 seg_frame 旧 key 并迁移到主 key，保住已有遮罩 */
+            if (!raw && S.tagMode && S.tagMode.existing) {
+                var oldKey = 'av-' + S.tagMode.project + '-tagmask-' + S.tagMode.seg + '_' + S.tagMode.frame;
+                raw = localStorage.getItem(oldKey);
+                if (raw) {
+                    localStorage.setItem(tagMaskKey(), raw);
+                    dlog('tagmask migrated ' + oldKey + ' -> ' + tagMaskKey());
+                }
+            }
             if (raw) {
                 var o = JSON.parse(raw);
                 if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) return o;
