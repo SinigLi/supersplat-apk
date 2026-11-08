@@ -35,8 +35,6 @@
     var btnTagCancel = null;    // v53：打标模式顶部取消
     var tagBarEl = null;        // v53：底部打标工具组
     var tagSelEl = null;        // v53：角色下拉
-    var tagOrigIn = null;       // v53：原角色描述输入框
-    var tagDestIn = null;       // v53：替换角色描述输入框
     var dlog = function () {
         try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { }
         try {
@@ -1628,11 +1626,12 @@
         tagBarEl.classList.add('open');
 
         /* 拖拽吸附（复用 dock 同款 makeDraggable），位置持久化 */
-        S.tagPos = 'right';
+        S.tagPos = 'bottom'; /* v53g：默认吸底，避免与右侧 dock 重叠 */
         try {
             var pos = localStorage.getItem(TAG_POS_KEY);
             if (pos) { S.tagPos = pos; applyTagPos(pos); }
-        } catch (e) { }
+            else applyTagPos('bottom');
+        } catch (e) { applyTagPos('bottom'); }
         makeDraggable(tagBarEl, function (edge) {
             S.tagPos = edge;
             applyTagPos(edge);
