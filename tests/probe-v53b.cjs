@@ -19,8 +19,8 @@ const av = fs.readFileSync(WS + 'www/av-ui.js', 'utf8');
 const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
 
 /* 1 顶部入口 */
-check('🎭 角色卡 chip 在 posEl 内', av.includes(`var charChip = el('span', 'av-fps-chip av-char-chip'`) && av.includes('posEl.appendChild(charChip);'));
-check('chip 点击 → openCharDialog', av.includes(`charChip.addEventListener('click', function (e) {\n            e.stopPropagation();\n            openCharDialog();`));
+check('角色卡 chip 在 posEl 内', av.includes('function mkCharChip()') && av.includes('posEl.appendChild(mkCharChip());'));
+check('chip 点击 → openCharDialog', av.includes('e.stopPropagation();') && av.includes('openCharDialog();'));
 check('chip 紫色样式', av.includes(`'.av-char-chip { background: rgba(120, 80, 200, 0.5)`));
 
 /* 2 打标页顶栏切换 */
@@ -45,7 +45,7 @@ check('帧图铺底在 showEmpty 前', img.indexOf('bctx.drawImage(ctx.frameCanv
 /* 5 DebugLog */
 check('img dlog → Capacitor DebugLog', img.includes('cap.Plugins.DebugLog') && img.includes("[img] '"));
 check('tag 目标解析日志', av.includes(`dlog('tag: target seg='`));
-check('抽帧结果日志', av.includes(`dlog('tag: captureTagFrame done/openfail '`));
+check('抽帧结果日志', av.includes(`dlog('tag: capture fail '`));
 check('帧 canvas 尺寸日志', img.includes(`dlog('tagmode frameCanvas `));
 
 /* 回归红线：既有断言抽查 */

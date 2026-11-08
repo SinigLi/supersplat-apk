@@ -34,6 +34,8 @@
     var btnTagConfirm = null;   // v53：打标模式顶部确认
     var btnTagCancel = null;    // v53：打标模式顶部取消
     var tagBarEl = null;        // v53：底部打标工具组
+    var tagOrigIn = null;       // v53：原角色描述输入框
+    var tagDestIn = null;       // v53：替换角色描述输入框
     var dlog = function () {
         try { console.log.apply(console, ['[img]'].concat([].slice.call(arguments))); } catch (e) { }
         try {

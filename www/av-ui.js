@@ -628,13 +628,8 @@ function build() {
         // #3：时间/帧数悬浮播放器右上角（独立于底条，避免被挤位）
         // v45l：右上角信息条（帧/时间 + fps 芯片，点芯片进入编辑）
         posEl = el('div', 'av-pos-top');
-        /* v53b：🎭 角色卡设定入口（视频模式右上角信息条最左） */
-        var charChip = el('span', 'av-fps-chip av-char-chip', '🎭 角色卡');
-        charChip.addEventListener('click', function (e) {
-            e.stopPropagation();
-            openCharDialog();
-        });
-        posEl.appendChild(charChip);
+        /* v53b/c：🎭 角色卡设定入口（renderPos 重绘会重挂，这里首挂一次） */
+        posEl.appendChild(mkCharChip());
         posEl.addEventListener('click', function (e) {
             if (S.meta.mode !== 'video') return;
             if (e.target && e.target.classList && e.target.classList.contains('av-thumb-toggle')) { toggleThumbs(); return; }
@@ -1533,6 +1528,16 @@ function hasMerge(seg) {
 
     /* ---------- 位置显示 + 按钮状态 ---------- */
 
+    /* v53c：🎭 角色卡 chip 工厂（renderPos 每次重绘 posEl，chip 需重挂） */
+    function mkCharChip() {
+        var chip = el('span', 'av-fps-chip av-char-chip', '🎭 角色卡');
+        chip.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openCharDialog();
+        });
+        return chip;
+    }
+
     function renderPos() {
         // v48b：正在 seek 时显示"目标时间"，让点击立刻有反馈（画面稍后跟上）
         var t = (S._seeking && S._seekWant != null) ? S._seekWant : curTime();
@@ -1546,6 +1551,7 @@ function hasMerge(seg) {
                 posEl.appendChild(mkPosMain(t, d));
                 posEl.appendChild(mkFpsChip());
                 posEl.appendChild(mkThumbToggle());
+                posEl.appendChild(mkCharChip());
             }
             renderTicks();
             renderBtnStates();
@@ -1726,8 +1732,10 @@ function hasMerge(seg) {
                     },
                     onCancel: function () { }
                 });
-            }).catch(function (e) { toast('抽帧失败：' + (e && e.message || e), true); });
-            dlog('tag: captureTagFrame done/openfail ' + (e && e.message || e));
+            }).catch(function (e) {
+                dlog('tag: capture fail ' + (e && e.message || e));
+                toast('抽帧失败：' + (e && e.message || e), true);
+            });
         })();
     }
 
