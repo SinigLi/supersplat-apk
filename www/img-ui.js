@@ -34,6 +34,7 @@
     var btnTagConfirm = null;   // v53：打标模式顶部确认
     var btnTagCancel = null;    // v53：打标模式顶部取消
     var tagBarEl = null;        // v53：底部打标工具组
+    var tagSelEl = null;        // v53：角色下拉
     var tagOrigIn = null;       // v53：原角色描述输入框
     var tagDestIn = null;       // v53：替换角色描述输入框
     var dlog = function () {
@@ -153,6 +154,17 @@
   ".img-undo-bar.img-undo-bottom{top:auto;bottom:12px;transform:none;flex-direction:row;max-width:calc(100vw - 200px);max-height:none;overflow-x:auto;overflow-y:hidden}",
   ".img-undo-bar.img-undo-right{left:auto;right:10px}",
   ".img-undo-bar::-webkit-scrollbar{display:none}",
+  /* ===== v53d 打标底部条（与右侧 dock 同风格） ===== */
+  ".img-tagbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;flex-direction:column;gap:4px;padding:8px 12px calc(env(safe-area-inset-bottom, 0px) + 8px);background:rgba(24,26,32,0.96);border-top:1px solid #333;color:#e6eef9}",
+  ".img-tagbar.open{display:flex}",
+  ".img-tagbar-row1{display:flex;align-items:center;gap:6px;min-width:0}",
+  ".img-tagbar-lb{font-size:11px;color:#8fa3bd;flex:0 0 auto}",
+  ".img-tagbar-select{background:rgba(255,255,255,0.07);border:1px solid #3a3a3d;border-radius:8px;color:#e6eef9;font-size:13px;padding:6px 8px;max-width:34%;box-sizing:border-box}",
+  ".img-tagbar-in{background:rgba(255,255,255,0.07);border:1px solid #3a3a3d;border-radius:8px;padding:6px 8px;color:#e6eef9;font-size:12px;width:26%;min-width:0;box-sizing:border-box}",
+  ".img-tagbar-row2{display:flex;gap:8px;overflow-x:auto}",
+  ".img-tagbar-row2 .img-grp{flex:0 0 auto}",
+  ".img-tag-confirm{background:rgba(70,160,90,0.55)!important}",
+  ".img-tag-cancel{background:rgba(170,70,70,0.5)!important}"
     ].join("\n");
 
     function embedCss() {
@@ -1523,7 +1535,7 @@
         var tm = S.tagMode;
         /* 退出 tagMode：清运行态 */
         S.tagMode = null;
-        if (tagBarEl) tagBarEl.style.display = 'none';
+        if (tagBarEl) tagBarEl.classList.remove('open');
         if (btnTagConfirm) btnTagConfirm.style.display = 'none';
         if (btnTagCancel) btnTagCancel.style.display = 'none';
         /* 恢复图片模式按钮（下次 open() 再按 meta 重算 showEmpty） */
@@ -1531,7 +1543,7 @@
         if (saveBtnEl) saveBtnEl.style.display = '';
         if (shareBtnEl) shareBtnEl.style.display = '';
         if (reloadBtnEl) reloadBtnEl.style.display = '';
-        if (undoBarEl) undoBarEl.style.display = '';
+        if (undoBarEl) undoBarEl.style.display = ''; /* v53d：撤销条恢复 */
         S.tagBarBuilt = false;
         /* 恢复图片工程状态（若有）：仅清槽位，下次 open() 重载 */
         S.meta = null; S.state = null; S.img = null; S.done = []; S.redo = [];
@@ -1547,45 +1559,109 @@
         if (S.tagBarBuilt) return;
         S.tagBarBuilt = true;
         var tm = S.tagMode;
+
         tagBarEl = el('div', 'img-tagbar');
-        /* 角色多选列表 */
-        tagBarEl.appendChild(el('div', 'img-tagbar-sec', '角色（勾选=启用打标）'));
+
+        /* 行1：角色下拉（select）+ 原角色描述 + 替换角色描述（均 select+可编辑 input 组合） */
+        var row1 = el('div', 'img-tagbar-row1');
+
+        row1.appendChild(el('span', 'img-tagbar-lb', '角色'));
+        var sel = el('select', 'img-tagbar-select');
         tm.cards.cards.forEach(function (c) {
-            var row = el('label', 'img-tagbar-row');
-            var cb = el('input');
-            cb.type = 'checkbox';
-            cb.checked = tm.enabled.indexOf(c.id) >= 0;
-            cb.addEventListener('change', function () {
-                var i2 = tm.enabled.indexOf(c.id);
-                if (cb.checked && i2 < 0) tm.enabled.push(c.id);
-                if (!cb.checked && i2 >= 0) tm.enabled.splice(i2, 1);
-                switchTagLayer(c);
-            });
-            row.appendChild(cb);
-            row.appendChild(el('span', 'img-tagbar-name', c.name + (c.tag ? ' · ' + c.tag : '')));
-            tagBarEl.appendChild(row);
+            var o = el('option');
+            o.value = c.id;
+            o.textContent = c.name + (c.tag ? ' · ' + c.tag : '');
+            sel.appendChild(o);
         });
-        /* 双描述（每角色独立值：直接用 map cardId→string，默认空；选择列表datalist 提示） */
-        tagBarEl.appendChild(el('div', 'img-tagbar-sec', '原角色描述'));
+        sel.addEventListener('change', function () {
+            var c = tm.cards.cards.filter(function (x) { return x.id === sel.value; })[0];
+            if (c) { enableChar(c); switchTagLayer(c); }
+        });
+        tagSelEl = sel;
+        row1.appendChild(sel);
+
+        row1.appendChild(el('span', 'img-tagbar-lb', '原角色'));
         tagOrigIn = el('input', 'img-tagbar-in');
-        tagOrigIn.placeholder = '从默认列表选或输入';
+        tagOrigIn.placeholder = '默认列表选或输入';
+        tagOrigIn.setAttribute('list', 'imgTagOrigDl');
         var origDl = el('datalist'); origDl.id = 'imgTagOrigDl';
         tm.cards.orig_char_descs.forEach(function (d) { var o = el('option'); o.value = d; origDl.appendChild(o); });
-        tagBarEl.appendChild(tagOrigIn);
-        tagBarEl.appendChild(origDl);
-        tagBarEl.appendChild(el('div', 'img-tagbar-sec', '替换角色描述'));
+        row1.appendChild(origDl);
+        row1.appendChild(tagOrigIn);
+        tagOrigIn.addEventListener('input', function () { setCurDesc('orig', tagOrigIn.value); });
+
+        row1.appendChild(el('span', 'img-tagbar-lb', '替换为'));
         tagDestIn = el('input', 'img-tagbar-in');
-        tagDestIn.placeholder = '从默认列表选或输入';
+        tagDestIn.placeholder = '默认列表选或输入';
+        tagDestIn.setAttribute('list', 'imgTagDestDl');
         var destDl = el('datalist'); destDl.id = 'imgTagDestDl';
         tm.cards.dest_char_descs.forEach(function (d) { var o = el('option'); o.value = d; destDl.appendChild(o); });
-        tagBarEl.appendChild(tagDestIn);
-        tagBarEl.appendChild(destDl);
-        /* 描述输入绑定当前活动角色的层（选角色时切换） */
-        tagOrigIn.addEventListener('input', function () { setCurDesc('orig', tagOrigIn.value); });
+        row1.appendChild(destDl);
+        row1.appendChild(tagDestIn);
         tagDestIn.addEventListener('input', function () { setCurDesc('dest', tagDestIn.value); });
+
+        tagBarEl.appendChild(row1);
+
+        /* 行2：与右侧 dock 同款 grp 按钮组（启用打标/取消打标/撤销/重做） */
+        var row2 = el('div', 'img-tagbar-row2');
+
+        var g1 = el('div', 'img-grp img-grp-on');
+        g1.appendChild(el('span', 'ico', '🖍'));
+        g1.appendChild(el('span', null, '启用打标'));
+        g1.addEventListener('click', function () {
+            var c = curTagCard();
+            if (!c) { toast('先在下拉里选角色'); return; }
+            if (tm.enabled.indexOf(c.id) < 0) tm.enabled.push(c.id);
+            enableChar(c);
+            switchTagLayer(c);
+            toast('已启用「' + c.name + '」打标（画区域即遮罩）');
+        });
+        row2.appendChild(g1);
+
+        var g2 = el('div', 'img-grp');
+        g2.appendChild(el('span', 'ico', '🚫'));
+        g2.appendChild(el('span', null, '取消打标'));
+        g2.addEventListener('click', function () {
+            var c = curTagCard();
+            if (!c) { toast('先在下拉里选角色'); return; }
+            var i2 = tm.enabled.indexOf(c.id);
+            if (i2 >= 0) tm.enabled.splice(i2, 1);
+            /* 清该角色的描述 + 层笔画 */
+            tm.orig[c.id] = ''; tm.dest[c.id] = '';
+            if (tagOrigIn) tagOrigIn.value = '';
+            if (tagDestIn) tagDestIn.value = '';
+            var lay = S.state.layers.filter(function (l) { return l.name === c.name; })[0];
+            if (lay) { lay.strokes = []; redrawMask(); saveTagStrokes(); }
+            toast('已取消「' + c.name + '」打标');
+        });
+        row2.appendChild(g2);
+
+        /* 撤销/重做：打标模式恢复（老板 17:47：撤销回退还是要有的） */
+        var g3 = el('div', 'img-grp');
+        g3.appendChild(el('span', 'ico', '↩️'));
+        g3.appendChild(el('span', null, '撤销'));
+        g3.addEventListener('click', undo);
+        row2.appendChild(g3);
+        var g4 = el('div', 'img-grp');
+        g4.appendChild(el('span', 'ico', '↪️'));
+        g4.appendChild(el('span', null, '重做'));
+        g4.addEventListener('click', redo);
+        row2.appendChild(g4);
+
+        tagBarEl.appendChild(row2);
         page.appendChild(tagBarEl);
-        tagBarEl.style.display = 'flex';
+        tagBarEl.classList.add('open');
     }
+
+    /* 启用角色（勾选语义并入下拉+启用按钮：选中即建层） */
+    function enableChar(c) {
+        if (tm_enabledHas(c.id)) return;
+        S.tagMode.enabled.push(c.id);
+    }
+    function tm_enabledHas(id) {
+        return S.tagMode.enabled.indexOf(id) >= 0;
+    }
+
 
     function curTagCard() {
         /* 当前活动层对应的卡（层名=角色名） */
@@ -1664,7 +1740,6 @@
             if (saveBtnEl) saveBtnEl.style.display = 'none';
             if (shareBtnEl) shareBtnEl.style.display = 'none';
             if (reloadBtnEl) reloadBtnEl.style.display = 'none';
-            if (undoBarEl) undoBarEl.style.display = 'none';
             if (btnTagConfirm) btnTagConfirm.style.display = '';
             if (btnTagCancel) btnTagCancel.style.display = '';
             page.classList.add('open');

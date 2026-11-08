@@ -37,7 +37,7 @@ check('loadTagStrokes 校验 v2', img.includes(`o.schema === 'moyutai.imgmask.v2
 check('顶部确认打标按钮', img.includes(`'✅ 确认打标'`) && img.includes('finishTag(true)'));
 check('顶部取消按钮 + 脏确认', img.includes(`'✖ 取消'`) && img.includes('有未确认的笔画改动'));
 check('back() tagMode 守卫', img.includes("if (S.tagMode) { toast('打标模式请用顶部 ✅确认 / ✖取消'); return; }"));
-check('底部打标组：角色勾选', img.includes(`cb.type = 'checkbox'`) && img.includes('勾选=启用打标'));
+check('底部打标组：角色下拉（17:46 定稿）', img.includes(`var sel = el('select', 'img-tagbar-select')`) && img.includes('tm.cards.cards.forEach'));
 check('底部打标组：双描述输入', img.includes('img-tagbar-in') && img.includes('原角色描述') && img.includes('替换角色描述'));
 check('描述绑定活动角色', img.includes('function setCurDesc(') && img.includes('S.tagMode[kind][c.id] = val'));
 check('层=角色 switchTagLayer', img.includes('function switchTagLayer(') && img.includes(`layers.push({ id:`));
