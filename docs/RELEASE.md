@@ -118,6 +118,7 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v52 | 工程列表文件夹式分组：嵌套分组（registry.groups）、面包屑、500ms 长按/右键多选、底部「新建分组/移动到分组」、层级移动校验。新文件 www/groups.js（纯逻辑+27单测） |
 | v52b | 真机反馈两 bug 同根因：upsertProject/removeProject 重建 registry 丢 groups 字段 → 分组消失/新工程落根目录；改为全字段保留+新工程落当前分组。分组卡 🗑 三选删除（仅解除分组/完整删除/取消），groups.js 补 dissolve/deleteGroupDeep |
 | v52c | 多选体验：长按自动选中 + 卡片左侧 ☐/☑ 复选框引导；空文件夹底部条漂浮根因 = emptyEl 在 DOM 排 gbar 之后被 flex:1 顶起 → 移到 gbar 之前 |
+| v53 | 角色打标全链：视频页 🎭 角色卡对话框（工程独立卡库 moyutai.charcards.v1，JSON 导入导出）；⚑ 打标按钮四分支目标帧解析（分割点>多帧点>段首帧，并入前段 toast 拒绝）；复用图片编辑页打标模式（帧截图底图、一角色一层、双描述、顶部确认/取消）；笔画存 av-tagmask-*（imgmask.v2 结构），确认入 marks(char_ref)；导出时栅格化（抽帧→白区透底 PNG→sha1 落 files/）→ 有遮罩 fflate zip（marks.json + masks/<target>/<frame>_<cardId>.png），无遮罩裸 JSON 不变（v3 字节级兼容）。新文件 www/charcards.js（32 单测）+ tests/export-chars（23 测）+ probe-v53 m3/m4/m5（33/31/17） |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
