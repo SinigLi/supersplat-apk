@@ -1609,11 +1609,21 @@
             tm.orig[c.id] = ''; tm.dest[c.id] = '';
             syncDescInputs(c);
             var lay = S.state.layers.filter(function (l) { return l.name === c.name; })[0];
-            if (lay) { lay.strokes = []; redrawMask(); }
+            if (lay) {
+                /* v53i：取消打标 = 删除该角色层（走撤销栈，可恢复） */
+                var op = OPS.makeDelLayer(S.state, lay.id);
+                if (op) applyAndPush(op);
+                else {
+                    var idx = S.state.layers.indexOf(lay);
+                    if (idx >= 0) S.state.layers.splice(idx, 1);
+                    if (S.state.activeId === lay.id) S.state.activeId = S.state.layers.length ? S.state.layers[S.state.layers.length - 1].id : null;
+                    redrawMask();
+                }
+            }
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            toast('已取消「' + c.name + '」打标');
+            toast('已取消「' + c.name + '」打标，层已删除');
         });
         tagBarEl.appendChild(g2);
 
@@ -1748,8 +1758,6 @@
         S.state.activeId = lay.id;
         S.tagMode.orig[card.id] = S.tagMode.orig[card.id] || '';
         S.tagMode.dest[card.id] = S.tagMode.dest[card.id] || '';
-        if (tagOrigIn) tagOrigIn.value = S.tagMode.orig[card.id] || '';
-        if (tagDestIn) tagDestIn.value = S.tagMode.dest[card.id] || '';
         redrawMask(); updateUndoState(); saveTagStrokes();
     }
 
