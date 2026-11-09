@@ -154,12 +154,13 @@
   ".img-undo-bar::-webkit-scrollbar{display:none}",
   /* ===== v53e 打标底条（复用 .img-dock 垂直 grp 条 + 拖拽吸附） ===== */
   ".img-tagbar{display:none;z-index:55}",
-  ".img-tagbar.img-dock-bottom{left:50%;right:auto;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);top:auto;max-height:52vh}",
-  ".img-tagbar.img-tagbar-top,.img-tagbar.img-dock-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:8px;bottom:auto;left:auto;transform:none;max-height:64vh;flex-direction:column;width:auto;min-width:64px;max-width:96px;align-items:center;overflow:visible}",
+  ".img-tagbar.img-dock-bottom{left:50%;right:auto;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);top:auto;max-height:none;flex-direction:row;max-width:calc(100vw - 24px);overflow-x:auto;overflow-y:hidden}",
+  /* v53r：吸顶=横排（与 dock 原生一致），贴顶避让状态栏，横滑防溢出 */
+  ".img-tagbar.img-tagbar-top,.img-tagbar.img-dock-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:12px;bottom:auto;left:auto;transform:none;max-height:none;flex-direction:row;width:auto;max-width:calc(100vw - 160px);align-items:center;overflow-x:auto;overflow-y:hidden}",
   ".img-tagbar .img-grp{padding:4px 5px;align-items:center;min-width:0}",
   ".img-tagbar .img-grp span:not(.ico){font-size:11px}",
   ".img-tagbar .img-grp .ico{font-size:15px;line-height:1}",
-  ".img-tagbar.img-tagbar-top,.img-tagbar.img-dock-top{min-width:56px;max-width:72px;gap:6px}",
+  ".img-tagbar.img-dock-left,.img-tagbar.img-dock-right{min-width:56px;max-width:72px;gap:6px}",
   ".img-tagbar .img-grp-tag select{max-width:64px;font-size:11px;padding:3px 3px}",
   ".img-tagbar .img-tag-confirm,.img-tagbar .img-tag-cancel{opacity:0.92}",
   ".img-tagbar.open{display:flex}",
