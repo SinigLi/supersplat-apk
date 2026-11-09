@@ -614,6 +614,19 @@
         panel.style.left = (r.left - panel.offsetWidth - 8) + 'px';
     }
 
+    /* v53v：点击空白处自动关闭悬浮面板（层列表/绘制/橡皮/描述） */
+    document.addEventListener('pointerdown', function (e) {
+        try {
+            var el2 = e.target && e.target.nodeType === 1 ? e.target : null;
+            if (!el2) return;
+            var keep = el2.closest('.img-sub, .img-dock, .img-tagbar, .img-tag-desc-panel, .img-undo-bar, .img-top, .img-handle');
+            if (keep) return;
+            closePanels();
+            var dp = document.getElementById('imgTagDescPanel');
+            if (dp) dp.remove();
+        } catch (err) { }
+    }, true);
+
     function closePanels() {
         drawPanel.classList.remove('open');
         erasePanel.classList.remove('open');
@@ -1885,6 +1898,11 @@
             var draft = loadTagStrokes();
             if (draft) {
                 S.state = { schema: 'moyutai.imgmask.v2', layers: draft.layers, activeId: draft.activeId };
+                /* v53v：草稿恢复后同步角色下拉到激活层对应角色（上次编辑状态可见） */
+                var actLay = S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0];
+                var actCard = actLay ? tm.cards.cards.filter(function (c) { return c.name === actLay.name; })[0] : null;
+                if (actCard && tagSelEl) tagSelEl.value = actCard.id;
+                dlog('tagmode draft restored layers=' + S.state.layers.length + ' active=' + (actLay ? actLay.name : 'none'));
             } else {
                 S.state = { schema: 'moyutai.imgmask.v2', layers: [], activeId: null };
                 (ctx.existing && ctx.existing.chars || []).forEach(function (c) {
