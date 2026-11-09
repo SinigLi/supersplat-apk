@@ -411,6 +411,14 @@
 
     function redrawMask() {
         mctx.clearRect(0, 0, maskCv.width, maskCv.height);
+        /* v53z：渲染骨架日志（可见层数/笔画数/画布尺寸） */
+        try {
+            if (S.tagMode) {
+                var vis = S.state.layers.filter(function (l) { return l.visible; });
+                var nStrokes = vis.reduce(function (n, l) { return n + l.strokes.length; }, 0);
+                dlog('tag: redraw layers=' + S.state.layers.length + ' visible=' + vis.length + ' strokes=' + nStrokes + ' canvas=' + maskCv.width + 'x' + maskCv.height + ' tool=' + S.tool);
+            }
+        } catch (e) { }
         /* alpha=1：同色不透明覆盖，笔画自我重叠不再累积加深。
          * 整体半透明由 .img-mask 的 CSS opacity 统一承担。 */
         drawMaskInto(mctx, { alpha: 1, rgb: '255,42,42', showAids: true });
