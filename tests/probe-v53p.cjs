@@ -17,7 +17,7 @@ check('ico 同 dock 15px', img.includes('.img-tagbar .img-grp .ico{font-size:15p
 /* 回归 */
 check('贴顶停靠覆盖保留（v53o）', img.includes('.img-tagbar.img-tagbar-top,.img-tagbar.img-dock-top{'));
 check('短标签保留', img.includes(`'启用')`) && img.includes(`'停用')`));
-check('层列表贴栏保留', img.includes(`layersPanel.style.right = (window.innerWidth - r.left + 8) + 'px';`));
+check('层列表贴栏保留（v53s placePanel）', img.includes('placePanel(layersPanel, g1);'));
 
 console.log('========================');
 console.log('probe-v53p: ' + pass + '/' + (pass + fail) + (fail === 0 ? ' === ALL PASS ===' : ' === FAIL ==='));
