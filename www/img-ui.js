@@ -529,6 +529,8 @@
         S.done.push(op);
         S.redo = [];
         S.dirty = true;   // v50b：只标脏，不即时落盘（老板要求返回时提醒保存）
+        /* v54：tagMode 草稿必须即画即存（确认流不落笔画，延迟保存会丢最后一笔） */
+        if (S.tagMode) saveTagStrokes();
         redrawMask();
         updateUndoState();
         renderLayersPanel();
@@ -1606,6 +1608,8 @@
         }
         var entries = ok ? tagEntries() : null;
         var tm = S.tagMode;
+        /* v54：确认前兜底落盘（最后状态强制存草稿） */
+        if (ok && S.state) saveTagStrokes();
         /* 退出 tagMode：清运行态 */
         S.tagMode = null;
         var dp = document.getElementById('imgTagDescPanel');
