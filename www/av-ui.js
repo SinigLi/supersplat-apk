@@ -1725,7 +1725,17 @@ function hasMerge(seg) {
                     kind: tgt.kind, existing: existing || null, cards: cards,
                     frameCanvas: frameCanvas,
                     onDone: function (entries) {
-                        L.upsertCharRef(S.marks, tgt.seg, tgt.at, entries);
+                        /* v55b：全部停用（0 角色）→ 移除该点位 char_ref（打点保留、角标消失） */
+                        if (!entries.length) {
+                            var rid = null;
+                            for (var i = 0; i < S.marks.marks.length; i++) {
+                                var m = S.marks.marks[i];
+                                if (m.type === 'char_ref' && m.seg === tgt.seg && Math.abs(m.at - tgt.at) < 1e-9) { rid = m.id; break; }
+                            }
+                            if (rid) L.removeCharRef(S.marks, rid);
+                        } else {
+                            L.upsertCharRef(S.marks, tgt.seg, tgt.at, entries);
+                        }
                         saveAll(false);
                         renderTicks(); renderList(); renderPos();
                         toast('已保存角色打标（' + entries.length + ' 个角色）');

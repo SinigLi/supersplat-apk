@@ -1933,9 +1933,10 @@
             if (draft) {
                 S.state = { schema: 'moyutai.imgmask.v2', layers: draft.layers, activeId: draft.activeId };
                 /* v53v：草稿恢复后同步角色下拉到激活层对应角色（上次编辑状态可见） */
-                /* v55：activeId 失效（层被删）回退到第一个遮罩层；下拉默认选第一个遮罩层的角色 */
-                if (!actLayOf(S.state, S.state.activeId) && S.state.layers.length) S.state.activeId = S.state.layers[0].id;
-                var actLay = S.state.layers[0] || null;   /* 默认第一个遮罩层（老板指定） */
+                /* v55b：恢复后无条件对齐第一个遮罩层——activeId（层高亮）、
+                 * 下拉选中、画笔落层三者永远同一个角色 */
+                if (S.state.layers.length) S.state.activeId = S.state.layers[0].id;
+                var actLay = S.state.layers[0] || null;
                 var actCard = actLay ? S.tagMode.cards.cards.filter(function (c) { return c.name === actLay.name; })[0] : null;
                 if (actCard && tagSelEl) tagSelEl.value = actCard.id;
                 /* v53x：草稿恢复后重绘遮罩画布（此前只恢复数据不重绘，画面上看不到已画笔画） */
