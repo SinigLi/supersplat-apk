@@ -1581,7 +1581,7 @@
         var dp = document.getElementById('imgTagDescPanel');
         if (dp) dp.remove();
         /* v53s：清层列表面板内联定位（placePanel 设置的 left/top 不残留到图片模式） */
-        if (layersPanel) { layersPanel.style.left = ''; layersPanel.style.top = ''; layersPanel.classList.remove('open'); }
+        if (layersPanel) { layersPanel.style.left = ''; layersPanel.style.top = ''; layersPanel.style.bottom = ''; layersPanel.style.height = ''; layersPanel.style.position = ''; layersPanel.classList.remove('open'); }
         if (tagBarEl) tagBarEl.classList.remove('open');
         if (btnTagConfirm) btnTagConfirm.style.display = 'none';
         if (btnTagCancel) btnTagCancel.style.display = 'none';
@@ -1651,7 +1651,12 @@
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            placePanel(layersPanel, g1); /* v53s：复用 placePanel，按钮旁展开 */
+            /* v53u：清 bottom/height 锚定（.img-layers 原生 absolute+bottom:76px，
+             * 与 placePanel 的 top 内联叠加会把面板越压越矮） */
+            layersPanel.style.position = 'fixed';
+            layersPanel.style.bottom = 'auto';
+            layersPanel.style.height = 'auto';
+            placePanel(layersPanel, g1); /* 复用 placePanel，按钮旁展开 */
             toast('已启用「' + c.name + '」，画区域即遮罩');
         });
         tagBarEl.appendChild(g1);
@@ -1695,7 +1700,12 @@
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            placePanel(layersPanel, g2); /* v53s：复用 placePanel，按钮旁展开 */
+            /* v53u：清 bottom/height 锚定（.img-layers 原生 absolute+bottom:76px，
+             * 与 placePanel 的 top 内联叠加会把面板越压越矮） */
+            layersPanel.style.position = 'fixed';
+            layersPanel.style.bottom = 'auto';
+            layersPanel.style.height = 'auto';
+            placePanel(layersPanel, g2); /* 复用 placePanel，按钮旁展开 */
             toast('已停用「' + c.name + '」，层已删除');
         });
         tagBarEl.appendChild(g2);
