@@ -155,6 +155,8 @@
   /* ===== v53e 打标底条（复用 .img-dock 垂直 grp 条 + 拖拽吸附） ===== */
   ".img-tagbar{display:none;z-index:55}",
   ".img-tagbar.img-dock-bottom{left:50%;right:auto;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);top:auto;max-height:52vh}",
+  ".img-tagbar.img-tagbar-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:8px;bottom:auto;left:auto;max-height:62vh}",
+  ".img-tagbar .img-tag-confirm,.img-tagbar .img-tag-cancel{opacity:0.92}",
   ".img-tagbar.open{display:flex}",
   ".img-grp-tag{padding:4px 6px}",
   ".img-tagbar-select{background:rgba(255,255,255,0.07);border:1px solid #3a3a3d;border-radius:8px;color:#e6eef9;font-size:12px;padding:4px 6px;max-width:150px;box-sizing:border-box}",
@@ -1576,6 +1578,7 @@
         if (btnTagConfirm) btnTagConfirm.style.display = 'none';
         if (btnTagCancel) btnTagCancel.style.display = 'none';
         /* 恢复图片模式按钮（下次 open() 再按 meta 重算 showEmpty） */
+        if (topEl) topEl.style.display = ''; /* v53m：横条恢复 */
         if (backBtnEl) backBtnEl.style.display = '';
         if (saveBtnEl) saveBtnEl.style.display = '';
         if (shareBtnEl) shareBtnEl.style.display = '';
@@ -1599,6 +1602,18 @@
 
         tagBarEl = el('div', 'img-dock img-tagbar');
         tagBarEl.appendChild(el('div', 'img-handle', '⠿'));
+
+        /* v53m：确认/取消收进停靠栏（顶部横条不再占用空间） */
+        var gOk = el('div', 'img-grp img-tag-confirm');
+        gOk.appendChild(el('span', 'ico', '✅'));
+        gOk.appendChild(el('span', null, '确认打标'));
+        gOk.addEventListener('click', function () { finishTag(true); });
+        tagBarEl.appendChild(gOk);
+        var gNo = el('div', 'img-grp img-tag-cancel');
+        gNo.appendChild(el('span', 'ico', '✖'));
+        gNo.appendChild(el('span', null, '取消'));
+        gNo.addEventListener('click', function () { finishTag(false); });
+        tagBarEl.appendChild(gNo);
 
         /* 角色 select（grp 包裹，与 dock 视觉一致） */
         var selGrp = el('div', 'img-grp img-grp-tag');
@@ -1631,6 +1646,19 @@
             toast('已启用「' + c.name + '」打标，画区域即遮罩');
         });
         tagBarEl.appendChild(g1);
+
+        /* v53m：🙈 隐藏打标 = toggleVisible 当前激活角色层（层列表眼睛同步） */
+        var gHide = el('div', 'img-grp');
+        gHide.appendChild(el('span', 'ico', '🙈'));
+        gHide.appendChild(el('span', null, '隐藏打标'));
+        gHide.addEventListener('click', function () {
+            var act = (S.state && S.state.layers) ? S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] : null;
+            if (!act) { toast('先启用打标（生成层）再隐藏'); return; }
+            applyAndPush({ kind: 'toggleVisible', layerId: act.id });
+            renderLayersPanel();
+            toast(act.visible === false ? '已隐藏「' + act.name + '」' : '已显示「' + act.name + '」');
+        });
+        tagBarEl.appendChild(gHide);
 
         /* 取消打标 */
         var g2 = el('div', 'img-grp');
@@ -1678,12 +1706,12 @@
         tagBarEl.classList.add('open');
 
         /* 拖拽吸附（复用 dock 同款 makeDraggable），位置持久化 */
-        S.tagPos = 'bottom'; /* v53g：默认吸底，避免与右侧 dock 重叠 */
+        S.tagPos = 'top'; /* v53m：默认右上角停靠（横条已移除，不再重叠） */
         try {
             var pos = localStorage.getItem(TAG_POS_KEY);
             if (pos) { S.tagPos = pos; applyTagPos(pos); }
-            else applyTagPos('bottom');
-        } catch (e) { applyTagPos('bottom'); }
+            else applyTagPos('top');
+        } catch (e) { applyTagPos('top'); }
         makeDraggable(tagBarEl, function (edge) {
             S.tagPos = edge;
             applyTagPos(edge);
@@ -1700,7 +1728,8 @@
 
     function applyTagPos(edge) {
         if (!tagBarEl) return;
-        tagBarEl.classList.remove('img-dock-left', 'img-dock-right', 'img-dock-top', 'img-dock-bottom');
+        tagBarEl.classList.remove('img-dock-left', 'img-dock-right', 'img-dock-top', 'img-dock-bottom', 'img-tagbar-top');
+        if (edge === 'top') { tagBarEl.classList.add('img-dock-top', 'img-tagbar-top'); return; }
         if (edge !== 'free') tagBarEl.classList.add('img-dock-' + edge);
     }
 
@@ -1841,6 +1870,7 @@
             titleEl.textContent = ctx.project + ' · 角色打标 · 第 ' + (ctx.frame + 1) + ' 帧';
             showEmpty(false);
             /* v53b：顶栏切到打标模式（图片模式按钮全藏，返回/保存/分享/换图） */
+            if (topEl) topEl.style.display = 'none'; /* v53m：横条整体隐藏（功能已收进停靠栏） */
             if (backBtnEl) backBtnEl.style.display = 'none';
             if (saveBtnEl) saveBtnEl.style.display = 'none';
             if (shareBtnEl) shareBtnEl.style.display = 'none';
