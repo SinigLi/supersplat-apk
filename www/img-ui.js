@@ -1900,7 +1900,7 @@
                 S.state = { schema: 'moyutai.imgmask.v2', layers: draft.layers, activeId: draft.activeId };
                 /* v53v：草稿恢复后同步角色下拉到激活层对应角色（上次编辑状态可见） */
                 var actLay = S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0];
-                var actCard = actLay ? tm.cards.cards.filter(function (c) { return c.name === actLay.name; })[0] : null;
+                var actCard = actLay ? S.tagMode.cards.cards.filter(function (c) { return c.name === actLay.name; })[0] : null;
                 if (actCard && tagSelEl) tagSelEl.value = actCard.id;
                 dlog('tagmode draft restored layers=' + S.state.layers.length + ' active=' + (actLay ? actLay.name : 'none'));
             } else {
