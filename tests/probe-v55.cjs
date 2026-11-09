@@ -10,8 +10,8 @@ function check(name, cond) {
 const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
 const seg = img.slice(img.indexOf('function openTagMode'), img.indexOf('function openTagMode') + 3800);
 
-check('activeId 失效回退第一层', seg.includes(`if (!actLayOf(S.state, S.state.activeId) && S.state.layers.length) S.state.activeId = S.state.layers[0].id;`));
-check('下拉默认选第一个遮罩层角色', seg.includes(`var actLay = S.state.layers[0] || null;   /* 默认第一个遮罩层（老板指定） */`));
+check('activeId 无条件对齐第一遮罩层（v55b）', img.includes('if (S.state.layers.length) S.state.activeId = S.state.layers[0].id;'));
+check('下拉默认选第一个遮罩层角色（v55b）', img.includes('var actLay = S.state.layers[0] || null;'));
 check('actLayOf 辅助存在', img.includes('function actLayOf(state, id)'));
 const ft = img.slice(img.indexOf('function finishTag'), img.indexOf('function buildTagBar'));
 check('全停确认清草稿（双 key）', ft.includes(`if (ok && entries && entries.length === 0)`) && ft.includes(`localStorage.removeItem(tagMaskKey())`) && ft.includes(`'-tagmask-' + tm.seg + '_' + tm.frame`));
