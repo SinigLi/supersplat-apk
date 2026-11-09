@@ -1749,6 +1749,13 @@
     function applyTagPos(edge) {
         if (!tagBarEl) return;
         tagBarEl.classList.remove('img-dock-left', 'img-dock-right', 'img-dock-top', 'img-dock-bottom', 'img-tagbar-top');
+        /* v53q：非 free 吸附时清掉内联坐标（inline 优先级高于 class，残留会把栏钉在旧位置） */
+        if (edge !== 'free') {
+            tagBarEl.style.left = '';
+            tagBarEl.style.top = '';
+            tagBarEl.style.right = '';
+            tagBarEl.style.bottom = '';
+        }
         if (edge === 'top') { tagBarEl.classList.add('img-dock-top', 'img-tagbar-top'); return; }
         if (edge !== 'free') tagBarEl.classList.add('img-dock-' + edge);
     }
