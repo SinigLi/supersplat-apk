@@ -1895,6 +1895,8 @@
             S.state.layers.push(lay);
         }
         S.state.activeId = lay.id;
+        /* v55c：下拉是派生视图，一切层切换路径都从这里回写（单一事实源=activeId） */
+        if (tagSelEl) tagSelEl.value = card.id;
         S.tagMode.orig[card.id] = S.tagMode.orig[card.id] || '';
         S.tagMode.dest[card.id] = S.tagMode.dest[card.id] || '';
         redrawMask(); updateUndoState(); saveTagStrokes();
@@ -1977,10 +1979,16 @@
             backBtnEl.style.display = 'none';
             btnTagConfirm.style.display = '';
             btnTagCancel.style.display = '';
-            /* 默认激活第一个启用角色 */
-            if (S.tagMode.enabled.length) {
+            /* 默认激活：仅本次没有恢复出遮罩层时才选第一个启用角色；
+             * 有层时 activeId 已是事实源（草稿第一层），只把下拉回写成同一角色。
+             * （v55b 只在下拉写了值，被这段无条件 switchTagLayer 覆盖回 enabled[0]） */
+            if (S.state.layers.length === 0 && S.tagMode.enabled.length) {
                 var first = S.tagMode.cards.cards.filter(function (c) { return c.id === S.tagMode.enabled[0]; })[0];
                 if (first) switchTagLayer(first);
+            } else if (S.state.layers.length) {
+                var al = S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] || S.state.layers[0];
+                var ac = al ? S.tagMode.cards.cards.filter(function (c) { return c.name === al.name; })[0] : null;
+                if (ac && tagSelEl) tagSelEl.value = ac.id;
             }
             hint('打标：勾选角色后用画笔/多边形画区域；不画也可只填描述');
         } catch (e) {
