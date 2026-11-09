@@ -1902,7 +1902,10 @@
                 var actLay = S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0];
                 var actCard = actLay ? S.tagMode.cards.cards.filter(function (c) { return c.name === actLay.name; })[0] : null;
                 if (actCard && tagSelEl) tagSelEl.value = actCard.id;
-                dlog('tagmode draft restored layers=' + S.state.layers.length + ' active=' + (actLay ? actLay.name : 'none'));
+                /* v53x：草稿恢复后重绘遮罩画布（此前只恢复数据不重绘，画面上看不到已画笔画） */
+                redrawMask();
+                updateUndoState();
+                dlog('tagmode draft restored layers=' + S.state.layers.length + ' active=' + (actLay ? actLay.name : 'none') + ' strokes=' + S.state.layers.reduce(function (n, l) { return n + l.strokes.length; }, 0));
             } else {
                 S.state = { schema: 'moyutai.imgmask.v2', layers: [], activeId: null };
                 (ctx.existing && ctx.existing.chars || []).forEach(function (c) {
