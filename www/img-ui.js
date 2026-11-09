@@ -1555,6 +1555,10 @@
         } catch (e) { toast('打标笔画保存失败：' + (e && e.message || e)); }
     }
 
+    function actLayOf(state, id) {
+        return state && state.layers ? state.layers.filter(function (l) { return l.id === id; })[0] : null;
+    }
+
     function loadTagStrokes() {
         try {
             var raw = localStorage.getItem(tagMaskKey());
@@ -1610,6 +1614,15 @@
         var tm = S.tagMode;
         /* v54：确认前兜底落盘（最后状态强制存草稿） */
         if (ok && S.state) saveTagStrokes();
+        /* v55：全部停用后确认 = 回到无打标状态——清掉该点位 tagmask 草稿
+         * （chars=[] 时旧的笔画草稿会残留，再进又看到遮罩层） */
+        if (ok && entries && entries.length === 0) {
+            try {
+                localStorage.removeItem(tagMaskKey());
+                localStorage.removeItem('av-' + tm.project + '-tagmask-' + tm.seg + '_' + tm.frame);
+                dlog('tag: cleared drafts (all chars disabled)');
+            } catch (e) { }
+        }
         /* 退出 tagMode：清运行态 */
         S.tagMode = null;
         var dp = document.getElementById('imgTagDescPanel');
@@ -1920,7 +1933,9 @@
             if (draft) {
                 S.state = { schema: 'moyutai.imgmask.v2', layers: draft.layers, activeId: draft.activeId };
                 /* v53v：草稿恢复后同步角色下拉到激活层对应角色（上次编辑状态可见） */
-                var actLay = S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0];
+                /* v55：activeId 失效（层被删）回退到第一个遮罩层；下拉默认选第一个遮罩层的角色 */
+                if (!actLayOf(S.state, S.state.activeId) && S.state.layers.length) S.state.activeId = S.state.layers[0].id;
+                var actLay = S.state.layers[0] || null;   /* 默认第一个遮罩层（老板指定） */
                 var actCard = actLay ? S.tagMode.cards.cards.filter(function (c) { return c.name === actLay.name; })[0] : null;
                 if (actCard && tagSelEl) tagSelEl.value = actCard.id;
                 /* v53x：草稿恢复后重绘遮罩画布（此前只恢复数据不重绘，画面上看不到已画笔画） */
