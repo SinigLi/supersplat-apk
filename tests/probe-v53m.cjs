@@ -15,7 +15,7 @@ check('取消按钮在 tagbar 内', img.includes(`gNo.addEventListener('click', 
 check('tagMode 下 img-top 整条隐藏', img.includes(`if (topEl) topEl.style.display = 'none'; /* v53m`));
 check('finishTag 恢复 img-top', img.includes(`if (topEl) topEl.style.display = ''; /* v53m`));
 check('默认右上角停靠', img.includes(`S.tagPos = 'top'; /* v53m`) && img.includes(`else applyTagPos('top');`));
-check('贴顶避让状态栏 CSS', img.includes('.img-tagbar.img-tagbar-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:8px'));
+check('贴顶避让状态栏 CSS（v53o 合并 dock-top）', img.includes('.img-tagbar.img-tagbar-top,.img-tagbar.img-dock-top{top:calc(env(safe-area-inset-top, 0px) + 8px)'));
 check('拖拽四边吸附保留', img.includes(`tagBarEl.classList.add('img-dock-' + edge)`));
 /* ② 隐藏打标 */
 check('文案/按钮短标签（v53n）', img.includes("gHide.appendChild(el('span', null, '隐藏'))"));
