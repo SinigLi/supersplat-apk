@@ -13,8 +13,8 @@ const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
 check('build 时锁定判断已移除', !img.includes(`if (S.tagMode) {\n            lTop.querySelectorAll`));
 check('renderLayersPanel 每次同步按钮锁定', img.includes(`b.disabled = !!S.tagMode;`) && img.includes(`b.classList.toggle('img-sub-btn-off', !!S.tagMode);`));
 /* ② 行为只读 */
-check('行点击激活在 tagMode 禁用', img.includes(`if (S.tagMode) { toast('打标模式下换层用底部「启用打标」'); return; }`));
-check('眼睛显隐在 tagMode 禁用', img.includes(`if (ro) { toast('打标模式下层由「启用/取消打标」控制'); return; }`));
+check('文案/按钮短标签（v53n）', img.includes("toast('打标模式下换层用右上「启用」')"));
+check('文案/按钮短标签（v53n）', img.includes("toast('层由「启用/停用」控制')"));
 check('眼睛置灰样式', img.includes('.img-layer-eye.img-layer-eye-off{opacity:0.35}'));
 /* 回归 */
 check('落笔 guard（v53k 映射）', img.includes(`enabledIds.indexOf(actCard.id) < 0`));

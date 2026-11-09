@@ -18,11 +18,11 @@ check('默认右上角停靠', img.includes(`S.tagPos = 'top'; /* v53m`) && img.
 check('贴顶避让状态栏 CSS', img.includes('.img-tagbar.img-tagbar-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:8px'));
 check('拖拽四边吸附保留', img.includes(`tagBarEl.classList.add('img-dock-' + edge)`));
 /* ② 隐藏打标 */
-check('🙈 隐藏打标按钮存在', img.includes(`gHide.appendChild(el('span', null, '隐藏打标'))`));
+check('文案/按钮短标签（v53n）', img.includes("gHide.appendChild(el('span', null, '隐藏'))"));
 check('隐藏走 toggleVisible（撤销栈）', img.includes(`applyAndPush({ kind: 'toggleVisible', layerId: act.id });`) && img.includes(`已隐藏「`));
 check('隐藏后层列表同步', /applyAndPush\(\{ kind: 'toggleVisible', layerId: act\.id \}\);\s*\n\s*renderLayersPanel\(\);/.test(img));
 /* 回归 */
-check('层列表只读保留（v53l）', img.includes(`if (S.tagMode) { toast('打标模式下换层用底部「启用打标」'); return; }`));
+check('文案/按钮短标签（v53n）', img.includes("toast('打标模式下换层用右上「启用」')"));
 check('落笔 guard 保留（v53k）', img.includes(`enabledIds.indexOf(actCard.id) < 0`));
 check('草稿 fallback 保留', img.includes('tagmask migrated'));
 check('描述面板保留', img.includes('toggleDescPanel'));

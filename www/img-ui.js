@@ -155,7 +155,11 @@
   /* ===== v53e 打标底条（复用 .img-dock 垂直 grp 条 + 拖拽吸附） ===== */
   ".img-tagbar{display:none;z-index:55}",
   ".img-tagbar.img-dock-bottom{left:50%;right:auto;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);top:auto;max-height:52vh}",
-  ".img-tagbar.img-tagbar-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:8px;bottom:auto;left:auto;max-height:62vh}",
+  ".img-tagbar.img-tagbar-top{top:calc(env(safe-area-inset-top, 0px) + 8px);right:8px;bottom:auto;left:auto;max-height:64vh;flex-direction:column;width:auto;min-width:64px;max-width:96px;align-items:stretch}",
+  ".img-tagbar .img-grp{padding:5px 6px}",
+  ".img-tagbar .img-grp span:not(.ico){font-size:11px}",
+  ".img-tagbar .img-grp .ico{font-size:15px}",
+  ".img-tagbar .img-grp-tag select{max-width:86px;font-size:11px;padding:3px 4px}",
   ".img-tagbar .img-tag-confirm,.img-tagbar .img-tag-cancel{opacity:0.92}",
   ".img-tagbar.open{display:flex}",
   ".img-grp-tag{padding:4px 6px}",
@@ -826,7 +830,7 @@
             if (ro) eye.classList.add('img-layer-eye-off');
             eye.addEventListener('click', function (e) {
                 e.stopPropagation();
-                if (ro) { toast('打标模式下层由「启用/取消打标」控制'); return; }
+                if (ro) { toast('层由「启用/停用」控制'); return; }
                 applyAndPush({ kind: 'toggleVisible', layerId: lay.id });
             });
             row.appendChild(eye);
@@ -836,7 +840,7 @@
              * 眼睛自己 stopPropagation 不受影响。 */
             row.title = '点击激活此层进行编辑';
             row.addEventListener('click', function () {
-                if (S.tagMode) { toast('打标模式下换层用底部「启用打标」'); return; }
+                if (S.tagMode) { toast('打标模式下换层用右上「启用」'); return; }
                 if (S.state.activeId !== lay.id) {
                     S.state.activeId = lay.id;   // 切换激活不是编辑动作，不入撤销栈
                     renderLayersPanel();
@@ -896,7 +900,7 @@
                 var actCard = act ? S.tagMode.cards.cards.filter(function (c) { return c.name === act.name; })[0] : null;
                 var enabledIds = S.tagMode.enabled || [];
                 if (!act || !actCard || enabledIds.indexOf(actCard.id) < 0) {
-                    toast('先在底部点「启用打标」再画');
+                    toast('先点右上「启用」再画');
                     S.drawing = false;
                     return;
                 }
@@ -1606,7 +1610,7 @@
         /* v53m：确认/取消收进停靠栏（顶部横条不再占用空间） */
         var gOk = el('div', 'img-grp img-tag-confirm');
         gOk.appendChild(el('span', 'ico', '✅'));
-        gOk.appendChild(el('span', null, '确认打标'));
+        gOk.appendChild(el('span', null, '确认'));
         gOk.addEventListener('click', function () { finishTag(true); });
         tagBarEl.appendChild(gOk);
         var gNo = el('div', 'img-grp img-tag-cancel');
@@ -1634,7 +1638,7 @@
         /* 启用打标：读下拉当前值（修复「先选角色」误报） */
         var g1 = el('div', 'img-grp img-grp-on');
         g1.appendChild(el('span', 'ico', '🖍'));
-        g1.appendChild(el('span', null, '启用打标'));
+        g1.appendChild(el('span', null, '启用'));
         g1.addEventListener('click', function () {
             var c = tagSelEl.value ? tm.cards.cards.filter(function (x) { return x.id === tagSelEl.value; })[0] : null;
             if (!c) { toast('先在角色下拉里选一个角色'); return; }
@@ -1643,14 +1647,22 @@
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            toast('已启用「' + c.name + '」打标，画区域即遮罩');
+            /* v53n：层列表面板贴 tagbar 左侧弹出（不再居中飘） */
+            requestAnimationFrame(function () {
+                if (!tagBarEl) return;
+                var r = tagBarEl.getBoundingClientRect();
+                layersPanel.style.top = Math.max(8, r.top) + 'px';
+                layersPanel.style.right = (window.innerWidth - r.left + 8) + 'px';
+                layersPanel.style.left = 'auto';
+            });
+            toast('已启用「' + c.name + '」，画区域即遮罩');
         });
         tagBarEl.appendChild(g1);
 
         /* v53m：🙈 隐藏打标 = toggleVisible 当前激活角色层（层列表眼睛同步） */
         var gHide = el('div', 'img-grp');
         gHide.appendChild(el('span', 'ico', '🙈'));
-        gHide.appendChild(el('span', null, '隐藏打标'));
+        gHide.appendChild(el('span', null, '隐藏'));
         gHide.addEventListener('click', function () {
             var act = (S.state && S.state.layers) ? S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] : null;
             if (!act) { toast('先启用打标（生成层）再隐藏'); return; }
@@ -1663,7 +1675,7 @@
         /* 取消打标 */
         var g2 = el('div', 'img-grp');
         g2.appendChild(el('span', 'ico', '🚫'));
-        g2.appendChild(el('span', null, '取消打标'));
+        g2.appendChild(el('span', null, '停用'));
         g2.addEventListener('click', function () {
             var c = tagSelEl.value ? tm.cards.cards.filter(function (x) { return x.id === tagSelEl.value; })[0] : null;
             if (!c) { toast('先在角色下拉里选一个角色'); return; }
@@ -1686,7 +1698,14 @@
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            toast('已取消「' + c.name + '」打标，层已删除');
+            requestAnimationFrame(function () {
+                if (!tagBarEl) return;
+                var r = tagBarEl.getBoundingClientRect();
+                layersPanel.style.top = Math.max(8, r.top) + 'px';
+                layersPanel.style.right = (window.innerWidth - r.left + 8) + 'px';
+                layersPanel.style.left = 'auto';
+            });
+            toast('已停用「' + c.name + '」，层已删除');
         });
         tagBarEl.appendChild(g2);
 

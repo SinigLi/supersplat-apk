@@ -13,7 +13,7 @@ const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
 check('层管理锁定（tagMode 渲染时同步置灰，v53l）', img.includes('b.disabled = !!S.tagMode;') && img.includes('img-sub-btn-off'));
 check('v53h 整行隐藏已替换', !img.includes(`if (S.tagMode) lTop.style.display = 'none';`));
 /* ② 落笔拦截 */
-check('未启用打标禁止落笔 + toast（层名映射回 cardId）', img.includes(`先在底部点「启用打标」再画`) && img.includes(`enabledIds.indexOf(actCard.id) < 0`));
+check('文案/按钮短标签（v53n）', img.includes("先点右上「启用」再画"));
 check('拦截时不落笔', img.includes(`S.drawing = false;\n                    return;`));
 /* ③ 草稿 fallback */
 check('existing 后 fallback 旧 seg_frame key', img.includes(`'av-' + S.tagMode.project + '-tagmask-' + S.tagMode.seg + '_' + S.tagMode.frame`));
