@@ -11,8 +11,8 @@ const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
 
 /* ① 竖排紧凑 */
 check('tagbar 竖排覆盖（横屏不再横排溢出）', img.includes('flex-direction:column;width:auto;min-width:64px;max-width:96px'));
-check('grp 紧凑（小字号内边距）', img.includes('.img-tagbar .img-grp{padding:5px 6px}') && img.includes('.img-tagbar .img-grp .ico{font-size:15px}'));
-check('角色下拉收窄', img.includes('.img-grp-tag select{max-width:86px'));
+check('grp 紧凑（对齐 dock，v53p）', img.includes('.img-tagbar .img-grp{padding:4px 5px;align-items:center;min-width:0}') && img.includes('.img-tagbar .img-grp .ico{font-size:15px;line-height:1}'));
+check('角色下拉收窄（v53p 64px）', img.includes('.img-grp-tag select{max-width:64px'));
 /* ② 文字缩短 */
 check('短标签（确认/启用/隐藏/停用）', img.includes(`'确认')`) && img.includes(`'启用')`) && img.includes(`'隐藏')`) && img.includes(`'停用')`));
 check('无旧长标签', !img.includes(`'确认打标')`) && !img.includes(`el('span', null, '启用打标')`) && !img.includes(`el('span', null, '取消打标')`));
