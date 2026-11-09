@@ -1580,6 +1580,8 @@
         S.tagMode = null;
         var dp = document.getElementById('imgTagDescPanel');
         if (dp) dp.remove();
+        /* v53s：清层列表面板内联定位（placePanel 设置的 left/top 不残留到图片模式） */
+        if (layersPanel) { layersPanel.style.left = ''; layersPanel.style.top = ''; layersPanel.classList.remove('open'); }
         if (tagBarEl) tagBarEl.classList.remove('open');
         if (btnTagConfirm) btnTagConfirm.style.display = 'none';
         if (btnTagCancel) btnTagCancel.style.display = 'none';
@@ -1649,14 +1651,7 @@
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            /* v53n：层列表面板贴 tagbar 左侧弹出（不再居中飘） */
-            requestAnimationFrame(function () {
-                if (!tagBarEl) return;
-                var r = tagBarEl.getBoundingClientRect();
-                layersPanel.style.top = Math.max(8, r.top) + 'px';
-                layersPanel.style.right = (window.innerWidth - r.left + 8) + 'px';
-                layersPanel.style.left = 'auto';
-            });
+            placePanel(layersPanel, g1); /* v53s：复用 placePanel，按钮旁展开 */
             toast('已启用「' + c.name + '」，画区域即遮罩');
         });
         tagBarEl.appendChild(g1);
@@ -1700,13 +1695,7 @@
             saveTagStrokes();
             renderLayersPanel();
             layersPanel.classList.add('open');
-            requestAnimationFrame(function () {
-                if (!tagBarEl) return;
-                var r = tagBarEl.getBoundingClientRect();
-                layersPanel.style.top = Math.max(8, r.top) + 'px';
-                layersPanel.style.right = (window.innerWidth - r.left + 8) + 'px';
-                layersPanel.style.left = 'auto';
-            });
+            placePanel(layersPanel, g2); /* v53s：复用 placePanel，按钮旁展开 */
             toast('已停用「' + c.name + '」，层已删除');
         });
         tagBarEl.appendChild(g2);
@@ -1730,7 +1719,8 @@
         S.tagPos = 'top'; /* v53m：默认右上角停靠（横条已移除，不再重叠） */
         try {
             var pos = localStorage.getItem(TAG_POS_KEY);
-            if (pos) { S.tagPos = pos; applyTagPos(pos); }
+            /* v53s：free 残留一律忽略（防画面中间悬停），吸附边才持久化 */
+            if (pos && pos !== 'free') { S.tagPos = pos; applyTagPos(pos); }
             else applyTagPos('top');
         } catch (e) { applyTagPos('top'); }
         makeDraggable(tagBarEl, function (edge) {
