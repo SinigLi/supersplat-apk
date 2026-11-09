@@ -1539,25 +1539,34 @@
     function saveTagStrokes() {
         try {
             localStorage.setItem(tagMaskKey(), JSON.stringify({ schema: 'moyutai.imgmask.v2', layers: S.state.layers, activeId: S.state.activeId }));
+            /* v53y：保存生命周期骨架日志 */
+            var nStrokes = S.state.layers.reduce(function (n, l) { return n + l.strokes.length; }, 0);
+            dlog('tag: save key=' + tagMaskKey() + ' layers=' + S.state.layers.length + ' strokes=' + nStrokes);
         } catch (e) { toast('打标笔画保存失败：' + (e && e.message || e)); }
     }
 
     function loadTagStrokes() {
         try {
             var raw = localStorage.getItem(tagMaskKey());
+            var migrated = false;
             /* v53j：确认打标后 existing 从 null 变 ref，主 key 随之变化——
              * fallback 读首次绘制的 seg_frame 旧 key 并迁移到主 key，保住已有遮罩 */
             if (!raw && S.tagMode && S.tagMode.existing) {
                 var oldKey = 'av-' + S.tagMode.project + '-tagmask-' + S.tagMode.seg + '_' + S.tagMode.frame;
                 raw = localStorage.getItem(oldKey);
                 if (raw) {
+                    migrated = true;
                     localStorage.setItem(tagMaskKey(), raw);
                     dlog('tagmask migrated ' + oldKey + ' -> ' + tagMaskKey());
                 }
             }
             if (raw) {
                 var o = JSON.parse(raw);
-                if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) return o;
+                if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) {
+                    /* v53y：读取生命周期骨架日志（hit 来源） */
+                    dlog('tag: load key=' + tagMaskKey() + ' hit=' + (migrated ? 'fallback' : 'main') + ' layers=' + o.layers.length);
+                    return o;
+                }
             }
         } catch (e) { /* */ }
         return null;
