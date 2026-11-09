@@ -1,6 +1,6 @@
 # 构建与发版手册
 
-> 版本：v31（2026-10-30） · 适用：`supersplat-apk` + `../supersplat-main`
+> 版本：v55c（2026-11-10） · 适用：`supersplat-apk` + `../supersplat-main`
 > 相关：`docs/DIRECTOR.md`（导演台）· `docs/PROJECTS.md`（工程管理）· `docs/BACKLOG.md`（问题清单）
 
 ## 0. 两个仓库的分工
@@ -119,6 +119,14 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v52b | 真机反馈两 bug 同根因：upsertProject/removeProject 重建 registry 丢 groups 字段 → 分组消失/新工程落根目录；改为全字段保留+新工程落当前分组。分组卡 🗑 三选删除（仅解除分组/完整删除/取消），groups.js 补 dissolve/deleteGroupDeep |
 | v52c | 多选体验：长按自动选中 + 卡片左侧 ☐/☑ 复选框引导；空文件夹底部条漂浮根因 = emptyEl 在 DOM 排 gbar 之后被 flex:1 顶起 → 移到 gbar 之前 |
 | v53 | 角色打标全链：视频页 🎭 角色卡对话框（工程独立卡库 moyutai.charcards.v1，JSON 导入导出）；⚑ 打标按钮四分支目标帧解析（分割点>多帧点>段首帧，并入前段 toast 拒绝）；复用图片编辑页打标模式（帧截图底图、一角色一层、双描述、顶部确认/取消）；笔画存 av-tagmask-*（imgmask.v2 结构），确认入 marks(char_ref)；导出时栅格化（抽帧→白区透底 PNG→sha1 落 files/）→ 有遮罩 fflate zip（marks.json + masks/<target>/<frame>_<cardId>.png），无遮罩裸 JSON 不变（v3 字节级兼容）。新文件 www/charcards.js（32 单测）+ tests/export-chars（23 测）+ probe-v53 m3/m4/m5（33/31/17） |
+| v53b | 真机五条反馈：视频页顶部 🎭 角色卡 chip；打标模式专用顶栏（普通图片编辑受 tagMode 保护）；修当前帧白屏（baseCv/maskCv 同步尺寸+帧画布 blit）；img-ui/av-ui 接入 DebugLog。CI 三连 504 后 Gradle 换腾讯镜像源 |
+| v53c | 真机 debug_18 三连：抽帧失败日志引用错变量（`e is not defined`）、tagbar 输入框声明缺失（`tagOrigIn`）、`renderPos()` innerHTML 清空吞掉角色 chip → 失败日志移入 catch + 模块级声明 + `mkCharChip()` 工厂重挂 |
+| v53d | 打标底栏重设计：角色改 select 下拉；grp 圆角按钮两行；取消打标清描述+层笔画；tagbar/row/select CSS 注入 `IMG_CSS`（此前裸横排溢出） |
+| v53e~v53m | 打标工具条收敛为右上停靠 dock（与左右工具条同视觉、⠿ 拖拽吸附、安全区适配）；确认/取消移入停靠栏、顶部横条隐藏；「隐藏打标」同步图层眼睛；层面板打标态只读 |
+| v53t~v53z | 保存/恢复链路骨架日志期：`tag: save/load/redraw` 三段日志（key/layers/strokes/visible/canvas）；debug_18/19 实锤「数据有、画面无」与「最后一笔未落盘」两类根因 |
+| v54 | **最后一笔丢失修复**（debug_19：strokes=2 从未落盘）：tagMode 下 applyAndPush 即画即存 `saveTagStrokes()` + finishTag 确认前强制落盘，双保险 |
+| v55/v55b | 恢复对齐第一个遮罩层（activeId+下拉）；全部停用确认=移除该点位 char_ref（角标消失、分镜打点保留、双 key 草稿清除） |
+| v55c | 下拉/层高亮同步终修：根因 = openTagMode 收尾「默认激活第一个启用角色」无条件覆盖恢复态 + switchTagLayer 从不回写下拉。改为**单一事实源 activeId**：切层统一回写下拉，收尾仅无恢复层时才默认激活。老板 00:21 真机确认 |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
@@ -135,5 +143,7 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 - 真机 CI 签名：workflow 内 `Verify signing certificate` 步骤已校验固定调试证书（`keystore/ss-debug.p12`），覆盖安装不再报「应用未安装」。
 - WMI 启动的后台任务父进程是 WmiPrvSE，不受 exec Job Object 连坐；**不要** WMI+stdout 重定向，日志由脚本自写。
 - **门禁断言别用全文关键字匹配**——v49 事故：检查「file input 不带 `accept`」的正则 `/type \*= *['"]file['"][^>]*accept/` 把注释里解释该约束的 `accept` 字样也匹配了，导致全绿代码被判失败、白等一轮 CI。改结构性断言（`!/.accept\s*=/`），或锚定到具体元素的属性。
+- **`--registry` 救不了 lock 文件里的 resolved**——v55b 交付事故（2026-11-09）：npmmirror E500（yauzl tgz 表损坏），`npm ci --registry=官方` 照挂——package-lock.json 的 `resolved` 写死了镜像域名，registry 旗标不改变它。workflow 加 `sed` 改写 lockfile 域名兜底（`build-apk.yml`）。诊断套路：CI 挂在依赖安装时先用 jobs API 查失败步骤 + 拉日志原文，别盲目重跑（本次盲目重跑烧掉两轮 CI）。
+- **派生视图必须从事实源回写**——v55/v55b 连环返工（2026-11-09~10）：角色下拉是 activeId 的派生视图，却在恢复段和收尾段各自写一遍，收尾「默认激活」无条件覆盖恢复结果。修法：单一事实源（activeId），任何切层路径统一经 `switchTagLayer` 回写下拉；初始化顺序里"默认值"只允许在"无既有状态"时生效。
 - **半透明不要画在 primitive 上**——v49b 事故：预览蒙版每笔 `rgba(...,0.82)` `source-over` 叠加，同一处涂 2 遍变 96.8%、3 遍 99.4%，被当成「厚度控制」。层内叠加 + 层统一半透明的场景，透明度放层上（CSS `opacity`），primitive 一律 `alpha=1`。
 - **`height` 与 `padding` 相加**——`box-sizing` 默认 `content-box`，动态设 `height:52+inset` 再加 `padding-top:inset` 会得到 `52+2×inset`。凡是要「内边距从高度里吃」的容器，样式里必须写 `border-box`。

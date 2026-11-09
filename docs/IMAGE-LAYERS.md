@@ -124,3 +124,21 @@ v49 的撤销是「strokes 数组 pop/push」，分层后操作类型变多（�
 ### M2 实施记录（与原计划的差异）
 
 原计划「三选一弹窗：保留/清空/取消」实施时简化为**两选 confirm**（确定保留 / 取消放弃），清空引导到既有 🗑 按钮（本来就是按层、可撤销的 op）。理由：清空混进换图弹窗会引入「三按钮 confirm + 三个回调」的自绘对话框工作量，而 🗑 已完整覆盖清空语义且可撤销——一个交互只做一个决定。真机反馈不顺手再升级回三按钮。
+
+## 7. v50 之后：编辑器被复用为打标模式（v53~v55c，2026-11-10 补记）
+
+图片编辑器（img-ui.js）在 v53 起被视频角色打标复用为 `openTagMode` 运行模式，两者共享
+layer/stroke 引擎但存储与 UI 分离，边界如下：
+
+| 维度 | 图片工程 | 打标模式 |
+|---|---|---|
+| 存储 | 工程目录 strokes.json（v50b 延迟保存：标脏+手动保存） | localStorage `av-<工程>-tagmask-<点位id>`（v54 起即画即存） |
+| 顶栏 | 常规（返回/保存/分享/换图） | tagMode 专用（确认/取消在右上停靠条，横条隐藏） |
+| 图层面板 | 可增删改 | **只读**（v53l，层=角色由底部条管理） |
+| 保存 | `saveAll` | `saveTagStrokes`（applyAndPush 每笔触发 + finishTag 强制） |
+| 退出 | back() | finishTag(ok)（恢复普通图片模式 UI） |
+
+打标模式的语义变更集中在 img-ui.js：`S.tagMode` 状态、`switchTagLayer`（单一事实源
+回写下拉，v55c）、`finishTag`（全部停用 → removeCharRef，v55b）、`redrawMask` 渲染
+骨架日志（v53z 常驻）。改这两条链路时先跑 `tests/probe-v55c.cjs` 与
+`tests/img-ops.test.cjs`，防止互相踩。

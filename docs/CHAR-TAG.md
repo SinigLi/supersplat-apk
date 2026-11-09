@@ -1,6 +1,6 @@
 # 角色打标（v53）需求分析 · 定稿 v4
 
-> 2026-11-08 · 状态：**格式随老板逐轮修订（demo v1→v4），开发未开始**。
+> 2026-11-08 定稿 · **2026-11-10 更新：已实现并交付（v53 ~ v55c，老板真机确认）**。实现记录见 §8。
 > 修订史：10:35 拍板 Q1~Q6 → 10:47 JSON 只增不改 + 通用备注库 → 11:25 角色卡文件带版本声明、取消独立 char_tag 类型（chars 挂 split/multiframe 节点 + 片段级 chars）、帧号 0-based 口径确认 → 11:34 nodes[]=全局标签池、每卡单个 tag 字符串 → **11:48 取消朝向/备注，改为原角色描述/替换角色描述**。
 > 相关：`docs/IMAGE-MODE.md`（遮罩 v2）、`docs/RELEASE.md` §5（marks.v3）、`www/av-store.js`、`www/img-ui.js`。
 
@@ -39,7 +39,7 @@
 }
 ```
 
-- `nodes[]`：全局备选标签池，与 schema 同级；打标/建卡时快速选，新输入可加入池。
+- `nodes[]`：**定稿时有、实现时砍掉**（www/charcards.js 不含 nodes，卡仅保留 tag 字符串字段）——打标流程实际不需要全局标签池。
 - `orig_char_descs[]` / `dest_char_descs[]`：两个默认描述列表，角色卡页面可增删。
 - 每张卡：`id`（稳定引用）+ `name`（显示名）+ `tag`（单个字符串标签，从 nodes 选）。
 - 存储：localStorage `av-<工程>-chars`（av-store 管）；导入合并按 id 去重、列表去重。
@@ -60,7 +60,7 @@
 
 ### 3.3 遮罩中间态（笔画存储，Q6）
 
-- key：`av-<工程>-tagmask-<markId>-<cardId>` → `moyutai.imgmask.v2` 结构（单层、层名=角色名）。
+- key：`av-<工程>-tagmask-<点位id>`（`tagMaskKey()`：有既有 char_ref 用其 mark id，否则 `seg_frame` 兜底）→ `moyutai.imgmask.v2` 结构。**同一点位所有角色共用一个 key**，角色区分在 layers[].name（层名=角色名），activeId 指向当前编辑层（v55c 起下拉/高亮/落笔统一以它为事实源）。
 - 编辑期底图 = 该帧截图（canvas 抽帧，仅编辑用，不落盘不导出）。
 - 只有视频导出时才逐角色栅格化为 PNG（复用 `buildLayerCanvas`：白笔不透明、底透明、帧原尺寸）。
 
@@ -116,3 +116,34 @@
 ## 7. 明确不做（本期）
 
 - 骨骼/姿态级标注、遮罩自动生成；不改图片工程 imgmask.v2 schema；音频模式无打标入口。
+
+## 8. 实现记录（v53 ~ v55c，2026-11-10 整理）
+
+### 8.1 模块落点
+
+| 文件 | 内容 |
+|---|---|
+| `www/charcards.js` | 卡库纯逻辑：CRUD/tag/双描述列表/导入合并（id 去重、列表并集）/校验/快照；charcards 单测 32 |
+| `www/av-store.js` | `loadChars/saveChars/upsertCharRef/findCharRefAt/removeCharRef`；导出三处挂载 + 孤儿帧 `target.chars+at_frame`；export-chars 单测 23 |
+| `www/av-ui.js` | 顶部 🎭 chip + 卡对话框；「角色打标」按钮与目标帧解析；本地流抽帧（原分辨率、12s 超时）；char_ref 时间轴刻度与列表徽标（`hasCharRef` 按 mark 存在判断，chars=[] 已随 v55b 移除） |
+| `www/img-ui.js` | `openTagMode` 注入式打标模式：帧画布底图、层=角色、右上停靠打标条（角色下拉/启用/隐藏/取消/描述面板/确认取消）、`tagMaskKey()` 笔画存取、层日志骨架（save/load/redraw） |
+
+### 8.2 保存/恢复时序（v54+v55c 后的最终语义）
+
+1. 画一笔 → `applyAndPush` → **tagMode 立即落盘**（v54，不再等确认）；
+2. 确认 → `finishTag` 强制再存一次（双保险）→ chars 收集：
+   - 有角色 → `upsertCharRef`（同点位替换）；
+   - **全部停用** → `removeCharRef` + 清双 key 草稿（v55b；分镜打点保留、角标消失）；
+3. 重进 → `loadTagStrokes` 命中草稿 → **无条件对齐第一个遮罩层**（v55b），
+   下拉/层高亮/落笔由 `switchTagLayer` 统一回写（v55c，单一事实源=activeId），
+   收尾「默认激活第一个启用角色」仅在无恢复层时生效（v55c）。
+
+### 8.3 探针与回归口径
+
+`probe-v55c 9/9 · probe-v55(b) 9/9 · probe-v54 8/8 · probe-v53-M4 31/31 · probe-v53-M5 17/17 · charcards 32/32 · export-chars 23/23 · img-ops 全绿`。
+改 `img-ui.js` 打标段必须复跑 v55c/v55/v54 三个探针（保存语义 + 同步语义 + 回归锚）。
+
+### 8.4 排查案例（值得记住）
+
+- **「数据恢复了但画面没有」**（v53y/z 期）：先分三层查——恢复层是否为空（load 日志）→ 渲染是否被调（redraw 日志）→ 是否最后一笔根本没落盘（save 日志）。debug_19 实锤是第三种：确认流程只收描述不存笔画。骨架日志（`tag: save/load/redraw`）从此保留为常驻诊断。
+- **「修好又坏」的真正原因**（v55c）：v55 修在下拉上、v55b 修在恢复段上，都没动「收尾默认激活」这个后执行的覆盖者。多处写同一状态的 bug，要把**所有写入点**列全再定事实源，而不是逐个补丁。

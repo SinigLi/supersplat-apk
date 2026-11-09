@@ -11,7 +11,7 @@ SuperSplat 3.5.2 fork 的 Capacitor 7 Android 壳 + 移动端 UI 改造层 + 内
 - 本仓库：APK 壳 + `www/` 产物覆盖层（dock UI、导演台面板、角色资产）
 - 发版：push 到 `main` → GitHub Actions 构建 debug APK → 下载 artifact → 打 zip 发飞书
 
-**当前版本 v52c**（2026-11-08）
+**当前版本 v55c**（2026-11-10）
 
 ## 目录
 
