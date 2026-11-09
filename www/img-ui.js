@@ -1597,8 +1597,8 @@
         S.meta = null; S.state = null; S.img = null; S.done = []; S.redo = [];
         page.classList.remove('open');
         page.style.display = 'none';
-        var pj = document.getElementById('pjPage');
-        if (pj) pj.classList.add('open');
+        /* v53t：tagMode 仅从视频工程进入——退出回视频页（avPage 一直 open，关掉
+         * img page 自然露出）；不开 pjPage（那是图片工程 back() 的路由） */
         if (ok && tm.onDone) tm.onDone(entries);
         if (!ok && tm.onCancel) tm.onCancel();
     }
