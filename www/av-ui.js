@@ -103,7 +103,7 @@
     }
 
     var page, topEl, bodyEl, sideEl, listEl, mainEl, videoEl,
-        ovlEl, btnSplit, btnMerge, btnMulti, btnChar, stepVal, fpsBox, charDlgEl,
+        ovlEl, btnSplit, btnMerge, btnMulti, btnChar, stepVal, fpsBox,
         tlWrap, posEl, tlRange, ticksEl, btnPlay, btnPrev, btnNext,
         railEl, audioCv, emptyHint, emptyTitle, toastTimer = null,
     fpsEditing = false;
@@ -1558,10 +1558,7 @@ function hasMerge(seg) {
         var doSwitch = function () {
             S.meta.charGroupRef = gid;
             L.saveMeta(S.meta);
-            /* v59h：首次选库（对话框未开）→ 切换后直接进管理对话框 */
-            if (!charDlgEl) { buildCharDialog(); }
-            refreshCharDialog();
-            charDlgEl.classList.add('open');
+            /* v59k：只记录选中状态；下次点 🎭 会高亮定位到这组 */
             if (missing.length) {
                 toast('已切换，但缺少角色：' + missing.join('、'), true);
             } else if (oldNames.length) {
@@ -1797,18 +1794,10 @@ function hasMerge(seg) {
     }
 
     function openCharDialog() {
-        /* v59h：未选角色库 → 第一动作 = 选角色组使用；已选 → 管理对话框 */
-        if (!(S.meta && S.meta.charGroupRef) && window.CCG && window.CCG.list().length) {
-            openGroupPicker();
-            return;
-        }
-        if (!charDlgEl) buildCharDialog();
-        refreshCharDialog();
-        charDlgEl.classList.add('open');
+        /* v59k：视频页 🎭 = 纯选择器（选角色组使用），不进编辑 */
+        openGroupPicker();
     }
-    function closeCharDialog() { if (charDlgEl) charDlgEl.classList.remove('open'); }
-
-    /* v58：卡组选择弹层（列出全局卡组，点选切换） */
+        /* v58：卡组选择弹层（列出全局卡组，点选切换） */
     function openGroupPicker() {
         /* v59 r3：选库 sheet——列出全局卡组，使用中标 ✓，点选切换（缺角色警告）。 */
         if (!window.CCG) { toast('卡组模块未加载', true); return; }
@@ -1850,196 +1839,10 @@ function hasMerge(seg) {
         });
     }
 
-function buildCharDialog() {
-        /* v59 r3：视频页角色卡 = 底部 sheet（与开始页管理器同视觉/交互）。
-         * 数据源 curCards()/writeCards()（charGroupRef 引用组）。 */
-        charDlgEl = document.createElement('div');
-        charDlgEl.className = 'av-chardlg open';
-        charDlgEl.innerHTML =
-            '<div class="av-chardlg-mask" data-close></div>' +
-            '<div class="cgm-card" style="position:relative">' +
-            '<div class="cgm-grab"></div>' +
-            '<div class="cgm-head">' +
-            '<div class="ttl" id="avcTitle">🎭 角色卡</div>' +
-            '<button class="cgm-x" id="avcSwitch" title="切换角色库">📚</button>' +
-            '<button class="cgm-x" data-close>✕</button>' +
-            '</div>' +
-            '<div class="cgm-body">' +
-            '<div id="avcCards"></div>' +
-            '<div class="cgm-row"><input id="avcNewCharName" placeholder="新角色名"><input id="avcNewCharTag" placeholder="标签(可选)" style="max-width:110px"><button id="avcAddChar">添加</button></div>' +
-            '</div>' +
-            '<div class="cgm-foot">' +
-            '<button class="btn" id="avcExport">导出</button>' +
-            '<button class="btn" id="avcImport">导入</button>' +
-            '<button class="btn primary" id="avcDone">完成</button>' +
-            '</div></div></div>';
-        document.body.appendChild(charDlgEl);
-        charDlgEl.querySelector('[data-close]').addEventListener('click', closeCharDialog);
-        charDlgEl.querySelector('#avcDone').addEventListener('click', closeCharDialog);
-        charDlgEl.querySelector('#avcAddChar').addEventListener('click', function () {
-            var nm = charDlgEl.querySelector('#avcNewCharName').value.trim();
-            var tag = charDlgEl.querySelector('#avcNewCharTag').value.trim();
-            if (!nm) { toast('先填角色名', true); return; }
-            var cards = curCards();
-            try { window.CC.addCard(cards, nm, tag); } catch (e) { toast(e.message, true); return; }
-            writeCards(cards);
-            refreshCharDialog();
-            charDlgEl.querySelector('#avcNewCharName').value = '';
-            charDlgEl.querySelector('#avcNewCharTag').value = '';
-            toast('已添加 ' + nm);
-        });
-        charDlgEl.querySelector('#avcSwitch').addEventListener('click', openGroupPicker);
-        charDlgEl.querySelector('#avcExport').addEventListener('click', exportCharCards);
-        charDlgEl.querySelector('#avcImport').addEventListener('click', importCharCards);
-    }
-
     /* v59：卡片渲染（头像 📷/名称/标签/删除）——r3 形态 */
-    function refreshCharDialog() {
-        if (!charDlgEl) return;
-        var cards = curCards();
-        var v = charDlgEl.querySelector('#avcCards');
-        v.innerHTML = '';
-        var ref = S.meta && S.meta.charGroupRef;
-        var gname = ref && window.CCG ? window.CCG.nameOf(ref) : S.project;
-        var title = charDlgEl.querySelector('#avcTitle');
-        if (title) title.textContent = '🎭 角色卡 · ' + (gname || '');
-        if (!cards.cards.length) {
-            var empty = document.createElement('div');
-            empty.className = 'cgm-empty';
-            empty.textContent = '还没有角色。添加第一个，或右上 📚 切换角色库';
-            v.appendChild(empty);
-        }
-        cards.cards.forEach(function (c) {
-            var card = document.createElement('div');
-            card.className = 'ch-card';
-            var head = document.createElement('div');
-            head.className = 'ch-head';
-            var wrap = document.createElement('div');
-            wrap.className = 'ch-ava-wrap';
-            if (c.img) {
-                var img = document.createElement('img'); img.className = 'ch-ava'; img.src = c.img;
-                wrap.appendChild(img);
-                var rm = document.createElement('button'); rm.className = 'ch-rmimg'; rm.textContent = '✕';
-                rm.addEventListener('click', function () {
-                    window.CC.setCardImg(cards, c.id, null);
-                    writeCards(cards); refreshCharDialog(); toast('已清除图片');
-                });
-                wrap.appendChild(rm);
-            } else {
-                var ph = document.createElement('div'); ph.className = 'ch-ava-ph'; ph.textContent = c.name.charAt(0);
-                wrap.appendChild(ph);
-            }
-            var cam = document.createElement('button'); cam.className = 'ch-cam'; cam.textContent = '📷'; cam.title = '更换图片';
-            cam.addEventListener('click', function () {
-                var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
-                inp.addEventListener('change', function () {
-                    var f = inp.files && inp.files[0]; if (!f) return;
-                    var rd = new FileReader();
-                    rd.onload = function () {
-                        var im = new Image();
-                        im.onload = function () {
-                            var S2 = 256, cv = document.createElement('canvas'); cv.width = S2; cv.height = S2;
-                            var cx = cv.getContext('2d');
-                            var sc = Math.max(S2 / im.width, S2 / im.height);
-                            cx.drawImage(im, (S2 - im.width * sc) / 2, (S2 - im.height * sc) / 2, im.width * sc, im.height * sc);
-                            window.CC.setCardImg(cards, c.id, cv.toDataURL('image/jpeg', 0.82));
-                            writeCards(cards); refreshCharDialog(); toast('已更新 ' + c.name + ' 的图片');
-                        };
-                        im.src = rd.result;
-                    };
-                    rd.readAsDataURL(f);
-                });
-                inp.click();
-            });
-            wrap.appendChild(cam);
-            head.appendChild(wrap);
-            var nm = document.createElement('div'); nm.className = 'ch-name'; nm.textContent = c.name;
-            head.appendChild(nm);
-            if (c.tag) { var tg = document.createElement('span'); tg.className = 'ch-tag'; tg.textContent = c.tag; head.appendChild(tg); }
-            var del = document.createElement('button'); del.className = 'ch-del'; del.textContent = '删除';
-            del.addEventListener('click', function () {
-                if (!window.confirm('删除角色「' + c.name + '」？')) return;
-                window.CC.removeCard(cards, c.id);
-                writeCards(cards); refreshCharDialog(); toast('已删除');
-            });
-            head.appendChild(del);
-            card.appendChild(head);
-            v.appendChild(card);
-        });
-    }
-
-    /* v59：导出 zip（charcards.json + chars/*.jpg；无图退化纯 json） */
-    function exportCharCards() {
-        if (!window.fflate) { toast('fflate 未加载', true); return; }
-        var data = curCards();
-        var ref = S.meta && S.meta.charGroupRef;
-        var nm = (ref && window.CCG ? window.CCG.nameOf(ref) : S.project) || 'cards';
-        var plan = window.CC.exportPlan(data);
-        var entries = { 'charcards.json': new TextEncoder().encode(JSON.stringify(plan.json, null, 2)) };
-        var done = function () {
-            window.fflate.zip(entries, function (err, zipped) {
-                if (err) { toast('打包失败', true); return; }
-                var blob = new Blob([zipped], { type: 'application/zip' });
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = 'charcards-' + nm + '.zip';
-                a.click();
-                toast('已导出 charcards-' + nm + '.zip');
-            });
-        };
-        if (!plan.images.length) { done(); return; }
-        var left = plan.images.length;
-        plan.images.forEach(function (im) {
-            var b64 = im.dataUrl.split(',')[1], bin = atob(b64);
-            var u8 = new Uint8Array(bin.length);
-            for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-            entries[im.file] = u8;
-            left--;
-            if (left === 0) done();
-        });
-    }
-
-    /* v59：导入 .json / .zip 双格式（zip 里 chars/*.jpg 回填头像） */
-    function importCharCards() {
-        if (!window.fflate) { toast('fflate 未加载', true); return; }
-        var inp = document.createElement('input');
-        inp.type = 'file'; inp.accept = '.json,.zip,application/json,application/zip';
-        inp.addEventListener('change', function () {
-            var f = inp.files && inp.files[0]; if (!f) return;
-            var rd = new FileReader();
-            rd.onload = function () {
-                try {
-                    if (/\.zip$/i.test(f.name) || rd.result instanceof ArrayBuffer) {
-                        var bytes = rd.result instanceof ArrayBuffer ? new Uint8Array(rd.result) : null;
-                        if (!bytes) { toast('读文件失败', true); return; }
-                        window.fflate.unzip(bytes, function (err, unzipped) {
-                            if (err) { toast('zip 解析失败', true); return; }
-                            var jb = unzipped['charcards.json'];
-                            if (!jb) { toast('zip 里缺 charcards.json', true); return; }
-                            var data = JSON.parse(new TextDecoder().decode(jb));
-                            var imgMap = {};
-                            Object.keys(unzipped).forEach(function (k) {
-                                if (k.indexOf('chars/') === 0) {
-                                    var b = unzipped[k], bin = '';
-                                    for (var i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
-                                    imgMap[k.slice('chars/'.length)] = 'data:image/jpeg;base64,' + btoa(bin);
-                                }
-                            });
-                            writeCards(window.CC.importFromParts(data, imgMap));
-                            refreshCharDialog(); toast('已合并导入');
-                        });
-                        return;
-                    }
-                    writeCards(window.CC.importJson(rd.result));
-                    refreshCharDialog(); toast('已合并导入');
-                } catch (e) { toast('导入失败：' + e.message, true); }
-            };
-            if (/\.zip$/i.test(f.name)) rd.readAsArrayBuffer(f); else rd.readAsText(f);
-        });
-        inp.click();
-    }
-
-    function markSplit() {
+        /* v59：导出 zip（charcards.json + chars/*.jpg；无图退化纯 json） */
+        /* v59：导入 .json / .zip 双格式（zip 里 chars/*.jpg 回填头像） */
+        function markSplit() {
         if (S.cur < 0) { toast('先选择片段'); return; }
         var seg = curSeg();
         var isAudio = S.meta.mode === 'audio';

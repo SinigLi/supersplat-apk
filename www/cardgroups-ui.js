@@ -112,7 +112,7 @@
             '<div class="cgm-body"><div id="cgmList"></div></div>' +
             '<div class="cgm-foot">' +
             '<button class="btn" id="cgmNew">＋ 新建卡组</button>' +
-            '<button class="btn" id="cgmMigrate">从工程导入</button>' +
+            '<button class="btn" id="cgmImgFolder">📁 导入图片文件夹</button>' +
             '<button class="btn" id="cgmImportZip">导入文件</button>' +
             '</div></div></div>';
         document.body.appendChild(dlgEl);
@@ -125,11 +125,7 @@
             if (!r) { toast('名称已存在', true); return; }
             renderList(); openGroup(r.id);
         });
-        dlgEl.querySelector('#cgmMigrate').addEventListener('click', function () {
-            var n = window.CCG.migrateIfNeeded();
-            toast(n > 0 ? '已从工程生成 ' + n + ' 套卡组' : '没有需要迁移的工程卡');
-            renderList();
-        });
+        dlgEl.querySelector('#cgmImgFolder').addEventListener('click', function () { importImageFolder(); });
         dlgEl.querySelector('#cgmImportZip').addEventListener('click', function () { importFile(null); });
         renderList();
         dlog('open done: sheet appended');
@@ -140,7 +136,7 @@
         var v = dlgEl.querySelector('#cgmList');
         v.innerHTML = '';
         var groups = window.CCG.list();
-        if (!groups.length) v.appendChild(el('div', 'cgm-empty', '暂无卡组。新建一套，或「从工程导入」现有角色卡'));
+        if (!groups.length) v.appendChild(el('div', 'cgm-empty', '暂无卡组。新建一套，或「📁 导入图片文件夹」批量建角色'));
         groups.forEach(function (g) {
             var d = g.data;
             var row = el('div', 'cg-item');
@@ -360,6 +356,78 @@
             box.appendChild(row);
             v.appendChild(box);
         });
+    }
+
+    /* ---- v59k：导入图片文件夹 → 角色卡组 ----
+     * 选文件夹 → 列图片（jpg/jpeg/png/webp）→ 同名取第一张 → 逐张缩 256 头像 → 建同名卡组
+     * 图片文件名（去扩展名）= 角色名；组名 = 文件夹名（同名组覆盖）
+     */
+    function importImageFolder() {
+        var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MediaServer;
+        if (!p || !p.pickFolder) { toast('需要 APK 环境（MediaServer 插件）', true); return; }
+        toast('选择包含角色图的文件夹');
+        p.pickFolder().then(function (r) {
+            if (!r || !r.uri) return;   /* 用户取消 */
+            var folderName = r.name || '导入卡组';
+            dlog('imgFolder picked: ' + folderName);
+            return p.listFiles({ uri: r.uri }).then(function (ls) {
+                var files = (ls && ls.files) || [];
+                var seen = {};
+                var picked = [];
+                files.sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+                files.forEach(function (f) {
+                    var base = f.name.replace(/\.[^.]+$/, '');
+                    if (seen[base]) return;   /* 重名取第一张 */
+                    seen[base] = true;
+                    picked.push({ name: base, uri: f.uri || f.docId || f.name, raw: f });
+                });
+                if (!picked.length) { toast('该文件夹没有图片（支持 jpg/png/webp）', true); return; }
+                dlog('imgFolder files=' + picked.length + '/' + files.length);
+                return buildCardsFromImages(folderName, picked, p);
+            });
+        }).catch(function (e) {
+            dlog('imgFolder ERR: ' + (e && e.message || e));
+            toast('导入失败：' + (e && e.message || e), true);
+        });
+    }
+
+    function buildCardsFromImages(folderName, picked, p) {
+        var cards = { schema: 'moyutai.charcards.v1', orig_char_descs: [], dest_char_descs: [], cards: [] };
+        var idx = 0, ok = 0, fail = 0;
+        var S2 = 256;
+        function next() {
+            if (idx >= picked.length) {
+                var r = window.CCG.importPack(folderName, cards);
+                if (!r) { toast('保存卡组失败', true); return; }
+                dlog('imgFolder done: ok=' + ok + ' fail=' + fail + ' group=' + folderName);
+                toast(ok ? '已导入 ' + ok + ' 个角色' + (fail ? '（' + fail + ' 张读取失败）' : '') : '没有可用图片', !ok);
+                renderList();
+                return;
+            }
+            var it = picked[idx++];
+            p.readBytes({ uri: it.uri }).then(function (rb) {
+                var im = new Image();
+                im.onload = function () {
+                    try {
+                        var cv = document.createElement('canvas'); cv.width = S2; cv.height = S2;
+                        var cx = cv.getContext('2d');
+                        var sc = Math.max(S2 / im.width, S2 / im.height);
+                        cx.drawImage(im, (S2 - im.width * sc) / 2, (S2 - im.height * sc) / 2, im.width * sc, im.height * sc);
+                        var card = { id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), name: it.name, tag: '' };
+                        card.img = cv.toDataURL('image/jpeg', 0.82);
+                        cards.cards.push(card);
+                        ok++;
+                    } catch (e) { fail++; dlog('imgFolder decode ERR ' + it.name + ': ' + e.message); }
+                    setTimeout(next, 0);
+                };
+                im.onerror = function () { fail++; dlog('imgFolder img ERR: ' + it.name); setTimeout(next, 0); };
+                im.src = 'data:image/*;base64,' + rb.base64;
+            }).catch(function (e) {
+                fail++; dlog('imgFolder read ERR ' + it.name + ': ' + (e && e.message || e));
+                setTimeout(next, 0);
+            });
+        }
+        next();
     }
 
     /* ---- 导出/导入（json + zip 双格式，fflate） ---- */

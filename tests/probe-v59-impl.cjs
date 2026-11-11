@@ -24,22 +24,22 @@ check('safeFileName', cc.includes('function safeFileName'));
 
 /* 开始页管理器（r3 形态） */
 check('管理器：sheet 形态', cui.includes('cgm-sheet') && cui.includes('cgm-card'));
-check('管理器：头像📷/清图', cui.includes('ch-cam') && cui.includes('ch-rmimg'));
+check('管理器：图片文件夹全链路（pickFolder→listFiles→缩256）', cui.includes('pickFolder') && cui.includes('listFiles') && cui.includes('toDataURL'));
 check('管理器：词库抽屉', cui.includes('📖 描述词库') || cui.includes('描述词库'));
 check('管理器：zip 导出（fflate.zip）', cui.includes('fflate.zip'));
 check('管理器：zip 导入（fflate.unzip）', cui.includes('fflate.unzip'));
-check('管理器：从工程迁移入口', cui.includes('migrateIfNeeded'));
+check('管理器：导入图片文件夹入口（v59k）', cui.includes('importImageFolder') && cui.includes('readBytes'));
 
 /* 视频页 r3 对话框 */
 check('对话框：r3 sheet 形态', av.includes('cgm-card') && av.includes('cgm-head'));
-check('对话框：头像📷', av.includes('ch-cam'));
-check('对话框：📚 切换角色库', av.includes('avcSwitch') && av.includes('openGroupPicker'));
+check('对话框：头像变更入口已随编辑对话框移除（v59k）', !av.includes('ch-cam'));
+check('视频页 🎭 纯选择器（v59k）', /openCharDialog\(\)\s*\{[\s\S]{0,200}?openGroupPicker\(\);\s*\}/.test(av) && !av.includes('buildCharDialog'));
 check('选库：使用中标', av.includes('✓ 使用中'));
 check('切换：缺角色警告保留', av.includes('新卡组缺少以下角色'));
 check('切换：成功 toast 保留', av.includes('切换角色库成功'));
 check('导出 zip（fflate.zip）', av.includes('fflate.zip'));
-check('导入 zip（fflate.unzip）', av.includes('fflate.unzip'));
-check('importFromParts 接入', av.includes('importFromParts'));
+check('视频页无编辑对话框（v59k：不含 avcExport/avcImport）', !av.includes('avcExport') && !av.includes('avcImport'));
+check('打标数据源仍用 curCards（保留）', av.includes('function curCards') && av.includes('upsertCharRef'));
 
 /* 打标适配 */
 check('描述下拉读词库分组（原）', img.includes("wordsOf(tm.cards, '原角色描述')") || img.includes("CC.wordsOf(tm.cards, '原角色描述')"));

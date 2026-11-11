@@ -1,0 +1,17 @@
+﻿PASS schema v2
+PASS v1鈫抳2 杩佺Щ锛坱oV2锛?PASS 璇嶅簱鍒嗙粍 API锛坅ddWord/wordsOf锛?PASS 澶村儚瀛楁锛坰etCardImg dataURL 鏍￠獙锛?PASS zip 缁勫寘璁″垝锛坋xportPlan锛?PASS zip 瑙ｇ粍锛坕mportFromParts锛?PASS safeFileName
+PASS 绠＄悊鍣細sheet 褰㈡€?PASS 绠＄悊鍣細澶村儚馃摲/娓呭浘
+PASS 绠＄悊鍣細璇嶅簱鎶藉眽
+PASS 绠＄悊鍣細zip 瀵煎嚭锛坒flate.zip锛?PASS 绠＄悊鍣細zip 瀵煎叆锛坒flate.unzip锛?FAIL 绠＄悊鍣細浠庡伐绋嬭縼绉诲叆鍙?PASS 瀵硅瘽妗嗭細r3 sheet 褰㈡€?FAIL 瀵硅瘽妗嗭細澶村儚馃摲
+FAIL 瀵硅瘽妗嗭細馃摎 鍒囨崲瑙掕壊搴?PASS 閫夊簱锛氫娇鐢ㄤ腑鏍?PASS 鍒囨崲锛氱己瑙掕壊璀﹀憡淇濈暀
+PASS 鍒囨崲锛氭垚鍔?toast 淇濈暀
+PASS 瀵煎嚭 zip锛坒flate.zip锛?FAIL 瀵煎叆 zip锛坒flate.unzip锛?FAIL importFromParts 鎺ュ叆
+PASS 鎻忚堪涓嬫媺璇昏瘝搴撳垎缁勶紙鍘燂級
+PASS 鎻忚堪涓嬫媺璇昏瘝搴撳垎缁勶紙鏇匡級
+PASS 鏃?orig_char_descs 鐩磋宸查櫎
+PASS 閬僵璺緞 v58 淇濈暀锛堝抚鍙风洰褰?瑙掕壊鍚嶏級
+PASS 绌哄眰闃查粦鍥句繚鐣欙紙v57c锛?PASS 鏋佹€ч粦搴曟姞娲炰繚鐣欙紙v56b锛?PASS 寮€濮嬮〉鍏ュ彛鎸夐挳
+PASS index.html 鍏ㄩ儴 v59
+PASS 鍗崇敾鍗冲瓨锛坴54锛?PASS 鍒囧眰鍥炲啓锛坴55c锛?PASS CCG 澶氬瀛樺偍
+========================
+probe-v59-impl: 28/33 === FAIL ===

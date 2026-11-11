@@ -81,6 +81,10 @@ public class MediaServerPlugin extends Plugin {
         m.put("m4a", "audio/mp4");
         m.put("ogg", "audio/ogg");
         m.put("aac", "audio/aac");
+        m.put("jpg", "image/jpeg");
+        m.put("jpeg", "image/jpeg");
+        m.put("png", "image/png");
+        m.put("webp", "image/webp");
         MIME = m;
     }
 
@@ -140,6 +144,8 @@ public class MediaServerPlugin extends Plugin {
                 JSObject o = new JSObject();
                 String docIdChild = c.getString(0);
                 o.put("docId", docIdChild);
+                /* v59k：带上可直接 openInputStream 的 document uri（图片导入用） */
+                try { o.put("uri", docUriForId(treeUri, docIdChild).toString()); } catch (Exception ignore) { }
                 o.put("name", c.getString(1));
                 o.put("mime", c.getString(2));
                 o.put("size", c.getLong(3));
@@ -274,6 +280,41 @@ public class MediaServerPlugin extends Plugin {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /**
+     * v59k：读授权树内单个文件的字节（base64 返回）。
+     * 用于「导入图片文件夹建角色卡组」：JS 侧拿 base64 → Image 解码 → 缩 256 头像。
+     * uri 为 document/tree URI；无持久授权时尝试 takePersistFile。
+     */
+    @PluginMethod
+    public void readBytes(PluginCall call) {
+        String uriStr = call.getString("uri");
+        if (uriStr == null || uriStr.isEmpty()) { call.reject("缺 uri"); return; }
+        try {
+            Uri uri = Uri.parse(uriStr);
+            takePersistFile(uri);
+            android.os.StrictMode.ThreadPolicy old = android.os.StrictMode.getThreadPolicy();
+            android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.LAX);
+            java.io.InputStream in = null;
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            try {
+                in = cr().openInputStream(uri);
+                if (in == null) { call.reject("无法打开文件"); return; }
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            } finally {
+                try { if (in != null) in.close(); } catch (Exception ignore) { }
+                android.os.StrictMode.setThreadPolicy(old);
+            }
+            JSObject ret = new JSObject();
+            ret.put("base64", android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP));
+            ret.put("size", bos.size());
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("读文件失败: " + e.getMessage());
         }
     }
 

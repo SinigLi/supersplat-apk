@@ -31,7 +31,7 @@ check('新建空组入口', cui.includes('cgmNew'));
 
 /* M4 开始页入口 */
 check('projects-ui 角色卡按钮', pui.includes('🎭 角色卡') && pui.includes('__cardgroups.open'));
-check('cardgroups-ui 管理对话框（v59 完整版）', cui.includes('cgm-sheet') && cui.includes('migrateIfNeeded') && cui.includes('fflate.zip'));
+check('cardgroups-ui 管理对话框（v59k：图片文件夹导入）', cui.includes('cgm-sheet') && cui.includes('importImageFolder') && cui.includes('fflate.zip'));
 check('index.html 加载新文件（v59）', html.includes('cardgroups.js?v=59') && html.includes('cardgroups-ui.js?v=59'));
 
 /* M5 导出结构 */
