@@ -1802,144 +1802,233 @@ function hasMerge(seg) {
 
     /* v58：卡组选择弹层（列出全局卡组，点选切换） */
     function openGroupPicker() {
+        /* v59 r3：选库 sheet——列出全局卡组，使用中标 ✓，点选切换（缺角色警告）。 */
         if (!window.CCG) { toast('卡组模块未加载', true); return; }
-        var groups = window.CCG.list();
-        var mask = el('div', 'av-chardlg open');
+        var mask = el('div', 'cgm-sheet open');
         mask.innerHTML =
-            '<div class="av-chardlg-mask"></div>' +
-            '<div class="av-chardlg-card">' +
-            '<div class="av-chardlg-title">📚 选择角色库/div>' +
-            '<div class="av-grplist"></div>' +
-            '<div class="av-chardlg-row"><button class="av-chardlg-btn av-grp-new">鏂板缓绌虹粍</button><button class="av-chardlg-btn av-closedlg2">鍏抽棴</button></div>' +
+            '<div class="cgm-mask"></div>' +
+            '<div class="cgm-card">' +
+            '<div class="cgm-grab"></div>' +
+            '<div class="cgm-head"><div class="ttl">选择角色库（当前工程使用）</div><button class="cgm-x" data-close>✕</button></div>' +
+            '<div class="cgm-body"><div id="avpList"></div></div>' +
             '</div></div>';
         document.body.appendChild(mask);
-        var list = mask.querySelector('.av-grplist');
-        if (!groups.length) list.innerHTML = '<div class="av-chardlg-empty">（暂无全局卡组，点「新建空组」或先打开某工程自动迁移）</div>';
+        var closeMe = function () { if (mask.parentNode) mask.parentNode.removeChild(mask); };
+        mask.querySelector('.cgm-mask').addEventListener('click', closeMe);
+        mask.querySelector('[data-close]').addEventListener('click', closeMe);
+        var v = mask.querySelector('#avpList');
+        var groups = window.CCG.list();
+        if (!groups.length) v.appendChild(el('div', 'cgm-empty', '暂无全局卡组。去开始页「🎭 角色卡」创建，或「从工程导入」自动迁移'));
         var curRef = S.meta && S.meta.charGroupRef;
         groups.forEach(function (g) {
-            var row = el('div', 'av-grp-item' + (g.id === curRef ? ' av-grp-cur' : ''));
-            row.appendChild(el('span', 'av-grp-name', g.name + ' · ' + (g.data.cards || []).length + ' 个角色'));
-            row.addEventListener('click', function () {
-                document.body.removeChild(mask);
+            var it = el('div', 'cg-item');
+            if (g.id === curRef) it.style.cssText = 'border-color:#7c6cf0;background:rgba(124,108,240,.08)';
+            it.appendChild(el('div', 'cg-ico', '📚'));
+            var main = el('div', 'cg-main');
+            main.appendChild(el('div', 'cg-name', g.name));
+            main.appendChild(el('div', 'cg-meta', '')).innerHTML = '<b>' + g.data.cards.length + '</b> 个角色';
+            it.appendChild(main);
+            if (g.id === curRef) {
+                var b = el('span', null, '✓ 使用中');
+                b.style.cssText = 'font-size:12px;color:#9d8fff';
+                it.appendChild(b);
+            }
+            it.addEventListener('click', function () {
+                if (g.id === curRef) { closeMe(); return; }
+                closeMe();
                 switchCharGroup(g.id);
             });
-            list.appendChild(row);
+            v.appendChild(it);
         });
-        mask.querySelector('.av-grp-new').addEventListener('click', function () {
-            var nm = window.prompt ? window.prompt('鏂板崱缁勫悕绉帮細') : null;
-            if (!nm) return;
-            var r = window.CCG.create(nm.trim());
-            if (!r) { toast('鍚嶅瓧宸茶閽?'); return; }
-            document.body.removeChild(mask);
-            switchCharGroup(r.id);
-        });
-        mask.querySelector('.av-closedlg2').addEventListener('click', function () { document.body.removeChild(mask); });
-        mask.querySelector('.av-chardlg-mask').addEventListener('click', function () { document.body.removeChild(mask); });
     }
 
-    function buildCharDialog() {
-        charDlgEl = el('div', 'av-chardlg');
+function buildCharDialog() {
+        /* v59 r3：视频页角色卡 = 底部 sheet（与开始页管理器同视觉/交互）。
+         * 数据源 curCards()/writeCards()（charGroupRef 引用组）。 */
+        charDlgEl = document.createElement('div');
+        charDlgEl.className = 'av-chardlg open';
         charDlgEl.innerHTML =
-            '<div class="av-chardlg-mask"></div>' +
-            '<div class="av-chardlg-card">' +
-            '<div class="av-chardlg-title">🎭 角色卡</div>' +
-            '<div class="av-chardlg-sec">角色列表</div>' +
-            '<div class="av-chardlg-list av-charlist"></div>' +
-            '<div class="av-chardlg-row"><input class="av-chardlg-in av-newchar" placeholder="新角色名"><button class="av-chardlg-btn av-addchar">添加角色</button></div>' +
-            '<div class="av-chardlg-sec">原角色描述（打标时选）</div>' +
-            '<div class="av-chardlg-list av-origlist"></div>' +
-            '<div class="av-chardlg-row"><input class="av-chardlg-in av-neworig" placeholder="新原角色描述"><button class="av-chardlg-btn av-addorig">添加</button></div>' +
-            '<div class="av-chardlg-sec">替换角色描述（打标时选）</div>' +
-            '<div class="av-chardlg-list av-destlist"></div>' +
-            '<div class="av-chardlg-row"><input class="av-chardlg-in av-newdest" placeholder="新替换角色描述"><button class="av-chardlg-btn av-adddest">添加</button></div>' +
-            '<div class="av-chardlg-foot">' +
-            '<button class="av-chardlg-btn av-loadcards">📁 加载本地角色卡</button>' +
-            '<button class="av-chardlg-btn av-switchgrp">📚 切换角色库/button>' +
-            '<button class="av-chardlg-btn av-exportcards">导出角色卡</button>' +
-            '<button class="av-chardlg-btn av-closedlg">取消</button>' +
-            '</div></div>';
+            '<div class="av-chardlg-mask" data-close></div>' +
+            '<div class="cgm-card" style="position:relative">' +
+            '<div class="cgm-grab"></div>' +
+            '<div class="cgm-head">' +
+            '<div class="ttl" id="avcTitle">🎭 角色卡</div>' +
+            '<button class="cgm-x" id="avcSwitch" title="切换角色库">📚</button>' +
+            '<button class="cgm-x" data-close>✕</button>' +
+            '</div>' +
+            '<div class="cgm-body">' +
+            '<div id="avcCards"></div>' +
+            '<div class="cgm-row"><input id="avcNewCharName" placeholder="新角色名"><input id="avcNewCharTag" placeholder="标签(可选)" style="max-width:110px"><button id="avcAddChar">添加</button></div>' +
+            '</div>' +
+            '<div class="cgm-foot">' +
+            '<button class="btn" id="avcExport">导出</button>' +
+            '<button class="btn" id="avcImport">导入</button>' +
+            '<button class="btn primary" id="avcDone">完成</button>' +
+            '</div></div></div>';
         document.body.appendChild(charDlgEl);
-        charDlgEl.querySelector('.av-chardlg-mask').addEventListener('click', closeCharDialog);
-        charDlgEl.querySelector('.av-closedlg').addEventListener('click', closeCharDialog);
-        charDlgEl.querySelector('.av-addchar').addEventListener('click', function () {
-            var inp = charDlgEl.querySelector('.av-newchar');
+        charDlgEl.querySelector('[data-close]').addEventListener('click', closeCharDialog);
+        charDlgEl.querySelector('#avcDone').addEventListener('click', closeCharDialog);
+        charDlgEl.querySelector('#avcAddChar').addEventListener('click', function () {
+            var nm = charDlgEl.querySelector('#avcNewCharName').value.trim();
+            var tag = charDlgEl.querySelector('#avcNewCharTag').value.trim();
+            if (!nm) { toast('先填角色名', true); return; }
             var cards = curCards();
-            try { CC.addCard(cards, inp.value); writeCards(cards); refreshCharDialog(); inp.value = ''; }
-            catch (e) { toast(e.message); }
+            try { window.CC.addCard(cards, nm, tag); } catch (e) { toast(e.message, true); return; }
+            writeCards(cards);
+            refreshCharDialog();
+            charDlgEl.querySelector('#avcNewCharName').value = '';
+            charDlgEl.querySelector('#avcNewCharTag').value = '';
+            toast('已添加 ' + nm);
         });
-        charDlgEl.querySelector('.av-addorig').addEventListener('click', function () {
-            var inp = charDlgEl.querySelector('.av-neworig');
-            var cards = curCards();
-            try { CC.addOrigDesc(cards, inp.value); writeCards(cards); refreshCharDialog(); inp.value = ''; }
-            catch (e) { toast(e.message); }
-        });
-        charDlgEl.querySelector('.av-adddest').addEventListener('click', function () {
-            var inp = charDlgEl.querySelector('.av-newdest');
-            var cards = curCards();
-            try { CC.addDestDesc(cards, inp.value); writeCards(cards); refreshCharDialog(); inp.value = ''; }
-            catch (e) { toast(e.message); }
-        });
-        charDlgEl.querySelector('.av-exportcards').addEventListener('click', exportCharCards);
-        charDlgEl.querySelector('.av-loadcards').addEventListener('click', importCharCards);
-        charDlgEl.querySelector('.av-switchgrp').addEventListener('click', openGroupPicker);
+        charDlgEl.querySelector('#avcSwitch').addEventListener('click', openGroupPicker);
+        charDlgEl.querySelector('#avcExport').addEventListener('click', exportCharCards);
+        charDlgEl.querySelector('#avcImport').addEventListener('click', importCharCards);
     }
 
+    /* v59：卡片渲染（头像 📷/名称/标签/删除）——r3 形态 */
     function refreshCharDialog() {
         if (!charDlgEl) return;
         var cards = curCards();
-        var mk = function (sel, items, kind) {
-            var box = charDlgEl.querySelector(sel);
-            box.innerHTML = '';
-            if (!items.length) { box.innerHTML = '<div class="av-chardlg-empty">（空）</div>'; return; }
-            items.forEach(function (it) {
-                var row = el('div', 'av-chardlg-item');
-                row.appendChild(el('span', 'av-chardlg-txt', typeof it === 'string' ? it : (it.name + (it.tag ? ' · ' + it.tag : ''))));
-                var del = el('button', 'av-chardlg-del', '✕');
-                del.addEventListener('click', function () {
-                    var c2 = curCards();
-                    if (kind === 'orig') CC.removeOrigDesc(c2, it);
-                    else if (kind === 'dest') CC.removeDestDesc(c2, it);
-                    else CC.removeCard(c2, it.id);
-                    writeCards(c2);
-                    refreshCharDialog();
+        var v = charDlgEl.querySelector('#avcCards');
+        v.innerHTML = '';
+        var ref = S.meta && S.meta.charGroupRef;
+        var gname = ref && window.CCG ? window.CCG.nameOf(ref) : S.project;
+        var title = charDlgEl.querySelector('#avcTitle');
+        if (title) title.textContent = '🎭 角色卡 · ' + (gname || '');
+        if (!cards.cards.length) {
+            var empty = document.createElement('div');
+            empty.className = 'cgm-empty';
+            empty.textContent = '还没有角色。添加第一个，或右上 📚 切换角色库';
+            v.appendChild(empty);
+        }
+        cards.cards.forEach(function (c) {
+            var card = document.createElement('div');
+            card.className = 'ch-card';
+            var head = document.createElement('div');
+            head.className = 'ch-head';
+            var wrap = document.createElement('div');
+            wrap.className = 'ch-ava-wrap';
+            if (c.img) {
+                var img = document.createElement('img'); img.className = 'ch-ava'; img.src = c.img;
+                wrap.appendChild(img);
+                var rm = document.createElement('button'); rm.className = 'ch-rmimg'; rm.textContent = '✕';
+                rm.addEventListener('click', function () {
+                    window.CC.setCardImg(cards, c.id, null);
+                    writeCards(cards); refreshCharDialog(); toast('已清除图片');
                 });
-                row.appendChild(del);
-                box.appendChild(row);
+                wrap.appendChild(rm);
+            } else {
+                var ph = document.createElement('div'); ph.className = 'ch-ava-ph'; ph.textContent = c.name.charAt(0);
+                wrap.appendChild(ph);
+            }
+            var cam = document.createElement('button'); cam.className = 'ch-cam'; cam.textContent = '📷'; cam.title = '更换图片';
+            cam.addEventListener('click', function () {
+                var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+                inp.addEventListener('change', function () {
+                    var f = inp.files && inp.files[0]; if (!f) return;
+                    var rd = new FileReader();
+                    rd.onload = function () {
+                        var im = new Image();
+                        im.onload = function () {
+                            var S2 = 256, cv = document.createElement('canvas'); cv.width = S2; cv.height = S2;
+                            var cx = cv.getContext('2d');
+                            var sc = Math.max(S2 / im.width, S2 / im.height);
+                            cx.drawImage(im, (S2 - im.width * sc) / 2, (S2 - im.height * sc) / 2, im.width * sc, im.height * sc);
+                            window.CC.setCardImg(cards, c.id, cv.toDataURL('image/jpeg', 0.82));
+                            writeCards(cards); refreshCharDialog(); toast('已更新 ' + c.name + ' 的图片');
+                        };
+                        im.src = rd.result;
+                    };
+                    rd.readAsDataURL(f);
+                });
+                inp.click();
+            });
+            wrap.appendChild(cam);
+            head.appendChild(wrap);
+            var nm = document.createElement('div'); nm.className = 'ch-name'; nm.textContent = c.name;
+            head.appendChild(nm);
+            if (c.tag) { var tg = document.createElement('span'); tg.className = 'ch-tag'; tg.textContent = c.tag; head.appendChild(tg); }
+            var del = document.createElement('button'); del.className = 'ch-del'; del.textContent = '删除';
+            del.addEventListener('click', function () {
+                if (!window.confirm('删除角色「' + c.name + '」？')) return;
+                window.CC.removeCard(cards, c.id);
+                writeCards(cards); refreshCharDialog(); toast('已删除');
+            });
+            head.appendChild(del);
+            card.appendChild(head);
+            v.appendChild(card);
+        });
+    }
+
+    /* v59：导出 zip（charcards.json + chars/*.jpg；无图退化纯 json） */
+    function exportCharCards() {
+        if (!window.fflate) { toast('fflate 未加载', true); return; }
+        var data = curCards();
+        var ref = S.meta && S.meta.charGroupRef;
+        var nm = (ref && window.CCG ? window.CCG.nameOf(ref) : S.project) || 'cards';
+        var plan = window.CC.exportPlan(data);
+        var entries = { 'charcards.json': new TextEncoder().encode(JSON.stringify(plan.json, null, 2)) };
+        var done = function () {
+            window.fflate.zip(entries, function (err, zipped) {
+                if (err) { toast('打包失败', true); return; }
+                var blob = new Blob([zipped], { type: 'application/zip' });
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'charcards-' + nm + '.zip';
+                a.click();
+                toast('已导出 charcards-' + nm + '.zip');
             });
         };
-        mk('.av-charlist', cards.cards, 'card');
-        mk('.av-origlist', cards.orig_char_descs, 'orig');
-        mk('.av-destlist', cards.dest_char_descs, 'dest');
+        if (!plan.images.length) { done(); return; }
+        var left = plan.images.length;
+        plan.images.forEach(function (im) {
+            var b64 = im.dataUrl.split(',')[1], bin = atob(b64);
+            var u8 = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            entries[im.file] = u8;
+            left--;
+            if (left === 0) done();
+        });
     }
 
-    function exportCharCards() {
-        if (!S.project) { toast('未打开工程'); return; }
-        var json = CC.exportCards(curCards());
-        var name = 'charcards-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '.json';
-        var sp = window.MediaServer;
-        if (sp && sp.share) {
-            sp.share({ data: 'data:application/json;base64,' + btoa(unescape(encodeURIComponent(json))), filename: name })
-                .then(function () { toast('已导出角色卡'); })
-                .catch(function () { toast('导出失败', true); });
-        } else {
-            var w = window.open('', '_blank');
-            if (w) w.document.write('<title>charcards</title><pre>' + json.replace(/</g, '&lt;') + '</pre>');
-        }
-    }
-
+    /* v59：导入 .json / .zip 双格式（zip 里 chars/*.jpg 回填头像） */
     function importCharCards() {
-        if (!S.project) { toast('未打开工程'); return; }
-        var sp = window.MediaServer;
-        if (!(sp && sp.pickCsv)) { toast('原生文件选择不可用'); return; }
-        sp.pickCsv().then(function (r) {
-            if (!r || !r.text) { toast('未选择文件'); return; }
-            var cards = curCards();
-            var res = CC.importCards(cards, r.text);
-            if (!res) { toast('角色卡格式无效（需要 moyutai.charcards.v1）', true); return; }
-            writeCards(cards);
-            refreshCharDialog();
-            toast('已导入，现有 ' + cards.cards.length + ' 个角色');
-        }).catch(function () { toast('读取失败', true); });
+        if (!window.fflate) { toast('fflate 未加载', true); return; }
+        var inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.json,.zip,application/json,application/zip';
+        inp.addEventListener('change', function () {
+            var f = inp.files && inp.files[0]; if (!f) return;
+            var rd = new FileReader();
+            rd.onload = function () {
+                try {
+                    if (/\.zip$/i.test(f.name) || rd.result instanceof ArrayBuffer) {
+                        var bytes = rd.result instanceof ArrayBuffer ? new Uint8Array(rd.result) : null;
+                        if (!bytes) { toast('读文件失败', true); return; }
+                        window.fflate.unzip(bytes, function (err, unzipped) {
+                            if (err) { toast('zip 解析失败', true); return; }
+                            var jb = unzipped['charcards.json'];
+                            if (!jb) { toast('zip 里缺 charcards.json', true); return; }
+                            var data = JSON.parse(new TextDecoder().decode(jb));
+                            var imgMap = {};
+                            Object.keys(unzipped).forEach(function (k) {
+                                if (k.indexOf('chars/') === 0) {
+                                    var b = unzipped[k], bin = '';
+                                    for (var i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+                                    imgMap[k.slice('chars/'.length)] = 'data:image/jpeg;base64,' + btoa(bin);
+                                }
+                            });
+                            writeCards(window.CC.importFromParts(data, imgMap));
+                            refreshCharDialog(); toast('已合并导入');
+                        });
+                        return;
+                    }
+                    writeCards(window.CC.importJson(rd.result));
+                    refreshCharDialog(); toast('已合并导入');
+                } catch (e) { toast('导入失败：' + e.message, true); }
+            };
+            if (/\.zip$/i.test(f.name)) rd.readAsArrayBuffer(f); else rd.readAsText(f);
+        });
+        inp.click();
     }
 
     function markSplit() {

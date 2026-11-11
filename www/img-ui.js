@@ -1820,7 +1820,8 @@
         var origSel = el('select', 'img-tagbar-select');
         var o0 = el('option'); o0.value = ''; o0.textContent = '（不填）';
         origSel.appendChild(o0);
-        tm.cards.orig_char_descs.forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; origSel.appendChild(o); });
+        /* v59：词库分组取词（descGroups），原/替描述不再绑卡 */
+        window.CC.wordsOf(tm.cards, '原角色描述').forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; origSel.appendChild(o); });
         origSel.value = tm.orig[card.id] || '';
         panel.appendChild(origSel);
         var origIn = el('input', 'img-tag-in');
@@ -1834,7 +1835,7 @@
         var destSel = el('select', 'img-tagbar-select');
         var d0 = el('option'); d0.value = ''; d0.textContent = '（不填）';
         destSel.appendChild(d0);
-        tm.cards.dest_char_descs.forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; destSel.appendChild(o); });
+        window.CC.wordsOf(tm.cards, '替换角色描述').forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; destSel.appendChild(o); });
         destSel.value = tm.dest[card.id] || '';
         panel.appendChild(destSel);
         var destIn = el('input', 'img-tag-in');

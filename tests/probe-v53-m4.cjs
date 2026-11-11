@@ -38,7 +38,7 @@ check('顶部确认打标按钮', img.includes(`'✅ 确认打标'`) && img.incl
 check('顶部取消按钮 + 脏确认', img.includes(`'✖ 取消'`) && img.includes('有未确认的笔画改动'));
 check('back() tagMode 守卫', img.includes("if (S.tagMode) { toast('打标模式请用顶部 ✅确认 / ✖取消'); return; }"));
 check('底部打标组：角色下拉（v53e grp 内）', img.includes("tagSelEl = el('select', 'img-tagbar-select')") && img.includes('img-grp-tag'));
-check('底部打标组：双描述收进描述面板（v53e）', img.includes('toggleDescPanel') && img.includes('tm.cards.orig_char_descs.forEach') && img.includes('tm.cards.dest_char_descs.forEach'));
+check('描述面板下拉读词库分组（v59）', img.includes("wordsOf(tm.cards, '原角色描述')") && img.includes("wordsOf(tm.cards, '替换角色描述')"));
 check('描述绑定活动角色', img.includes('function setCurDesc(') && img.includes('S.tagMode[kind][c.id] = val'));
 check('层=角色 switchTagLayer', img.includes('function switchTagLayer(') && img.includes(`layers.push({ id:`));
 check('finishTag 清运行态 + 关页', img.includes('function finishTag(') && img.includes('S.tagMode = null'));

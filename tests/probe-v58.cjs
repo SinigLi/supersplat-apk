@@ -26,13 +26,13 @@ check('缺失警告 confirm', av.includes('新卡组缺少以下角色') && av.i
 check('缺失后仍切换', av.includes('已切换，但缺少角色'));
 
 /* M3 切换选择器 */
-check('组选择弹层', av.includes('openGroupPicker') && av.includes('av-grp-item'));
-check('新建空组入口', av.includes('av-grp-new'));
+check('组选择弹层（v59 r3 sheet）', av.includes('openGroupPicker') && av.includes('cgm-sheet'));
+check('新建空组入口', cui.includes('cgmNew'));
 
 /* M4 开始页入口 */
 check('projects-ui 角色卡按钮', pui.includes('🎭 角色卡') && pui.includes('__cardgroups.open'));
-check('cardgroups-ui 管理对话框', cui.includes('全局角色卡库') && cui.includes('migrateIfNeeded') && cui.includes('importPack'));
-check('index.html 加载两个新文件', html.includes('cardgroups.js?v=58') && html.includes('cardgroups-ui.js?v=58'));
+check('cardgroups-ui 管理对话框（v59 完整版）', cui.includes('cgm-sheet') && cui.includes('migrateIfNeeded') && cui.includes('fflate.zip'));
+check('index.html 加载新文件（v59）', html.includes('cardgroups.js?v=59') && html.includes('cardgroups-ui.js?v=59'));
 
 /* M5 导出结构 */
 check('帧号目录 + 纯角色名文件', av.includes("'masks/' + ref.seg + '/' + frame + '/' + safeName + '.png'"));

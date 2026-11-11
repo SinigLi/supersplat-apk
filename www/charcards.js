@@ -1,22 +1,23 @@
-/* v53 M1 —— 角色卡纯逻辑层（无 DOM，Node 可测）
- *
- * 数据模型（老板 2026-11-08 11:54 定稿，docs/CHAR-TAG.md）：
- *   cardsFile = {
- *     schema: 'moyutai.charcards.v1',
- *     orig_char_descs: [string...],   // 原角色描述默认列表（卡页可增删）
- *     dest_char_descs: [string...],   // 替换角色描述默认列表（卡页可增删）
- *     cards: [{ id, name, tag }]      // tag: 单个字符串标签
- *   }
- * 存储：av-store 侧 localStorage `av-<工程>-chars`；本模块只管结构与规则。
- * 规则（老板确认）：
- *   - 导入合并按 id 去重（同名不同 id 保留）；描述列表并集去重
- *   - 导入容错：schema 不符/缺数组 → 整文件拒收，不崩溃
- *   - 卡名非空；tag 为字符串（可空）
- */
+/* ============================================================
+ * v59 实装 M1：charcards.js 升级 v2（descGroups 词库 + 卡 img）
+ * 老板定稿（2026-11-11）：
+ *  - 不做旧角色系统兼容（未正式使用）
+ *  - 打标页「备注（双描述选择）」和「角色遮罩」适配新数据源
+ *  - 移动端交互/UI 按原型 r3
+ * v2 结构：
+ *   { schema:'moyutai.charcards.v2',
+ *     descGroups:[{name, items:[]}],   // 默认两组：原角色描述/替换角色描述
+ *     cards:[{id,name,tag,img?}] }     // img: dataURL（jpeg 256px 内）
+ * 兼容读：v1 的 orig_char_descs/dest_char_descs → 迁入默认两组；卡多余字段丢弃
+ * 本文件只改数据层；DOM/UI 在 av-ui/cardgroups-ui。
+ * ============================================================ */
+'use strict';
 (function (global) {
-    'use strict';
-
-    var SCHEMA = 'moyutai.charcards.v1';
+    var SCHEMA_V2 = 'moyutai.charcards.v2';
+    var SCHEMA_V1 = 'moyutai.charcards.v1';
+    var DEFAULT_GROUPS = function () {
+        return [{ name: '原角色描述', items: [] }, { name: '替换角色描述', items: [] }];
+    };
 
     function newId() {
         var s = '';
@@ -25,113 +26,215 @@
     }
 
     function emptyCards() {
-        return { schema: SCHEMA, orig_char_descs: [], dest_char_descs: [], cards: [] };
+        return { schema: SCHEMA_V2, descGroups: DEFAULT_GROUPS(), cards: [] };
     }
 
+    /* 接受 v1/v2 */
     function isCardsFile(o) {
-        return !!o && o.schema === SCHEMA && Array.isArray(o.cards) &&
-            Array.isArray(o.orig_char_descs || []) && Array.isArray(o.dest_char_descs || []);
+        if (!o || !Array.isArray(o.cards)) return false;
+        return o.schema === SCHEMA_V2 || o.schema === SCHEMA_V1;
     }
 
-    /* 规范化：补默认数组、过滤非法卡（无 id/无 name）、字符串化 tag */
-    function normalize(raw) {
+    /* v1 → v2 迁移（就地升级；v2 原样规范化） */
+    function toV2(raw) {
         var f = emptyCards();
         if (!raw || typeof raw !== 'object') return f;
-        f.orig_char_descs = (Array.isArray(raw.orig_char_descs) ? raw.orig_char_descs : [])
-            .filter(function (x) { return typeof x === 'string' && x.length > 0; });
-        f.dest_char_descs = (Array.isArray(raw.dest_char_descs) ? raw.dest_char_descs : [])
-            .filter(function (x) { return typeof x === 'string' && x.length > 0; });
+        if (raw.schema === SCHEMA_V2 && Array.isArray(raw.descGroups)) {
+            f.descGroups = raw.descGroups
+                .filter(function (g) { return g && typeof g.name === 'string' && g.name.length > 0; })
+                .map(function (g) {
+                    return { name: g.name, items: (Array.isArray(g.items) ? g.items : []).filter(function (x) { return typeof x === 'string' && x.length > 0; }) };
+                });
+            if (!f.descGroups.length) f.descGroups = DEFAULT_GROUPS();
+        } else {
+            /* v1 迁移 */
+            f.descGroups = DEFAULT_GROUPS();
+            (Array.isArray(raw.orig_char_descs) ? raw.orig_char_descs : []).forEach(function (w) {
+                if (typeof w === 'string' && w.length > 0 && f.descGroups[0].items.indexOf(w) < 0) f.descGroups[0].items.push(w);
+            });
+            (Array.isArray(raw.dest_char_descs) ? raw.dest_char_descs : []).forEach(function (w) {
+                if (typeof w === 'string' && w.length > 0 && f.descGroups[1].items.indexOf(w) < 0) f.descGroups[1].items.push(w);
+            });
+        }
         (Array.isArray(raw.cards) ? raw.cards : []).forEach(function (c) {
-            if (!c || typeof c.id !== 'string' || !c.id || typeof c.name !== 'string' || !c.name.trim()) return;
-            f.cards.push({ id: c.id, name: c.name.trim(), tag: typeof c.tag === 'string' ? c.tag : '' });
+            if (!c || typeof c.id !== 'string' || !c.id || typeof c.name !== 'string' || !c.name) return;
+            var card = { id: c.id, name: c.name, tag: typeof c.tag === 'string' ? c.tag : '' };
+            if (typeof c.img === 'string' && c.img.indexOf('data:image') === 0) card.img = c.img;
+            f.cards.push(card);
         });
         return f;
     }
 
-    function findCard(file, id) {
-        for (var i = 0; i < file.cards.length; i++) if (file.cards[i].id === id) return file.cards[i];
-        return null;
-    }
+    function normalize(raw) { return toV2(raw); }
 
-    function addCard(file, name, tag) {
-        var n = (name || '').trim();
-        if (!n) throw new Error('角色名不能为空');
-        file.cards.push({ id: newId(), name: n, tag: typeof tag === 'string' ? tag : '' });
-        return file.cards[file.cards.length - 1];
+    /* ---------- 卡 CRUD（与 v1 语义一致，去掉描述绑定） ---------- */
+    function addCard(f, name, tag) {
+        name = (name || '').trim();
+        if (!name) throw new Error('角色名不能为空');
+        if (f.cards.some(function (c) { return c.name === name; })) throw new Error('角色已存在：' + name);
+        var card = { id: newId(), name: name, tag: (tag || '').trim() };
+        f.cards.push(card);
+        return card;
     }
-
-    function removeCard(file, id) {
-        var before = file.cards.length;
-        file.cards = file.cards.filter(function (c) { return c.id !== id; });
-        return file.cards.length < before;
+    function removeCard(f, id) {
+        var before = f.cards.length;
+        f.cards = f.cards.filter(function (c) { return c.id !== id; });
+        return f.cards.length !== before;
     }
-
-    function renameCard(file, id, name) {
-        var c = findCard(file, id);
+    function renameCard(f, id, name) {
+        name = (name || '').trim();
+        if (!name) throw new Error('角色名不能为空');
+        if (f.cards.some(function (c) { return c.id !== id && c.name === name; })) throw new Error('角色已存在：' + name);
+        var c = f.cards.filter(function (x) { return x.id === id; })[0];
         if (!c) throw new Error('角色不存在');
-        var n = (name || '').trim();
-        if (!n) throw new Error('角色名不能为空');
-        c.name = n;
+        c.name = name;
         return c;
     }
-
-    function setTag(file, id, tag) {
-        var c = findCard(file, id);
+    function setCardTag(f, id, tag) {
+        var c = f.cards.filter(function (x) { return x.id === id; })[0];
         if (!c) throw new Error('角色不存在');
-        c.tag = typeof tag === 'string' ? tag : '';
+        c.tag = (tag || '').trim();
         return c;
     }
-
-    /* 描述列表：去重追加；删除按值 */
-    function addDesc(list, val) {
-        var v = (val || '').trim();
-        if (!v) throw new Error('描述不能为空');
-        if (list.indexOf(v) < 0) list.push(v);
-        return list;
+    function setCardImg(f, id, dataUrl) {
+        var c = f.cards.filter(function (x) { return x.id === id; })[0];
+        if (!c) throw new Error('角色不存在');
+        if (dataUrl && typeof dataUrl === 'string' && dataUrl.indexOf('data:image') === 0) c.img = dataUrl;
+        else delete c.img;
+        return c;
     }
-    function addOrigDesc(file, val) { return addDesc(file.orig_char_descs, val); }
-    function addDestDesc(file, val) { return addDesc(file.dest_char_descs, val); }
-    function removeOrigDesc(file, val) { file.orig_char_descs = file.orig_char_descs.filter(function (x) { return x !== val; }); }
-    function removeDestDesc(file, val) { file.dest_char_descs = file.dest_char_descs.filter(function (x) { return x !== val; }); }
+    function findByName(f, name) {
+        return f.cards.filter(function (c) { return c.name === name; })[0] || null;
+    }
 
-    /* 导入合并：容错（非法文件拒收返回 null）；按 id 去重（同名不同 id 保留）；描述并集去重 */
-    function importCards(file, rawText) {
-        var raw;
-        try { raw = JSON.parse(rawText); } catch (e) { return null; }
-        if (!isCardsFile(raw)) return null;
-        var inc = normalize(raw);
-        inc.cards.forEach(function (c) {
-            if (!findCard(file, c.id)) file.cards.push(c);
+    /* ---------- 词库 CRUD ---------- */
+    function ensureGroups(f) {
+        if (!Array.isArray(f.descGroups) || !f.descGroups.length) f.descGroups = DEFAULT_GROUPS();
+        return f;
+    }
+    function addGroup(f, name) {
+        name = (name || '').trim();
+        if (!name) throw new Error('分组名不能为空');
+        ensureGroups(f);
+        if (f.descGroups.some(function (g) { return g.name === name; })) throw new Error('分组已存在：' + name);
+        var g = { name: name, items: [] };
+        f.descGroups.push(g);
+        return g;
+    }
+    function removeGroup(f, name) {
+        ensureGroups(f);
+        var before = f.descGroups.length;
+        f.descGroups = f.descGroups.filter(function (g) { return g.name !== name; });
+        return f.descGroups.length !== before;
+    }
+    function renameGroup(f, oldName, newName) {
+        newName = (newName || '').trim();
+        if (!newName) throw new Error('分组名不能为空');
+        ensureGroups(f);
+        if (f.descGroups.some(function (g) { return g.name === newName && g.name !== oldName; })) throw new Error('分组已存在：' + newName);
+        var g = f.descGroups.filter(function (x) { return x.name === oldName; })[0];
+        if (!g) throw new Error('分组不存在');
+        g.name = newName;
+        return g;
+    }
+    function addWord(f, groupName, word) {
+        word = (word || '').trim();
+        if (!word) throw new Error('词汇不能为空');
+        ensureGroups(f);
+        var g = f.descGroups.filter(function (x) { return x.name === groupName; })[0];
+        if (!g) throw new Error('分组不存在');
+        if (g.items.indexOf(word) >= 0) throw new Error('词汇已存在');
+        g.items.push(word);
+        return g;
+    }
+    function removeWord(f, groupName, word) {
+        ensureGroups(f);
+        var g = f.descGroups.filter(function (x) { return x.name === groupName; })[0];
+        if (!g) return false;
+        var before = g.items.length;
+        g.items = g.items.filter(function (x) { return x !== word; });
+        return g.items.length !== before;
+    }
+    /* 打标页下拉数据源：某分组的词条（不存在返回 []） */
+    function wordsOf(f, groupName) {
+        ensureGroups(f);
+        var g = f.descGroups.filter(function (x) { return x.name === groupName; })[0];
+        return g ? g.items.slice() : [];
+    }
+
+    /* ---------- 导入/导出（JSON 与 zip 侧数据组包解包） ---------- */
+    function exportJson(f) {
+        return JSON.stringify(f, null, 2);
+    }
+    function importJson(text) {
+        var data;
+        try { data = JSON.parse(text); } catch (e) { throw new Error('JSON 解析失败'); }
+        if (!isCardsFile(data)) throw new Error('格式不符（需 charcards.v1/v2）');
+        return normalize(data);
+    }
+    /* zip 包数据组包：{ 'charcards.json': u8json, 'chars/<safe>.jpg': u8 } —— u8 由调用方转 */
+    function safeFileName(name) {
+        return String(name).replace(/[\\/:*?"<>|\s]+/g, '_');
+    }
+    function exportPlan(f) {
+        var cards = f.cards.map(function (c) {
+            var cc = { id: c.id, name: c.name, tag: c.tag || '' };
+            if (c.img) cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';
+            return cc;
         });
-        inc.orig_char_descs.forEach(function (d) { addDesc(file.orig_char_descs, d); });
-        inc.dest_char_descs.forEach(function (d) { addDesc(file.dest_char_descs, d); });
-        return file;
-    }
-
-    function exportCards(file) {
-        return JSON.stringify(normalize(file), null, 2);
-    }
-
-    /* 打标条目快照（导出/写 marks 用）：name/orig/dest 可编辑，cardId 稳定引用 */
-    function makeTagEntry(card, origDesc, destDesc) {
         return {
-            cardId: card.id,
-            name: card.name,
-            orig_char_desc: typeof origDesc === 'string' ? origDesc : '',
-            dest_char_desc: typeof destDesc === 'string' ? destDesc : '',
-            mask: null
+            json: { schema: SCHEMA_V2, descGroups: f.descGroups, cards: cards },
+            images: f.cards.filter(function (c) { return c.img; }).map(function (c) {
+                return { file: 'chars/' + safeFileName(c.name) + '.jpg', name: c.name, dataUrl: c.img };
+            })
         };
     }
+    /* zip 解包后的组装：jsonObj + imgMap{ '<角色名>.jpg': dataUrl } → v2 */
+    function importFromParts(jsonObj, imgMap) {
+        imgMap = imgMap || {};
+        /* imgFile 在 normalize 前回填成 img（normalize 只认 data:image 字段） */
+        var pre = jsonObj;
+        if (pre && Array.isArray(pre.cards)) {
+            pre.cards = pre.cards.map(function (c) {
+                var cc = Object.assign({}, c);
+                if (cc.imgFile && imgMap[cc.imgFile]) cc.img = imgMap[cc.imgFile];
+                else if (!cc.img && imgMap[(cc.name || '') + '.jpg']) cc.img = imgMap[cc.name + '.jpg'];
+                delete cc.imgFile;
+                return cc;
+            });
+        }
+        return normalize(pre);
+    }
 
-    var api = {
-        SCHEMA: SCHEMA,
-        emptyCards: emptyCards, isCardsFile: isCardsFile, normalize: normalize,
-        findCard: findCard, addCard: addCard, removeCard: removeCard,
-        renameCard: renameCard, setTag: setTag,
-        addOrigDesc: addOrigDesc, addDestDesc: addDestDesc,
-        removeOrigDesc: removeOrigDesc, removeDestDesc: removeDestDesc,
-        importCards: importCards, exportCards: exportCards, makeTagEntry: makeTagEntry
+    var CC = {
+        SCHEMA: SCHEMA_V2,
+        emptyCards: emptyCards,
+        isCardsFile: isCardsFile,
+        normalize: normalize,
+        toV2: toV2,
+        addCard: addCard,
+        removeCard: removeCard,
+        renameCard: renameCard,
+        setCardTag: setCardTag,
+        setCardImg: setCardImg,
+        findByName: findByName,
+        addGroup: addGroup,
+        removeGroup: removeGroup,
+        renameGroup: renameGroup,
+        addWord: addWord,
+        removeWord: removeWord,
+        wordsOf: wordsOf,
+        exportJson: exportJson,
+        importJson: importJson,
+        safeFileName: safeFileName,
+        exportPlan: exportPlan,
+        importFromParts: importFromParts,
+        /* v1 时代遗留 API 兼容（不再有独立描述列表操作） */
+        addOrigDesc: function () { throw new Error('v2：描述词请用词库分组 API（addWord）'); },
+        addDestDesc: function () { throw new Error('v2：描述词请用词库分组 API（addWord）'); },
+        removeOrigDesc: function () { throw new Error('v2：描述词请用词库分组 API（removeWord）'); },
+        removeDestDesc: function () { throw new Error('v2：描述词请用词库分组 API（removeWord）'); }
     };
-    global.__charcards = api;
-    if (typeof module !== 'undefined' && module.exports) module.exports = api;
-})(typeof window !== 'undefined' ? window : globalThis);
+
+    global.CC = CC;
+})(typeof window !== 'undefined' ? window : this);
