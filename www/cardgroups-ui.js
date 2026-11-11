@@ -46,9 +46,9 @@
     /* ---- 样式（v59 移动端规范：sheet 抽屉/大触控目标/卡片化） ---- */
     var css = document.createElement('style');
     css.textContent = [
-        '.cgm-sheet{position:fixed;inset:0;z-index:120;display:none;flex-direction:column;justify-content:flex-end}',
+        '.cgm-sheet{position:fixed;top:0;right:0;bottom:0;left:0;z-index:2000;display:none;flex-direction:column;justify-content:flex-end}',
         '.cgm-sheet.open{display:flex}',
-        '.cgm-mask{position:absolute;inset:0;background:rgba(0,0,0,.55)}',
+        '.cgm-mask{position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.55)}',
         '.cgm-card{position:relative;background:#0b0e14;border-radius:20px 20px 0 0;max-height:92vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}',
         '.cgm-grab{width:36px;height:4px;border-radius:2px;background:#2a3345;margin:10px auto 0}',
         '.cgm-head{display:flex;align-items:center;gap:8px;padding:10px 16px 12px;border-bottom:1px solid #2a3345}',
