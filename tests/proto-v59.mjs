@@ -73,7 +73,7 @@ try {
   await sleepMs(1200);
 
   /* A */
-  check('页面 title', (await ev('document.title')) === '角色卡库原型 r1');
+  check('页面 title', (await ev('document.title')) === '角色卡库原型 r2');
   check('卡组列表 2 组', (await ev('document.querySelectorAll(".grp").length')) === 2);
   check('组名渲染', (await ev('[...document.querySelectorAll(".grp-name")].map(e=>e.textContent).join(",")')) === '魔法少女,修仙');
 
@@ -84,14 +84,34 @@ try {
   check('组名回填', (await ev('document.getElementById("grpName").value')) === '魔法少女');
   check('3 张角色卡', (await ev('document.querySelectorAll("#cardList .card").length')) === 3);
   check('tag 渲染', (await ev('document.querySelector("#cardList .tag")?.textContent')) === '主角');
-  check('描述条数（原2+替2）', (await ev('document.querySelectorAll("#cardList .card")[0].querySelectorAll(".desc").length')) === 4);
+  /* r2：描述词解绑——卡片无 .desc；有 📖 词库按钮 */
+  check('卡片无描述列表（解绑）', (await ev('document.querySelectorAll("#cardList .card")[0].querySelectorAll(".desc").length')) === 0);
+  check('词库按钮存在', !!(await ev('document.getElementById("btnWords")')));
 
   /* C: 数据层增描述 → 重开 sheet 验证持久化 */
   await ev('document.getElementById("btnGrpDone").click()'); await sleepMs(150);
-  await ev('(function(){ var raw=localStorage.getItem("cc-proto"); var g=JSON.parse(raw)||{schema:"x",groups:[{id:"g1",name:"魔法少女",cards:[{name:"小圆",tag:"主角",orig:[],dest:[]},{name:"沙耶香",tag:"主角",orig:[],dest:[]},{name:"丘比",tag:"使魔",orig:[],dest:[]}]},{id:"g2",name:"修仙",cards:[]}],video:{using:"g1",project:"demo"}}; if(!g.groups) g.groups=[]; g.groups[0].cards[0].orig.push("测试描述"); localStorage.setItem("cc-proto", JSON.stringify(g)); })()');
+  check('跳过 localStorage 注入（r2 改词库断言，无需注入）', true);
   await ev('document.querySelectorAll(".grp .edit")[0].click()'); await sleepMs(200);
   check('页面内存 DB.groups 存在（2 组）', (await ev('DB.groups.length')) === 2);
 check('localStorage 注入不影响内存（设计如此）', (await ev('JSON.parse(localStorage.getItem("cc-proto")||"null")===null || !!JSON.parse(localStorage.getItem("cc-proto")).groups')) === true);
+
+  /* r2：词库 sheet */
+  check('词库 sheet 初始关闭', !(await ev('document.getElementById("shWords").classList.contains("open")')));
+  await ev('document.getElementById("btnWords").click()'); await sleepMs(250);
+  check('词库 sheet 打开', await ev('document.getElementById("shWords").classList.contains("open")'));
+  check('默认两组渲染', (await ev('document.querySelectorAll("#wordList .card").length')) === 2);
+  check('默认组名', (await ev('[...document.querySelectorAll("#wordList .cname")].map(e=>e.textContent).join(",")')) === '原角色描述,替换角色描述');
+  check('g1 词数渲染（4+4=8 chips）', (await ev('document.querySelectorAll("#wordList .desc").length')) === 8);
+  /* 组内加词（页面内调数据层等价于点添加后 save+render） */
+  await ev('(function(){ var g=DB.groups.filter(function(x){return x.id===editingId;})[0]; g.words[0].items.push("黑长直"); save(); renderWords(); })()');
+  check('加词后 9 chips', (await ev('document.querySelectorAll("#wordList .desc").length')) === 9);
+  /* 新建分组 */
+  await ev('(function(){ document.getElementById("newGroupName").value="发型"; })()');
+  await ev('document.getElementById("btnAddGroup").click()'); await sleepMs(200);
+  check('新建分组后 3 组', (await ev('document.querySelectorAll("#wordList .card").length')) === 3);
+  check('新组名渲染', (await ev('[...document.querySelectorAll("#wordList .cname")].map(e=>e.textContent).join(",")')) === '原角色描述,替换角色描述,发型');
+  await ev('document.querySelector("[data-close3]").click()'); await sleepMs(150);
+  check('词库 sheet 关闭', !(await ev('document.getElementById("shWords").classList.contains("open")')));
   await ev('document.getElementById("btnGrpDone").click()'); await sleepMs(150);
 
   /* D: 工程视角选库 */

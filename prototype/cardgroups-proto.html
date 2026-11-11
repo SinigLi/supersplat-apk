@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>角色卡库原型 r1</title>
+<title>角色卡库原型 r2</title>
 <style>
 :root{
   --bg:#0b0e14; --card:#161b26; --card2:#1d2432; --line:#2a3345;
@@ -117,6 +117,7 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,'PingFang S
       <div class="sheet-grab"></div>
       <div class="sheet-head">
         <input id="grpName" style="flex:1;background:none;border:none;color:var(--txt);font-size:16px;font-weight:700;min-width:0" placeholder="卡组名称">
+        <button class="x" id="btnWords" title="描述词库" style="background:var(--card2)">📖</button>
         <button class="x" data-close>✕</button>
       </div>
       <div class="sheet-body">
@@ -131,6 +132,21 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,'PingFang S
         <button class="btn ghost" id="btnGrpExport">导出 JSON</button>
         <button class="btn ghost" id="btnGrpImport">导入</button>
         <button class="btn primary" id="btnGrpDone">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 视图D：描述词库（r2 新增） ============ -->
+  <div class="sheet" id="shWords">
+    <div class="sheet-mask" data-close3></div>
+    <div class="sheet-card">
+      <div class="sheet-grab"></div>
+      <div class="sheet-head"><div class="ttl">📖 描述词库</div><button class="x" data-close3>✕</button></div>
+      <div class="sheet-body"><div id="wordList"></div>
+        <div class="addrow" style="margin-top:10px">
+          <input id="newGroupName" placeholder="新分组名">
+          <button id="btnAddGroup">新建分组</button>
+        </div>
       </div>
     </div>
   </div>
@@ -154,14 +170,23 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,'PingFang S
 var DB = {
   groups: [
     { id:'g1', name:'魔法少女', cards:[
-        {name:'小圆', tag:'主角', orig:['粉发少女','校服'], dest:['魔法少女装','粉色披风']},
-        {name:'沙耶香', tag:'主角', orig:['蓝发少女'], dest:['骑士装']},
-        {name:'丘比', tag:'使魔', orig:['白色生物'], dest:['黑色丘比']},
-    ]},
+        {name:'小圆', tag:'主角'},
+        {name:'沙耶香', tag:'主角'},
+        {name:'丘比', tag:'使魔'},
+    ],
+      /* v59 r2：描述词库（组级，两段式分组）；默认两组 */
+      words: [
+        {name:'原角色描述', items:['粉发少女','校服','蓝发少女','白色生物']},
+        {name:'替换角色描述', items:['魔法少女装','粉色披风','骑士装','黑色丘比']},
+      ]},
     { id:'g2', name:'修仙', cards:[
-        {name:'林凡', tag:'男主', orig:['灰袍少年'], dest:['金丹修士']},
-        {name:'苏瑶', tag:'女主', orig:['白衣仙子'], dest:['元婴圣女']},
-    ]},
+        {name:'林凡', tag:'男主'},
+        {name:'苏瑶', tag:'女主'},
+    ],
+      words: [
+        {name:'原角色描述', items:['灰袍少年','白衣仙子']},
+        {name:'替换角色描述', items:['金丹修士','元婴圣女']},
+      ]},
   ],
   video: { project:'魔法少女小圆-第八集', using:'g1' }
 };
@@ -184,7 +209,7 @@ function renderGroups(){
     row.innerHTML='<div class="grp-ico">🎭</div>'+
       '<div class="grp-main"><div class="grp-name">'+g.name+'</div>'+
       '<div class="grp-meta"><b>'+g.cards.length+'</b> 个角色 · '+
-      g.cards.reduce(function(n,c){return n+c.orig.length+c.dest.length;},0)+' 条描述</div></div>'+
+      (g.words||[]).reduce(function(n,w){return n+w.items.length;},0)+' 个描述词</div></div>'+
       '<div class="grp-act"><button class="chip edit">编辑</button></div>';
     row.querySelector('.edit').addEventListener('click', function(e){ e.stopPropagation(); openGroupEdit(g.id); });
     row.addEventListener('click', function(){ openGroupEdit(g.id); });
@@ -207,20 +232,11 @@ function renderCards(g){
     var h='<div class="card-head"><div class="avatar">'+c.name.charAt(0)+'</div>'+
       '<div class="cname">'+c.name+'</div>'+(c.tag?'<span class="tag">'+c.tag+'</span>':'')+
       '<button class="del">删除</button></div>';
-    h+='<div class="sect">原角色描述</div>';
-    c.orig.forEach(function(d,di){ h+='<div class="desc"><span class="d">'+d+'</span><button class="rm" data-t="o" data-i="'+di+'">✕</button></div>'; });
-    h+='<div class="sect">替换角色描述</div>';
-    c.dest.forEach(function(d,di){ h+='<div class="desc"><span class="d">'+d+'</span><button class="rm" data-t="d" data-i="'+di+'">✕</button></div>'; });
+    /* v59 r2：描述词解绑到卡组词库，卡片只留名称/标签 */
     card.innerHTML=h;
     card.querySelector('.del').addEventListener('click', function(){
       if(!confirm('删除角色「'+c.name+'」？')) return;
       g.cards.splice(ci,1); save(); renderCards(g); renderGroups(); toast('已删除 '+c.name);
-    });
-    card.querySelectorAll('.rm').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var arr = btn.dataset.t==='o' ? c.orig : c.dest;
-        arr.splice(+btn.dataset.i,1); save(); renderCards(g); renderGroups();
-      });
     });
     v.appendChild(card);
   });
@@ -252,6 +268,65 @@ function renderPick(){
 }
 function closePick(){ document.getElementById('shPick').classList.remove('open'); }
 
+/* ---- v59 r2：描述词库 ---- */
+var wordsGroupId=null;
+function openWords(id){
+  wordsGroupId=id;
+  renderWords();
+  document.getElementById('shWords').classList.add('open');
+}
+function renderWords(){
+  var g=DB.groups.filter(function(x){return x.id===wordsGroupId;})[0]; if(!g) return;
+  g.words=g.words||[{name:'原角色描述',items:[]},{name:'替换角色描述',items:[]}];
+  var v=document.getElementById('wordList'); v.innerHTML='';
+  g.words.forEach(function(grp, gi){
+    var box=document.createElement('div'); box.className='card';
+    var h='<div class="card-head"><div class="cname" style="color:var(--acc2)">'+grp.name+'</div>'+
+      '<button class="del" data-gi="'+gi+'">删组</button></div>';
+    if(!grp.items.length) h+='<div class="demo-note">（暂无词汇）</div>';
+    grp.items.forEach(function(w, wi){
+      h+='<div class="desc"><span class="d">'+w+'</span><button class="rm" data-gi="'+gi+'" data-wi="'+wi+'">✕</button></div>';
+    });
+    h+='<div class="addrow"><input placeholder="新词汇" data-in="'+gi+'"><button data-add="'+gi+'">添加</button></div>';
+    box.innerHTML=h;
+    box.querySelector('.del').addEventListener('click', function(){
+      if(!confirm('删除分组「'+grp.name+'」及其 '+grp.items.length+' 个词？')) return;
+      g.words.splice(gi,1); save(); renderWords(); toast('已删除分组');
+    });
+    box.querySelectorAll('.rm').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        g.words[+btn.dataset.gi].items.splice(+btn.dataset.wi,1);
+        save(); renderWords();
+      });
+    });
+    box.querySelectorAll('[data-add]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var inp=box.querySelector('[data-in="'+btn.dataset.add+'"]');
+        var w=(inp.value||'').trim(); if(!w){ toast('先填词汇',true); return; }
+        g.words[+btn.dataset.add].items.push(w);
+        save(); renderWords();
+      });
+    });
+    v.appendChild(box);
+  });
+}
+document.getElementById('btnAddGroup').addEventListener('click', function(){
+  var g=DB.groups.filter(function(x){return x.id===wordsGroupId;})[0]; if(!g) return;
+  var nm=(document.getElementById('newGroupName').value||'').trim();
+  if(!nm){ toast('先填分组名',true); return; }
+  if(g.words.some(function(x){return x.name===nm;})){ toast('分组已存在',true); return; }
+  g.words.push({name:nm, items:[]});
+  save(); renderWords();
+  document.getElementById('newGroupName').value='';
+  toast('已新建分组 '+nm);
+});
+document.getElementById('btnWords').addEventListener('click', function(){
+  openWords(editingId);
+});
+document.querySelectorAll('[data-close3]').forEach(function(elm){
+  elm.addEventListener('click', function(){ document.getElementById('shWords').classList.remove('open'); });
+});
+
 /* ---- 事件绑定 ---- */
 document.getElementById('btnNewGroup').addEventListener('click', function(){
   var nm=prompt('新卡组名称：'); if(!nm) return;
@@ -282,7 +357,7 @@ document.getElementById('btnGrpDone').addEventListener('click', function(){
 });
 document.getElementById('btnGrpExport').addEventListener('click', function(){
   var g=DB.groups.filter(function(x){return x.id===editingId;})[0]; if(!g) return;
-  var blob=new Blob([JSON.stringify({schema:'moyutai.charcards.v1', orig_char_descs:[], dest_char_descs:[], cards:g.cards},null,2)],{type:'application/json'});
+  var blob=new Blob([JSON.stringify({schema:'moyutai.charcards.v2', descGroups:g.words, cards:g.cards, /* v1 兼容字段 */ orig_char_descs:(g.words[0]||{items:[]}).items.slice(), dest_char_descs:(g.words[1]||{items:[]}).items.slice()},null,2)],{type:'application/json'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='charcards-'+g.name+'.json'; a.click();
   toast('已导出 '+g.name+'.json');
 });
@@ -294,12 +369,16 @@ document.getElementById('btnGrpImport').addEventListener('click', function(){
     rd.onload=function(){
       try{
         var data=JSON.parse(rd.result);
-        if(data.schema!=='moyutai.charcards.v1'||!Array.isArray(data.cards)) throw new Error('格式不符');
+        if(!Array.isArray(data.cards) || !/charcards\.v[12]$/.test(data.schema||'')) throw new Error('格式不符');
         var g=DB.groups.filter(function(x){return x.id===editingId;})[0];
         /* id 无法对上（原型简化为 name 合并） */
+        /* v59 r2：描述词解绑——旧格式 orig_char_descs/dest_char_descs 并入词库默认组 */
+        g.words=g.words||[{name:'原角色描述',items:[]},{name:'替换角色描述',items:[]}];
+        (data.orig_char_descs||[]).forEach(function(w){ if(g.words[0].items.indexOf(w)<0) g.words[0].items.push(w); });
+        (data.dest_char_descs||[]).forEach(function(w){ if(g.words[1].items.indexOf(w)<0) g.words[1].items.push(w); });
         data.cards.forEach(function(nc){
           if(!g.cards.some(function(c){return c.name===nc.name;}))
-            g.cards.push({name:nc.name, tag:nc.tag||'', orig:nc.orig_char_desc? [nc.orig_char_desc]:(nc.orig||[]), dest:nc.dest_char_desc? [nc.dest_char_desc]:(nc.dest||[])});
+            g.cards.push({name:nc.name, tag:nc.tag||''});
         });
         save(); renderCards(g); renderGroups(); toast('已合并导入');
       }catch(e){ toast('导入失败：'+e.message, true); }
