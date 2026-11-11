@@ -73,7 +73,7 @@ try {
   await sleepMs(1200);
 
   /* A */
-  check('页面 title', (await ev('document.title')) === '角色卡库原型 r2');
+  check('页面 title', (await ev('document.title')) === '角色卡库原型 r3');
   check('卡组列表 2 组', (await ev('document.querySelectorAll(".grp").length')) === 2);
   check('组名渲染', (await ev('[...document.querySelectorAll(".grp-name")].map(e=>e.textContent).join(",")')) === '魔法少女,修仙');
 
@@ -87,6 +87,12 @@ try {
   /* r2：描述词解绑——卡片无 .desc；有 📖 词库按钮 */
   check('卡片无描述列表（解绑）', (await ev('document.querySelectorAll("#cardList .card")[0].querySelectorAll(".desc").length')) === 0);
   check('词库按钮存在', !!(await ev('document.getElementById("btnWords")')));
+  /* r3：角色头像图片 + zip 打包导入导出 */
+  check('头像渲染结构（avatar-wrap/cam）', !!(await ev('document.querySelector("#cardList .card .avatar-cam")')));
+  check('fflate 引入', (await ev('!!window.fflate')) === true);
+  const htmlSrc = await (await fetch('http://127.0.0.1:4196/prototype/cardgroups-proto.html')).text();
+  check('zip 导出函数存在', htmlSrc.includes('function zipOut') || htmlSrc.includes('fflate.zip'));
+  check('zip 导入分支存在', htmlSrc.includes('function importZip') && htmlSrc.includes('fflate.unzip') && htmlSrc.includes('function applyImport'));
 
   /* C: 数据层增描述 → 重开 sheet 验证持久化 */
   await ev('document.getElementById("btnGrpDone").click()'); await sleepMs(150);
