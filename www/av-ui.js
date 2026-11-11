@@ -1558,7 +1558,10 @@ function hasMerge(seg) {
         var doSwitch = function () {
             S.meta.charGroupRef = gid;
             L.saveMeta(S.meta);
+            /* v59h：首次选库（对话框未开）→ 切换后直接进管理对话框 */
+            if (!charDlgEl) { buildCharDialog(); }
             refreshCharDialog();
+            charDlgEl.classList.add('open');
             if (missing.length) {
                 toast('已切换，但缺少角色：' + missing.join('、'), true);
             } else if (oldNames.length) {
@@ -1794,6 +1797,11 @@ function hasMerge(seg) {
     }
 
     function openCharDialog() {
+        /* v59h：未选角色库 → 第一动作 = 选角色组使用；已选 → 管理对话框 */
+        if (!(S.meta && S.meta.charGroupRef) && window.CCG && window.CCG.list().length) {
+            openGroupPicker();
+            return;
+        }
         if (!charDlgEl) buildCharDialog();
         refreshCharDialog();
         charDlgEl.classList.add('open');
