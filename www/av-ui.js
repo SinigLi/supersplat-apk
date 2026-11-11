@@ -2085,12 +2085,28 @@ function hasMerge(seg) {
             var f = S.files.filter(function (x) { return x.label === ref.seg; })[0];
             if (!f) continue;
             var frame = L.frameAt(ref.at, effFps());
-            var need = (ref.chars || []).filter(function (c) { return c.mask && String(c.mask).indexOf('pending:') === 0; });
+            /* v57：pending（本会话新打标）之外，已落盘 mask 也重新栅格化——
+             * 极性 v56b 换口径后旧 PNG 全部作废；从 mask 路径解析 cardId，
+             * 草稿层存在才重打（层被清的保留旧引用）。 */
+            var need = (ref.chars || []).filter(function (c) {
+                if (!c.mask) return false;
+                var m = String(c.mask);
+                if (m.indexOf('pending:') === 0) return true;
+                /* 已落盘的：草稿层还在才重打（层被清的保留旧引用，防覆盖成黑图） */
+                if (m.indexOf('masks/') === 0) {
+                    var cid = m.split('/').pop().split('_').pop().replace(/\.png$/, '');
+                    return loadTagMaskLayers(ref, cid).some(function (l) { return l.strokes && l.strokes.length; });
+                }
+                return false;
+            });
             if (!need.length) continue;
             var frameCanvas = await captureTagFrame(f.name, frame, effFps());
             for (var ci = 0; ci < need.length; ci++) {
                 var ent = need[ci];
-                var cardId = String(ent.mask).slice('pending:'.length);
+                var entMask = String(ent.mask);
+                var cardId = entMask.indexOf('pending:') === 0
+                    ? entMask.slice('pending:'.length)
+                    : entMask.split('/').pop().split('_').pop().replace(/\.png$/, '');
                 var canvas = imgMod.renderTagMaskCanvas(
                     loadTagMaskLayers(ref, cardId), frameCanvas.width, frameCanvas.height, ent.name);
                 var u8 = imgMod.canvasToPngU8(canvas);
