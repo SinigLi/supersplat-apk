@@ -127,6 +127,13 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v54 | **最后一笔丢失修复**（debug_19：strokes=2 从未落盘）：tagMode 下 applyAndPush 即画即存 `saveTagStrokes()` + finishTag 确认前强制落盘，双保险 |
 | v55/v55b | 恢复对齐第一个遮罩层（activeId+下拉）；全部停用确认=移除该点位 char_ref（角标消失、分镜打点保留、双 key 草稿清除） |
 | v55c | 下拉/层高亮同步终修：根因 = openTagMode 收尾「默认激活第一个启用角色」无条件覆盖恢复态 + switchTagLayer 从不回写下拉。改为**单一事实源 activeId**：切层统一回写下拉，收尾仅无恢复层时才默认激活。老板 00:21 真机确认 |
+| v56 | 角色打标遮罩导出极性修复第一版（黑底+抠洞，未生效一半） |
+| v56b | 极性修复完成：离屏白形+单次 destination-out 抠洞（老板 01:40 包实锤） |
+| v57 | 导出时旧遮罩自动重打（草稿层存在才重打，防黑图）；导出恢复带 zip |
+| v57c | 空笔画层不导出遮罩（防纯黑图混入 zip） |
+| v58 | 全局角色卡库+工程引用切换（缺角色警告）；遮罩导出 masks/段/帧号/角色名.png |
+| v58b | 切换弹层乱码标签修复 |
+| v59 | 角色卡系统 v2（原型 r3 实装）：descGroups 词库两段式分组、头像图片、zip 导入导出（chars/ 文件夹）、开始页/视频页统一移动端 sheet UI；打标描述下拉读词库分组；旧 v1 只读迁移不反向兼容 |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
