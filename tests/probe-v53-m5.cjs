@@ -24,7 +24,7 @@ check('renderTagMaskCanvas 不依赖 S（参数化 layers/w/h）', img.includes(
 check('v56b 黑底抠洞（离屏白形+destination-out）', img.includes('drawStrokes(og, lay.strokes)') && /globalCompositeOperation\s*=\s*'destination-out'[\s\S]{0,60}g\.drawImage\(off, 0, 0\)/.test(img));
 check('av-ui resolveTagMasks 存在', av.includes('async function resolveTagMasks()'));
 check('pending: 前缀识别（v57 过滤器形态）', av.includes("m.indexOf('pending:') === 0"));
-check('zip 路径规则 masks/<seg>/<frame>_<cardId>.png', av.includes(`'masks/' + ref.seg + '/' + frame + '_' + cardId + '.png'`));
+check('zip 路径规则 masks/<seg>/<frame>/<角色名>.png（v58）', av.includes("'masks/' + ref.seg + '/' + frame + '/' + safeName + '.png'"));
 check('tagmask key 与 img-ui 同规则（ref.id）', av.includes(`'av-' + S.project + '-tagmask-' + ref.id`));
 check('putContentFile 内容寻址备份', av.includes('putContentFile(pjMod.pathsFor(S.project),'));
 check('exportJson 转 async', av.includes('async function exportJson()'));

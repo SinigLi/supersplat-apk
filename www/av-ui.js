@@ -1529,6 +1529,50 @@ function hasMerge(seg) {
     /* ---------- 位置显示 + 按钮状态 ---------- */
 
     /* v53c：🎭 角色卡 chip 工厂（renderPos 每次重绘 posEl，chip 需重挂） */
+    /* v58：角色卡数据源 = 全局卡组引用（meta.charGroupRef），未引用回退旧工程键 */
+    function curCards() {
+        var ref = S.meta && S.meta.charGroupRef;
+        if (ref && window.CCG) {
+            var d = window.CCG.get(ref);
+            if (d) return d;
+        }
+        return L.loadChars(S.project);
+    }
+    function writeCards(cards) {
+        var ref = S.meta && S.meta.charGroupRef;
+        if (ref && window.CCG) { window.CCG.saveData(ref, cards); return; }
+        L.saveChars(S.project, cards);
+    }
+    function switchCharGroup(gid) {
+        var old = curCards();
+        var data = window.CCG.get(gid);
+        if (!data) { toast('卡组不存在', true); return; }
+        var oldNames = [];
+        (S.marks.marks || []).forEach(function (m) {
+            var collect = function (cs) { (cs || []).forEach(function (c) { if (c.name && oldNames.indexOf(c.name) < 0) oldNames.push(c.name); }); };
+            collect(m.chars); (m.points || []).forEach(function (p) { collect(p.chars); });
+        });
+        var missing = oldNames.filter(function (nm) {
+            return !data.cards.some(function (c) { return c.name === nm; });
+        });
+        var doSwitch = function () {
+            S.meta.charGroupRef = gid;
+            L.saveMeta(S.meta);
+            refreshCharDialog();
+            if (missing.length) {
+                toast('已切换，但缺少角色：' + missing.join('、'), true);
+            } else if (oldNames.length) {
+                toast('切换角色库成功');
+            } else {
+                toast('已切换卡组：' + (window.CCG.nameOf(gid) || ''));
+            }
+        };
+        if (missing.length) {
+            if (window.confirm) {
+                if (window.confirm('新卡组缺少以下角色：\n' + missing.join('、') + '\n\n已有打标记录会保留，但无法继续编辑它们的描述。仍要切换吗？')) doSwitch();
+            } else { doSwitch(); }
+        } else { doSwitch(); }
+    }
     function mkCharChip() {
         var chip = el('span', 'av-fps-chip av-char-chip', '🎭 角色卡');
         chip.addEventListener('click', function (e) {
@@ -1708,7 +1752,7 @@ function hasMerge(seg) {
     function openTagEditor() {
         if (!S.project) { toast('未打开工程'); return; }
         dlog('tag: openTagEditor project=' + S.project);
-        var cards = L.loadChars(S.project);
+        var cards = curCards();
         if (!cards.cards.length) { toast('先设定角色卡'); openCharDialog(); return; }
         var tgt = resolveTagTarget();
         if (!tgt.ok) { toast(tgt.why); return; }
@@ -1756,6 +1800,43 @@ function hasMerge(seg) {
     }
     function closeCharDialog() { if (charDlgEl) charDlgEl.classList.remove('open'); }
 
+    /* v58：卡组选择弹层（列出全局卡组，点选切换） */
+    function openGroupPicker() {
+        if (!window.CCG) { toast('卡组模块未加载', true); return; }
+        var groups = window.CCG.list();
+        var mask = el('div', 'av-chardlg open');
+        mask.innerHTML =
+            '<div class="av-chardlg-mask"></div>' +
+            '<div class="av-chardlg-card">' +
+            '<div class="av-chardlg-title">馃摉 閫夋嫨瑙掕壊搴?/div>' +
+            '<div class="av-grplist"></div>' +
+            '<div class="av-chardlg-row"><button class="av-chardlg-btn av-grp-new">鏂板缓绌虹粍</button><button class="av-chardlg-btn av-closedlg2">鍏抽棴</button></div>' +
+            '</div></div>';
+        document.body.appendChild(mask);
+        var list = mask.querySelector('.av-grplist');
+        if (!groups.length) list.innerHTML = '<div class="av-chardlg-empty">锛堟殏鏃犲叏灞€鍗＄粍锛岀偣鏂板缓绌虹粍鎴栧厛鎵撳紑鏌愬伐绋嬭嚜鍔ㄨ縫绉烇級</div>';
+        var curRef = S.meta && S.meta.charGroupRef;
+        groups.forEach(function (g) {
+            var row = el('div', 'av-grp-item' + (g.id === curRef ? ' av-grp-cur' : ''));
+            row.appendChild(el('span', 'av-grp-name', g.name + ' · ' + (g.data.cards || []).length + ' 个角色'));
+            row.addEventListener('click', function () {
+                document.body.removeChild(mask);
+                switchCharGroup(g.id);
+            });
+            list.appendChild(row);
+        });
+        mask.querySelector('.av-grp-new').addEventListener('click', function () {
+            var nm = window.prompt ? window.prompt('鏂板崱缁勫悕绉帮細') : null;
+            if (!nm) return;
+            var r = window.CCG.create(nm.trim());
+            if (!r) { toast('鍚嶅瓧宸茶閽?'); return; }
+            document.body.removeChild(mask);
+            switchCharGroup(r.id);
+        });
+        mask.querySelector('.av-closedlg2').addEventListener('click', function () { document.body.removeChild(mask); });
+        mask.querySelector('.av-chardlg-mask').addEventListener('click', function () { document.body.removeChild(mask); });
+    }
+
     function buildCharDialog() {
         charDlgEl = el('div', 'av-chardlg');
         charDlgEl.innerHTML =
@@ -1773,6 +1854,7 @@ function hasMerge(seg) {
             '<div class="av-chardlg-row"><input class="av-chardlg-in av-newdest" placeholder="新替换角色描述"><button class="av-chardlg-btn av-adddest">添加</button></div>' +
             '<div class="av-chardlg-foot">' +
             '<button class="av-chardlg-btn av-loadcards">📁 加载本地角色卡</button>' +
+            '<button class="av-chardlg-btn av-switchgrp">馃摉 鍒囨崲瑙掕壊搴?/button>' +
             '<button class="av-chardlg-btn av-exportcards">导出角色卡</button>' +
             '<button class="av-chardlg-btn av-closedlg">取消</button>' +
             '</div></div>';
@@ -1781,29 +1863,30 @@ function hasMerge(seg) {
         charDlgEl.querySelector('.av-closedlg').addEventListener('click', closeCharDialog);
         charDlgEl.querySelector('.av-addchar').addEventListener('click', function () {
             var inp = charDlgEl.querySelector('.av-newchar');
-            var cards = L.loadChars(S.project);
-            try { CC.addCard(cards, inp.value); L.saveChars(S.project, cards); refreshCharDialog(); inp.value = ''; }
+            var cards = curCards();
+            try { CC.addCard(cards, inp.value); writeCards(cards); refreshCharDialog(); inp.value = ''; }
             catch (e) { toast(e.message); }
         });
         charDlgEl.querySelector('.av-addorig').addEventListener('click', function () {
             var inp = charDlgEl.querySelector('.av-neworig');
-            var cards = L.loadChars(S.project);
-            try { CC.addOrigDesc(cards, inp.value); L.saveChars(S.project, cards); refreshCharDialog(); inp.value = ''; }
+            var cards = curCards();
+            try { CC.addOrigDesc(cards, inp.value); writeCards(cards); refreshCharDialog(); inp.value = ''; }
             catch (e) { toast(e.message); }
         });
         charDlgEl.querySelector('.av-adddest').addEventListener('click', function () {
             var inp = charDlgEl.querySelector('.av-newdest');
-            var cards = L.loadChars(S.project);
-            try { CC.addDestDesc(cards, inp.value); L.saveChars(S.project, cards); refreshCharDialog(); inp.value = ''; }
+            var cards = curCards();
+            try { CC.addDestDesc(cards, inp.value); writeCards(cards); refreshCharDialog(); inp.value = ''; }
             catch (e) { toast(e.message); }
         });
         charDlgEl.querySelector('.av-exportcards').addEventListener('click', exportCharCards);
         charDlgEl.querySelector('.av-loadcards').addEventListener('click', importCharCards);
+        charDlgEl.querySelector('.av-switchgrp').addEventListener('click', openGroupPicker);
     }
 
     function refreshCharDialog() {
         if (!charDlgEl) return;
-        var cards = L.loadChars(S.project);
+        var cards = curCards();
         var mk = function (sel, items, kind) {
             var box = charDlgEl.querySelector(sel);
             box.innerHTML = '';
@@ -1813,11 +1896,11 @@ function hasMerge(seg) {
                 row.appendChild(el('span', 'av-chardlg-txt', typeof it === 'string' ? it : (it.name + (it.tag ? ' · ' + it.tag : ''))));
                 var del = el('button', 'av-chardlg-del', '✕');
                 del.addEventListener('click', function () {
-                    var c2 = L.loadChars(S.project);
+                    var c2 = curCards();
                     if (kind === 'orig') CC.removeOrigDesc(c2, it);
                     else if (kind === 'dest') CC.removeDestDesc(c2, it);
                     else CC.removeCard(c2, it.id);
-                    L.saveChars(S.project, c2);
+                    writeCards(c2);
                     refreshCharDialog();
                 });
                 row.appendChild(del);
@@ -1831,7 +1914,7 @@ function hasMerge(seg) {
 
     function exportCharCards() {
         if (!S.project) { toast('未打开工程'); return; }
-        var json = CC.exportCards(L.loadChars(S.project));
+        var json = CC.exportCards(curCards());
         var name = 'charcards-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '.json';
         var sp = window.MediaServer;
         if (sp && sp.share) {
@@ -1850,10 +1933,10 @@ function hasMerge(seg) {
         if (!(sp && sp.pickCsv)) { toast('原生文件选择不可用'); return; }
         sp.pickCsv().then(function (r) {
             if (!r || !r.text) { toast('未选择文件'); return; }
-            var cards = L.loadChars(S.project);
+            var cards = curCards();
             var res = CC.importCards(cards, r.text);
             if (!res) { toast('角色卡格式无效（需要 moyutai.charcards.v1）', true); return; }
-            L.saveChars(S.project, cards);
+            writeCards(cards);
             refreshCharDialog();
             toast('已导入，现有 ' + cards.cards.length + ' 个角色');
         }).catch(function () { toast('读取失败', true); });
@@ -2094,8 +2177,11 @@ function hasMerge(seg) {
                 if (m.indexOf('pending:') === 0) return true;
                 /* 已落盘的：草稿层还在才重打（层被清的保留旧引用，防覆盖成黑图） */
                 if (m.indexOf('masks/') === 0) {
-                    var cid = m.split('/').pop().split('_').pop().replace(/\.png$/, '');
-                    return loadTagMaskLayers(ref, cid).some(function (l) { return l.strokes && l.strokes.length; });
+                    /* v58：文件名=角色名（可含中文），卡 id 从 name 反查；找不到卡则要求任意层有笔画 */
+                    var nm = m.split('/').pop().replace(/\.png$/, '');
+                    var card = (curCards().cards || []).filter(function (c) { return c.name === nm || cardIdOfName(nm) === c.id; })[0];
+                    var layers = card ? loadTagMaskLayers(ref, card.id) : loadTagMaskLayersAnyName(ref, nm);
+                    return layers.some(function (l) { return l.strokes && l.strokes.length; });
                 }
                 return false;
             });
@@ -2106,7 +2192,7 @@ function hasMerge(seg) {
                 var entMask = String(ent.mask);
                 var cardId = entMask.indexOf('pending:') === 0
                     ? entMask.slice('pending:'.length)
-                    : entMask.split('/').pop().split('_').pop().replace(/\.png$/, '');
+                    : (cardIdOfName(ent.name) || ent.name);
                 var layersForCard = loadTagMaskLayers(ref, cardId);
                 var canvas = imgMod.renderTagMaskCanvas(
                     layersForCard, frameCanvas.width, frameCanvas.height, ent.name);
@@ -2119,7 +2205,9 @@ function hasMerge(seg) {
                     continue;
                 }
                 var u8 = imgMod.canvasToPngU8(canvas);
-                var path = 'masks/' + ref.seg + '/' + frame + '_' + cardId + '.png';
+                /* v58：帧号做目录，文件名 = 纯角色名（重名不可能——同段同帧位同角色只有一层） */
+                var safeName = String(ent.name).replace(/[\\/:*?"<>|\s]+/g, '_');
+                var path = 'masks/' + ref.seg + '/' + frame + '/' + safeName + '.png';
                 PNG_BY_PATH[path] = u8;
                 ent.mask = path;
                 count++;
@@ -2145,6 +2233,28 @@ function hasMerge(seg) {
                 if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) return o.layers;
             }
         } catch (e) { /* */ }
+        return [];
+    }
+
+    /* v58：名字 → 卡 id（当前引用卡组） */
+    function cardIdOfName(name) {
+        var c = (curCards().cards || []).filter(function (x) { return x.name === name; })[0];
+        return c ? c.id : null;
+    }
+    /* v58：按层名（角色名）找 tagmask 草稿（含旧 cardId 键兼容） */
+    function loadTagMaskLayersAnyName(ref, name) {
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('av-' + S.project + '-tagmask-') === 0) keys.push(k);
+        }
+        for (var j = 0; j < keys.length; j++) {
+            try {
+                var o = JSON.parse(localStorage.getItem(keys[j]));
+                if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers) &&
+                    o.layers.some(function (l) { return l.name === name && l.strokes && l.strokes.length; })) return o.layers;
+            } catch (e) { /* skip */ }
+        }
         return [];
     }
 

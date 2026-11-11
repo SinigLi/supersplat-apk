@@ -45,6 +45,10 @@
             if (window.__extract) window.__extract.open();
         });
         head.appendChild(extBtn);
+        // v58：全局角色卡库入口（解压旁）
+        var ccBtn = el('button', 'pj-new pj-ext-btn', '🎭 角色卡');
+        ccBtn.addEventListener('click', function () { if (window.__cardgroups) window.__cardgroups.open(); });
+        head.appendChild(ccBtn);
         // v44 调试：真机排障日志（发 release 前置 window.__MOYUTAI_RELEASE=true 即隐藏）
         var dbgBtn = el('button', 'pj-new pj-ext-btn', '🐞 日志');
         dbgBtn.id = 'pjDebugBtn';

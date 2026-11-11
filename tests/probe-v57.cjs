@@ -11,7 +11,7 @@ const av = fs.readFileSync(WS + 'www/av-ui.js', 'utf8');
 const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
 
 check('need 过滤含已落盘 masks/ 路径', av.includes("m.indexOf('masks/') === 0"));
-check('cardId 从 mask 路径解析（_ 后缀）', av.includes("split('_').pop()") && av.includes(".replace(/\\.png$/, '')"));
+check('已落盘 mask 按名字反查（v58 口径）', av.includes('function cardIdOfName') && av.includes('loadTagMaskLayersAnyName'));
 check('pending 口径保留', av.includes("m.indexOf('pending:') === 0"));
 check('栅格化走 v56b 黑底抠洞', img.includes('drawStrokes(og, lay.strokes)') && img.includes("g.drawImage(off, 0, 0)"));
 check('无草稿层时 loadTagMaskLayers 返回 null 防呆', /function loadTagMaskLayers[\s\S]{0,400}catch/.test(av));
