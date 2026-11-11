@@ -12,13 +12,14 @@ function check(name, cond) {
     else { fail++; console.log('FAIL ' + name); }
 }
 const img = fs.readFileSync(WS + 'www/img-ui.js', 'utf8');
-const seg = img.slice(img.indexOf('function renderTagMaskCanvas'), img.indexOf('function renderTagMaskCanvas') + 1000);
+const seg = img.slice(img.indexOf('function renderTagMaskCanvas'), img.indexOf('function renderTagMaskCanvas') + 1400);
 
 /* ① 新口径 */
 check('黑底填充', seg.includes(`g.fillStyle = '#000';`) && seg.includes(`g.fillRect(0, 0, w, h);`));
-check('笔画 destination-out 抠穿', seg.includes(`globalCompositeOperation = 'destination-out'`));
-check('旧白形口径已移除', seg.indexOf('fillRect') >= 0 && seg.indexOf('fillRect') < seg.indexOf('drawStrokes'));
-check('drawStrokes 仍被调用', seg.includes('drawStrokes(g, lay.strokes)'));
+check('离屏白形（笔画引擎不碰主画布 composite）', seg.includes('var off = document.createElement') && seg.includes('drawStrokes(og, lay.strokes)'));
+check('单次 destination-out 抠洞（drawImage 而非逐笔）', new RegExp("globalCompositeOperation\\s*=\\s*'destination-out'[\\s\\S]{0,120}g\\.drawImage\\(off, 0, 0\\)").test(seg));
+check('黑底填充在抠洞之前', seg.indexOf('fillRect') >= 0 && seg.indexOf('fillRect') < seg.indexOf("g.globalCompositeOperation = 'destination-out'"));
+check('结束后恢复 source-over', new RegExp("g\\.globalCompositeOperation\\s*=\\s*'source-over'").test(seg.slice(seg.indexOf('drawImage(off'))));
 
 /* ② ComfyUI 样本极性（老板 11-11 提供的 gpt_fixed.png = 正确口径） */
 try {

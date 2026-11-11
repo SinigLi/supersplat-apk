@@ -2005,16 +2005,23 @@
         var c = document.createElement('canvas');
         c.width = w; c.height = h;
         if (!lay) return c;
+        /* v56b：黑底不透明 + 形状抠穿（ComfyUI LoadImage 蒙版 = alpha 反相）。
+         * 老板 01:40 导出实测 v56 只生效一半：drawStrokes 内部每笔按 erase
+         * 重置 composite（这是画布引擎需要），外层的 destination-out 被覆盖，
+         * 结果黑底+白形。改为离屏画白形 → 一次 drawImage(destination-out) 抠穿，
+         * 不依赖笔画引擎的 composite 状态。 */
+        var off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        var og = off.getContext('2d');
+        og.lineCap = 'round'; og.lineJoin = 'round';
+        og.fillStyle = '#fff'; og.strokeStyle = '#fff';
+        drawStrokes(og, lay.strokes);
         var g = c.getContext('2d');
-        g.lineCap = 'round'; g.lineJoin = 'round';
-        /* v56：ComfyUI LoadImage 蒙版口径 = alpha 反相（老板 11-11 gpt.png/gpt_fixed.png
-         * 对比实锤）。导出改为「黑底不透明 + 笔画 destination-out 抠穿」：
-         * 形状 alpha=0（ComfyUI 蒙版=白/选中），背景黑 alpha=255。 */
         g.fillStyle = '#000';
         g.fillRect(0, 0, w, h);
         g.globalCompositeOperation = 'destination-out';
-        g.fillStyle = '#fff'; g.strokeStyle = '#fff';
-        drawStrokes(g, lay.strokes);
+        g.drawImage(off, 0, 0);
+        g.globalCompositeOperation = 'source-over';
         return c;
     }
 
