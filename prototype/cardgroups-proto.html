@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>角色卡库原型 r1</title>
+<style>
+:root{
+  --bg:#0b0e14; --card:#161b26; --card2:#1d2432; --line:#2a3345;
+  --txt:#e6eef9; --sub:#8b98ad; --acc:#7c6cf0; --acc2:#9d8fff;
+  --ok:#3fbf7f; --warn:#e8a13c; --err:#e05a5a;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--txt);font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+     font-size:15px;touch-action:manipulation;overscroll-behavior:contain}
+.page{max-width:430px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+/* 顶栏 */
+.topbar{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px;
+        border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:10}
+.topbar h1{font-size:17px;font-weight:700;flex:1}
+.btn{border:none;border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;color:var(--txt);
+     background:var(--card2);cursor:pointer;touch-action:manipulation}
+.btn.primary{background:var(--acc)}
+.btn.danger{background:transparent;color:var(--err);border:1px solid var(--err)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--sub)}
+/* 卡组列表 */
+.grouplist{flex:1;padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 90px)}
+.grp{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;
+     display:flex;align-items:center;gap:12px}
+.grp:active{background:var(--card2)}
+.grp-ico{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--acc),#5a8df0);
+         display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.grp-main{flex:1;min-width:0}
+.grp-name{font-size:15px;font-weight:700;margin-bottom:3px}
+.grp-meta{font-size:12px;color:var(--sub)}
+.grp-meta b{color:var(--acc2);font-weight:600}
+.grp-act{display:flex;gap:6px}
+.chip{border:none;border-radius:8px;padding:6px 10px;font-size:12px;background:var(--card2);color:var(--sub)}
+.chip:active{background:var(--line)}
+.fabrow{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;
+        padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 12px);
+        background:linear-gradient(transparent,var(--bg) 30%)}
+.fabrow .btn{width:100%;padding:13px;font-size:15px}
+/* ========== 角色卡编辑器（sheet） ========== */
+.sheet{position:fixed;inset:0;z-index:100;display:none;flex-direction:column;justify-content:flex-end}
+.sheet.open{display:flex}
+.sheet-mask{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.sheet-card{position:relative;background:var(--bg);border-radius:20px 20px 0 0;max-height:92vh;
+            display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+.sheet-grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:10px auto 0}
+.sheet-head{display:flex;align-items:center;padding:10px 16px 12px;border-bottom:1px solid var(--line)}
+.sheet-head .ttl{flex:1;font-size:16px;font-weight:700}
+.sheet-head .x{border:none;background:var(--card2);color:var(--sub);width:30px;height:30px;border-radius:15px;font-size:15px}
+.sheet-body{flex:1;overflow-y:auto;padding:14px 16px;scrollbar-width:none}
+.sheet-body::-webkit-scrollbar{display:none}
+/* 组编辑 */
+.grpedit-row{display:flex;gap:10px;margin-bottom:14px}
+.grpedit-row input{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;
+                   padding:11px 12px;font-size:15px;color:var(--txt);min-width:0}
+.grpedit-row input:focus{outline:none;border-color:var(--acc)}
+/* 卡片（角色）*/
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:12px}
+.card-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.avatar{width:40px;height:40px;border-radius:20px;background:linear-gradient(135deg,#5a8df0,var(--acc));
+        display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0}
+.cname{flex:1;font-size:15px;font-weight:700}
+.tag{font-size:11px;background:rgba(124,108,240,.18);color:var(--acc2);border-radius:6px;padding:3px 8px}
+.card-head .del{border:none;background:none;color:var(--err);font-size:13px;padding:4px 6px}
+.sect{font-size:12px;color:var(--sub);margin:10px 0 6px;display:flex;align-items:center;gap:8px}
+.sect::after{content:'';flex:1;height:1px;background:var(--line)}
+.desc{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.desc .d{flex:1;background:var(--card2);border-radius:9px;padding:8px 11px;font-size:13px;min-width:0;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.desc .rm{border:none;background:none;color:var(--sub);font-size:16px;padding:2px 6px}
+.addrow{display:flex;gap:8px;margin-top:6px}
+.addrow input{flex:1;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px 11px;
+              font-size:13px;color:var(--txt);min-width:0}
+.addrow input:focus{outline:none;border-color:var(--acc)}
+.addrow button{border:none;border-radius:9px;padding:8px 14px;font-size:13px;background:var(--acc);color:#fff}
+/* 底部动作条 */
+.sheet-foot{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:10px}
+.sheet-foot .btn{flex:1;padding:12px;font-size:14px}
+/* toast */
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);
+       background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 18px;
+       font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:200;max-width:80vw;text-align:center}
+#toast.show{opacity:1}
+#toast.err{border-color:var(--err);color:var(--err)}
+/* 选库（视频工程） */
+.pickitem{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
+          border-radius:14px;padding:14px;margin-bottom:10px}
+.pickitem.cur{border-color:var(--acc);background:rgba(124,108,240,.08)}
+.pickitem:active{background:var(--card2)}
+.pickitem .main{flex:1}
+.pickitem .nm{font-weight:700;font-size:15px}
+.pickitem .mt{font-size:12px;color:var(--sub);margin-top:3px}
+.pickitem .cur-badge{font-size:11px;color:var(--acc2)}
+/* demo 展示区标注 */
+.demo-note{font-size:11px;color:var(--sub);text-align:center;padding:6px 16px 0}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <h1 id="pgTitle">🎭 角色卡库</h1>
+    <button class="btn ghost" id="btnMode">工程视角</button>
+  </div>
+
+  <!-- ============ 视图A：全局卡组列表（开始页入口） ============ -->
+  <div class="grouplist" id="viewGroups"></div>
+  <div class="fabrow"><button class="btn primary" id="btnNewGroup">＋ 新建卡组</button></div>
+
+  <!-- ============ 视图B：卡组编辑 sheet ============ -->
+  <div class="sheet" id="shGroupEdit">
+    <div class="sheet-mask" data-close></div>
+    <div class="sheet-card">
+      <div class="sheet-grab"></div>
+      <div class="sheet-head">
+        <input id="grpName" style="flex:1;background:none;border:none;color:var(--txt);font-size:16px;font-weight:700;min-width:0" placeholder="卡组名称">
+        <button class="x" data-close>✕</button>
+      </div>
+      <div class="sheet-body">
+        <div id="cardList"></div>
+        <div class="addrow" style="margin-top:4px">
+          <input id="newCharName" placeholder="新角色名">
+          <input id="newCharTag" placeholder="标签(可选)" style="max-width:110px">
+          <button id="btnAddChar">添加</button>
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn ghost" id="btnGrpExport">导出 JSON</button>
+        <button class="btn ghost" id="btnGrpImport">导入</button>
+        <button class="btn primary" id="btnGrpDone">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 视图C：选库（视频工程视角） ============ -->
+  <div class="sheet" id="shPick">
+    <div class="sheet-mask" data-close2></div>
+    <div class="sheet-card">
+      <div class="sheet-grab"></div>
+      <div class="sheet-head"><div class="ttl">选择角色库（当前工程使用）</div><button class="x" data-close2>✕</button></div>
+      <div class="sheet-body"><div id="pickList"></div></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+'use strict';
+/* ---- 模拟数据（localStorage） ---- */
+var DB = {
+  groups: [
+    { id:'g1', name:'魔法少女', cards:[
+        {name:'小圆', tag:'主角', orig:['粉发少女','校服'], dest:['魔法少女装','粉色披风']},
+        {name:'沙耶香', tag:'主角', orig:['蓝发少女'], dest:['骑士装']},
+        {name:'丘比', tag:'使魔', orig:['白色生物'], dest:['黑色丘比']},
+    ]},
+    { id:'g2', name:'修仙', cards:[
+        {name:'林凡', tag:'男主', orig:['灰袍少年'], dest:['金丹修士']},
+        {name:'苏瑶', tag:'女主', orig:['白衣仙子'], dest:['元婴圣女']},
+    ]},
+  ],
+  video: { project:'魔法少女小圆-第八集', using:'g1' }
+};
+function save(){ localStorage.setItem('cc-proto', JSON.stringify(DB)); }
+function load(){ try{ var d=JSON.parse(localStorage.getItem('cc-proto')); if(d&&d.groups) DB=d; }catch(e){} }
+load();
+
+function toast(msg, err){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.className='show'+(err?' err':'');
+  clearTimeout(t._h); t._h=setTimeout(function(){t.className='';},2200);
+}
+function showMsg(m){ toast(m); }  /* 探针断言锚点 */
+
+/* ---- 视图A：卡组列表 ---- */
+function renderGroups(){
+  var v=document.getElementById('viewGroups'); v.innerHTML='';
+  DB.groups.forEach(function(g){
+    var row=document.createElement('div'); row.className='grp';
+    row.innerHTML='<div class="grp-ico">🎭</div>'+
+      '<div class="grp-main"><div class="grp-name">'+g.name+'</div>'+
+      '<div class="grp-meta"><b>'+g.cards.length+'</b> 个角色 · '+
+      g.cards.reduce(function(n,c){return n+c.orig.length+c.dest.length;},0)+' 条描述</div></div>'+
+      '<div class="grp-act"><button class="chip edit">编辑</button></div>';
+    row.querySelector('.edit').addEventListener('click', function(e){ e.stopPropagation(); openGroupEdit(g.id); });
+    row.addEventListener('click', function(){ openGroupEdit(g.id); });
+    v.appendChild(row);
+  });
+}
+/* ---- 卡组编辑 ---- */
+var editingId=null;
+function openGroupEdit(id){
+  editingId=id;
+  var g=DB.groups.filter(function(x){return x.id===id;})[0]; if(!g) return;
+  document.getElementById('grpName').value=g.name;
+  renderCards(g);
+  document.getElementById('shGroupEdit').classList.add('open');
+}
+function renderCards(g){
+  var v=document.getElementById('cardList'); v.innerHTML='';
+  g.cards.forEach(function(c, ci){
+    var card=document.createElement('div'); card.className='card';
+    var h='<div class="card-head"><div class="avatar">'+c.name.charAt(0)+'</div>'+
+      '<div class="cname">'+c.name+'</div>'+(c.tag?'<span class="tag">'+c.tag+'</span>':'')+
+      '<button class="del">删除</button></div>';
+    h+='<div class="sect">原角色描述</div>';
+    c.orig.forEach(function(d,di){ h+='<div class="desc"><span class="d">'+d+'</span><button class="rm" data-t="o" data-i="'+di+'">✕</button></div>'; });
+    h+='<div class="sect">替换角色描述</div>';
+    c.dest.forEach(function(d,di){ h+='<div class="desc"><span class="d">'+d+'</span><button class="rm" data-t="d" data-i="'+di+'">✕</button></div>'; });
+    card.innerHTML=h;
+    card.querySelector('.del').addEventListener('click', function(){
+      if(!confirm('删除角色「'+c.name+'」？')) return;
+      g.cards.splice(ci,1); save(); renderCards(g); renderGroups(); toast('已删除 '+c.name);
+    });
+    card.querySelectorAll('.rm').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var arr = btn.dataset.t==='o' ? c.orig : c.dest;
+        arr.splice(+btn.dataset.i,1); save(); renderCards(g); renderGroups();
+      });
+    });
+    v.appendChild(card);
+  });
+}
+/* ---- 视图C：工程选库 ---- */
+function renderPick(){
+  var v=document.getElementById('pickList'); v.innerHTML='';
+  v.insertAdjacentHTML('beforeend','<div class="demo-note">工程：'+DB.video.project+'</div>');
+  DB.groups.forEach(function(g){
+    var it=document.createElement('div'); it.className='pickitem'+(DB.video.using===g.id?' cur':'');
+    var nUse=0; /* 模拟：本工程打标引用的角色在该组的命中数 */
+    it.innerHTML='<div class="grp-ico">📚</div><div class="main"><div class="nm">'+g.name+'</div>'+
+      '<div class="mt">'+g.cards.length+' 个角色</div></div>'+
+      (DB.video.using===g.id?'<span class="cur-badge">✓ 使用中</span>':'');
+    it.addEventListener('click', function(){
+      if(DB.video.using===g.id){ closePick(); return; }
+      /* 模拟切换警告：演示用 —— 假设切走后 "小圆" 会缺失 */
+      var old=DB.groups.filter(function(x){return x.id===DB.video.using;})[0];
+      var missing=old? old.cards.filter(function(c){ return !g.cards.some(function(x){return x.name===c.name;}); }).map(function(c){return c.name;}) : [];
+      var go=function(){
+        DB.video.using=g.id; save(); renderPick(); closePick();
+        showMsg(missing.length? '已切换，缺少角色：'+missing.join('、') : '切换角色库成功 ✓');
+      };
+      if(missing.length){ if(confirm('新库缺少角色：'+missing.join('、')+'\n已有打标会保留。仍要切换？')) go(); }
+      else go();
+    });
+    v.appendChild(it);
+  });
+}
+function closePick(){ document.getElementById('shPick').classList.remove('open'); }
+
+/* ---- 事件绑定 ---- */
+document.getElementById('btnNewGroup').addEventListener('click', function(){
+  var nm=prompt('新卡组名称：'); if(!nm) return;
+  nm=nm.trim();
+  if(DB.groups.some(function(g){return g.name===nm;})) { toast('名称已存在',true); return; }
+  var g={id:'g'+Date.now(), name:nm, cards:[]};
+  DB.groups.push(g); save(); renderGroups(); openGroupEdit(g.id); toast('已创建，添加角色吧');
+});
+document.getElementById('btnAddChar').addEventListener('click', function(){
+  var g=DB.groups.filter(function(x){return x.id===editingId;})[0]; if(!g) return;
+  var nm=document.getElementById('newCharName').value.trim();
+  var tag=document.getElementById('newCharTag').value.trim();
+  if(!nm){ toast('先填角色名',true); return; }
+  if(g.cards.some(function(c){return c.name===nm;})){ toast('角色已存在',true); return; }
+  g.cards.push({name:nm, tag:tag, orig:[], dest:[]});
+  save(); renderCards(g); renderGroups();
+  document.getElementById('newCharName').value=''; document.getElementById('newCharTag').value='';
+  toast('已添加 '+nm);
+});
+document.getElementById('grpName').addEventListener('change', function(){
+  var g=DB.groups.filter(function(x){return x.id===editingId;})[0]; if(!g) return;
+  var nm=this.value.trim(); if(!nm) return;
+  if(DB.groups.some(function(x){return x.id!==g.id && x.name===nm;})){ toast('名称已存在',true); return; }
+  g.name=nm; save(); renderGroups(); toast('已改名');
+});
+document.getElementById('btnGrpDone').addEventListener('click', function(){
+  document.getElementById('shGroupEdit').classList.remove('open'); renderGroups();
+});
+document.getElementById('btnGrpExport').addEventListener('click', function(){
+  var g=DB.groups.filter(function(x){return x.id===editingId;})[0]; if(!g) return;
+  var blob=new Blob([JSON.stringify({schema:'moyutai.charcards.v1', orig_char_descs:[], dest_char_descs:[], cards:g.cards},null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='charcards-'+g.name+'.json'; a.click();
+  toast('已导出 '+g.name+'.json');
+});
+document.getElementById('btnGrpImport').addEventListener('click', function(){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.addEventListener('change', function(){
+    var f=inp.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var data=JSON.parse(rd.result);
+        if(data.schema!=='moyutai.charcards.v1'||!Array.isArray(data.cards)) throw new Error('格式不符');
+        var g=DB.groups.filter(function(x){return x.id===editingId;})[0];
+        /* id 无法对上（原型简化为 name 合并） */
+        data.cards.forEach(function(nc){
+          if(!g.cards.some(function(c){return c.name===nc.name;}))
+            g.cards.push({name:nc.name, tag:nc.tag||'', orig:nc.orig_char_desc? [nc.orig_char_desc]:(nc.orig||[]), dest:nc.dest_char_desc? [nc.dest_char_desc]:(nc.dest||[])});
+        });
+        save(); renderCards(g); renderGroups(); toast('已合并导入');
+      }catch(e){ toast('导入失败：'+e.message, true); }
+    };
+    rd.readAsText(f);
+  });
+  inp.click();
+});
+document.getElementById('btnMode').addEventListener('click', function(){
+  /* 视角切换演示：工程视角 = 打开选库弹层 */
+  document.getElementById('pgTitle').textContent='选择角色库';
+  renderPick();
+  document.getElementById('shPick').classList.add('open');
+});
+document.querySelectorAll('[data-close]').forEach(function(elm){
+  elm.addEventListener('click', function(){
+    document.getElementById('shGroupEdit').classList.remove('open'); renderGroups();
+  });
+});
+document.querySelectorAll('[data-close2]').forEach(function(elm){
+  elm.addEventListener('click', function(){
+    document.getElementById('shPick').classList.remove('open');
+    document.getElementById('pgTitle').textContent='🎭 角色卡库';
+  });
+});
+
+renderGroups();
+</script>
+</body>
+</html>
