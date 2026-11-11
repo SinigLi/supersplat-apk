@@ -31,6 +31,11 @@ check('switchCharGroup 只记状态', !/switchCharGroup[\s\S]{0,800}buildCharDia
 check('打标数据源保留（curCards/upsertCharRef）', av.includes('function curCards') && av.includes('upsertCharRef'));
 check('选库 sheet 保留（✓使用中/高亮）', av.includes('✓ 使用中') && av.includes("border-color:#7c6cf0"));
 
+/* v59k-b：tree+docId 直构（debug_22 真机修复） */
+check('readBytes 支持 tree+docId', /call\.getString\("tree"\)/.test(nat) && /call\.getString\("docId"\)/.test(nat) && nat.includes('docUriForId(Uri.parse(treeStr), docId)'));
+check('JS 传 tree+docId（绕开 uri 字符串往返）', cui.includes('tree: treeUriStr') && cui.includes('docId: it.docId'));
+check('组名取文件夹最后一段', cui.includes(".split('/').pop()"));
+
 /* 缓存 */
 check('index.html cache v60', html.includes('av-ui.js?v=60') && html.includes('cardgroups-ui.js?v=60'));
 

@@ -366,10 +366,12 @@
         var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MediaServer;
         if (!p || !p.pickFolder) { toast('需要 APK 环境（MediaServer 插件）', true); return; }
         toast('选择包含角色图的文件夹');
+        var treeUriStr = null;
         p.pickFolder().then(function (r) {
             if (!r || !r.uri) return;   /* 用户取消 */
-            var folderName = r.name || '导入卡组';
-            dlog('imgFolder picked: ' + folderName);
+            treeUriStr = r.uri;
+            var folderName = (r.name || '导入卡组').split('/').pop() || '导入卡组';
+            dlog('imgFolder picked: ' + folderName + ' tree=' + String(r.uri).slice(0, 60));
             return p.listFiles({ uri: r.uri }).then(function (ls) {
                 var files = (ls && ls.files) || [];
                 var seen = {};
@@ -379,11 +381,12 @@
                     var base = f.name.replace(/\.[^.]+$/, '');
                     if (seen[base]) return;   /* 重名取第一张 */
                     seen[base] = true;
-                    picked.push({ name: base, uri: f.uri || f.docId || f.name, raw: f });
+                    if (!f.uri) { dlog('imgFolder skip no-uri: ' + f.name); return; }   /* 修复后 listFiles 必带 uri */
+                picked.push({ name: base, uri: f.uri, docId: f.docId, raw: f });
                 });
                 if (!picked.length) { toast('该文件夹没有图片（支持 jpg/png/webp）', true); return; }
                 dlog('imgFolder files=' + picked.length + '/' + files.length);
-                return buildCardsFromImages(folderName, picked, p);
+                return buildCardsFromImages(folderName, picked, p, treeUriStr);
             });
         }).catch(function (e) {
             dlog('imgFolder ERR: ' + (e && e.message || e));
@@ -391,7 +394,7 @@
         });
     }
 
-    function buildCardsFromImages(folderName, picked, p) {
+    function buildCardsFromImages(folderName, picked, p, treeUriStr) {
         var cards = { schema: 'moyutai.charcards.v1', orig_char_descs: [], dest_char_descs: [], cards: [] };
         var idx = 0, ok = 0, fail = 0;
         var S2 = 256;
@@ -405,7 +408,7 @@
                 return;
             }
             var it = picked[idx++];
-            p.readBytes({ uri: it.uri }).then(function (rb) {
+            p.readBytes({ uri: it.uri, tree: treeUriStr, docId: it.docId }).then(function (rb) {
                 var im = new Image();
                 im.onload = function () {
                     try {

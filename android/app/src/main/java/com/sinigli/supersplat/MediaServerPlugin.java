@@ -291,9 +291,20 @@ public class MediaServerPlugin extends Plugin {
     @PluginMethod
     public void readBytes(PluginCall call) {
         String uriStr = call.getString("uri");
-        if (uriStr == null || uriStr.isEmpty()) { call.reject("缺 uri"); return; }
+        /* v59k-b：优先 tree+docId 在原生侧直构 document uri（与 server index 同构；
+         * 真机 debug_22 证实 uri 字符串往返在某些 ROM 上退化为裸 docId → No content provider） */
+        String treeStr = call.getString("tree");
+        String docId = call.getString("docId");
+        if ((uriStr == null || uriStr.isEmpty()) && (treeStr == null || treeStr.isEmpty() || docId == null || docId.isEmpty())) {
+            call.reject("缺 uri 或 tree+docId"); return;
+        }
         try {
-            Uri uri = Uri.parse(uriStr);
+            Uri uri;
+            if (treeStr != null && !treeStr.isEmpty() && docId != null && !docId.isEmpty()) {
+                uri = docUriForId(Uri.parse(treeStr), docId);
+            } else {
+                uri = Uri.parse(uriStr);
+            }
             takePersistFile(uri);
             android.os.StrictMode.ThreadPolicy old = android.os.StrictMode.getThreadPolicy();
             android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.LAX);
@@ -369,6 +380,8 @@ public class MediaServerPlugin extends Plugin {
                 f.put("name", name);
                 f.put("size", o.optLong("size"));
                 f.put("docId", o.optString("docId"));
+                /* v59k：带上 document uri（readBytes 需要）；listChildren 已填 */
+                if (o.has("uri")) f.put("uri", o.optString("uri"));
                 arr.put(f);
                 n++;
             }
