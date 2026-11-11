@@ -46,8 +46,29 @@
         });
         head.appendChild(extBtn);
         // v58：全局角色卡库入口（解压旁）
+        /* v59i：真机排障日志（[pj] 前缀，与 [av]/[cg] 同 DebugLog 通道） */
+        function dlog(msg) {
+            try {
+                var cap = window.Capacitor;
+                var p = cap && cap.Plugins && cap.Plugins.DebugLog;
+                if (p && p.append) {
+                    var r = p.append({ text: '[pj] ' + msg });
+                    if (r && r.catch) r.catch(function () { });
+                }
+            } catch (e) { }
+        }
         var ccBtn = el('button', 'pj-new pj-ext-btn', '🎭 角色卡');
-        ccBtn.addEventListener('click', function () { if (window.__cardgroups) window.__cardgroups.open(); });
+        ccBtn.addEventListener('click', function () {
+            try {
+                dlog('🎭 角色卡 clicked: __cardgroups=' + typeof window.__cardgroups);
+                if (!window.__cardgroups) { dlog('🎭 ABORT: module undefined'); return; }
+                window.__cardgroups.open();
+                dlog('🎭 open() returned');
+            } catch (e) {
+                dlog('🎭 CLICK ERROR: ' + (e && e.message || e));
+                try { toast('角色卡打开失败：' + e.message); } catch (e2) { }
+            }
+        });
         head.appendChild(ccBtn);
         // v44 调试：真机排障日志（发 release 前置 window.__MOYUTAI_RELEASE=true 即隐藏）
         var dbgBtn = el('button', 'pj-new pj-ext-btn', '🐞 日志');

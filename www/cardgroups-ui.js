@@ -10,6 +10,25 @@
  */
 (function () {
     'use strict';
+    /* v59i：真机排障日志（Capacitor DebugLog，[cg] 前缀；与 [av] 同通道） */
+    function dlog(msg) {
+        try {
+            var cap = window.Capacitor;
+            var p = cap && cap.Plugins && cap.Plugins.DebugLog;
+            if (p && p.append) {
+                var r = p.append({ text: '[cg] ' + msg });
+                if (r && r.catch) r.catch(function () { });
+            }
+            if (window.__MOYUTAI_DEBUG_LOGS) window.__MOYUTAI_DEBUG_LOGS.push('[cg] ' + msg);
+        } catch (e) { }
+    }
+    /* JS 错误兜底捕获（真机 WebView 静默异常排障） */
+    window.addEventListener('error', function (ev) {
+        dlog('JS ERROR: ' + (ev.message || '?') + ' @' + (ev.filename || '?').split('/').pop() + ':' + ev.lineno);
+    });
+    window.addEventListener('unhandledrejection', function (ev) {
+        dlog('PROMISE REJECT: ' + ((ev.reason && ev.reason.message) || ev.reason || '?'));
+    });
     var dlgEl = null;
 
     function el(tag, cls, txt) {
@@ -81,7 +100,8 @@
     var curGroupId = null;
 
     function open() {
-        if (!window.CCG || !window.CC) { toast('卡组模块未加载', true); return; }
+        dlog('open: CCG=' + !!window.CCG + ' CC=' + !!window.CC + ' groups=' + (window.CCG ? window.CCG.list().length : '?'));
+        if (!window.CCG || !window.CC) { toast('卡组模块未加载', true); dlog('open ABORT: modules missing'); return; }
         if (dlgEl) return;
         dlgEl = el('div', 'cgm-sheet open');
         dlgEl.innerHTML =
@@ -112,9 +132,11 @@
         });
         dlgEl.querySelector('#cgmImportZip').addEventListener('click', function () { importFile(null); });
         renderList();
+        dlog('open done: sheet appended');
     }
 
     function renderList() {
+        dlog('renderList: groups=' + window.CCG.list().length);
         var v = dlgEl.querySelector('#cgmList');
         v.innerHTML = '';
         var groups = window.CCG.list();
@@ -139,9 +161,10 @@
 
     /* ---- B：组编辑抽屉 ---- */
     function openGroup(id) {
+        dlog('openGroup: ' + id);
         curGroupId = id;
         var data = window.CCG.get(id);
-        if (!data) { toast('卡组不存在', true); return; }
+        if (!data) { toast('卡组不存在', true); dlog('openGroup ABORT: no data'); return; }
         var sh = el('div', 'cgm-sheet open');
         sh.innerHTML =
             '<div class="cgm-mask"></div>' +
@@ -290,6 +313,7 @@
     }
 
     function renderWords(sh, data) {
+        dlog('renderWords: groups=' + (data.descGroups || []).length);
         var v = sh.querySelector('#cgmWords');
         v.innerHTML = '';
         if (!data.descGroups.length) v.appendChild(el('div', 'cgm-empty', '暂无分组'));
@@ -353,6 +377,7 @@
         return 'data:image/jpeg;base64,' + btoa(bin);
     }
     function exportGroup(id) {
+        dlog('exportGroup: ' + id);
         var data = window.CCG.get(id);
         var nm = window.CCG.nameOf(id);
         if (!data) return;
