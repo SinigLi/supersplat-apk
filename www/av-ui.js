@@ -2107,8 +2107,17 @@ function hasMerge(seg) {
                 var cardId = entMask.indexOf('pending:') === 0
                     ? entMask.slice('pending:'.length)
                     : entMask.split('/').pop().split('_').pop().replace(/\.png$/, '');
+                var layersForCard = loadTagMaskLayers(ref, cardId);
                 var canvas = imgMod.renderTagMaskCanvas(
-                    loadTagMaskLayers(ref, cardId), frameCanvas.width, frameCanvas.height, ent.name);
+                    layersForCard, frameCanvas.width, frameCanvas.height, ent.name);
+                /* v57c：层无笔画 → renderTagMaskCanvas 返回空白 canvas；
+                 * 该条目不进 zip：已有旧引用保留，pending 引用去掉 mask 标记 */
+                var layMatch = layersForCard.filter(function (l) { return l.name === ent.name; })[0];
+                if (!layMatch || !layMatch.strokes.length) {
+                    if (String(ent.mask).indexOf('pending:') === 0) delete ent.mask;
+                    dlog('tagmask skip empty: ' + ent.name + ' @' + ref.seg);
+                    continue;
+                }
                 var u8 = imgMod.canvasToPngU8(canvas);
                 var path = 'masks/' + ref.seg + '/' + frame + '_' + cardId + '.png';
                 PNG_BY_PATH[path] = u8;

@@ -2016,6 +2016,9 @@
         og.lineCap = 'round'; og.lineJoin = 'round';
         og.fillStyle = '#fff'; og.strokeStyle = '#fff';
         drawStrokes(og, lay.strokes);
+        /* v57c：形状为空（层无有效笔画）→ 返回空白 canvas 并打标记，
+         * av-ui 侧据此跳过该条目，防「纯黑遮罩」混进导出包 */
+        if (!lay.strokes.length) return c;
         var g = c.getContext('2d');
         g.fillStyle = '#000';
         g.fillRect(0, 0, w, h);
