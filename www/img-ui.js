@@ -2007,6 +2007,12 @@
         if (!lay) return c;
         var g = c.getContext('2d');
         g.lineCap = 'round'; g.lineJoin = 'round';
+        /* v56：ComfyUI LoadImage 蒙版口径 = alpha 反相（老板 11-11 gpt.png/gpt_fixed.png
+         * 对比实锤）。导出改为「黑底不透明 + 笔画 destination-out 抠穿」：
+         * 形状 alpha=0（ComfyUI 蒙版=白/选中），背景黑 alpha=255。 */
+        g.fillStyle = '#000';
+        g.fillRect(0, 0, w, h);
+        g.globalCompositeOperation = 'destination-out';
         g.fillStyle = '#fff'; g.strokeStyle = '#fff';
         drawStrokes(g, lay.strokes);
         return c;
