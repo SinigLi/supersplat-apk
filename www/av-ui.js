@@ -1808,13 +1808,13 @@ function hasMerge(seg) {
         mask.innerHTML =
             '<div class="av-chardlg-mask"></div>' +
             '<div class="av-chardlg-card">' +
-            '<div class="av-chardlg-title">馃摉 閫夋嫨瑙掕壊搴?/div>' +
+            '<div class="av-chardlg-title">📚 选择角色库/div>' +
             '<div class="av-grplist"></div>' +
             '<div class="av-chardlg-row"><button class="av-chardlg-btn av-grp-new">鏂板缓绌虹粍</button><button class="av-chardlg-btn av-closedlg2">鍏抽棴</button></div>' +
             '</div></div>';
         document.body.appendChild(mask);
         var list = mask.querySelector('.av-grplist');
-        if (!groups.length) list.innerHTML = '<div class="av-chardlg-empty">锛堟殏鏃犲叏灞€鍗＄粍锛岀偣鏂板缓绌虹粍鎴栧厛鎵撳紑鏌愬伐绋嬭嚜鍔ㄨ縫绉烇級</div>';
+        if (!groups.length) list.innerHTML = '<div class="av-chardlg-empty">（暂无全局卡组，点「新建空组」或先打开某工程自动迁移）</div>';
         var curRef = S.meta && S.meta.charGroupRef;
         groups.forEach(function (g) {
             var row = el('div', 'av-grp-item' + (g.id === curRef ? ' av-grp-cur' : ''));
@@ -1854,7 +1854,7 @@ function hasMerge(seg) {
             '<div class="av-chardlg-row"><input class="av-chardlg-in av-newdest" placeholder="新替换角色描述"><button class="av-chardlg-btn av-adddest">添加</button></div>' +
             '<div class="av-chardlg-foot">' +
             '<button class="av-chardlg-btn av-loadcards">📁 加载本地角色卡</button>' +
-            '<button class="av-chardlg-btn av-switchgrp">馃摉 鍒囨崲瑙掕壊搴?/button>' +
+            '<button class="av-chardlg-btn av-switchgrp">📚 切换角色库/button>' +
             '<button class="av-chardlg-btn av-exportcards">导出角色卡</button>' +
             '<button class="av-chardlg-btn av-closedlg">取消</button>' +
             '</div></div>';
