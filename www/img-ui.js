@@ -54,7 +54,7 @@
 
     var IMG_CSS = [
 "/* 摸鱼台 v49 —— 图片工作台样式（自原型 image-mode-proto.html 移植） */",
-".img-page{position:fixed;inset:0;display:none;flex-direction:column;background:#1a1d21;z-index:1550}",
+".img-page{position:fixed;top:0;right:0;bottom:0;left:0;display:none;flex-direction:column;background:#1a1d21;z-index:1550}",
 ".img-page.open{display:flex}",
 /* 顶栏：系统栏/挖孔避让由 applySafeArea() 动态注入 padding（Android 15 edge-to-edge
  * 下 env(safe-area-inset) 不可靠，必须走 MediaServer.getSafeArea，同 av-ui 方案） */
@@ -116,7 +116,7 @@
 ".img-size-wrap{display:flex;flex-direction:column;gap:5px;padding:6px 0 4px;",
 "  border-top:1px solid rgba(255,255,255,.08);margin-top:2px}",
 "/* 空态 */",
-".img-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;",
+".img-empty{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;align-items:center;",
 "  justify-content:center;gap:14px;z-index:5}",
 ".img-empty-t{font-size:16px;color:#e8e8e8}",
 ".img-empty-s{font-size:12px;color:#8b96a5;text-align:center;line-height:1.7;padding:0 30px}",
