@@ -36,6 +36,11 @@ check('readBytes 支持 tree+docId', /call\.getString\("tree"\)/.test(nat) && /c
 check('JS 传 tree+docId（绕开 uri 字符串往返）', cui.includes('tree: treeUriStr') && cui.includes('docId: it.docId'));
 check('组名取文件夹最后一段', cui.includes(".split('/').pop()"));
 
+/* v59kb：同名重建自愈（删除后注册表残留条目） */
+const pui2 = fs.readFileSync(WS + 'www/projects-ui.js', 'utf8');
+check('submit 目录感知自愈（stat→ghost clean）', pui2.includes('dup ghost cleaned') && pui2.includes('L.removeProject(reg, v.name)'));
+check('stat 用 meta.json 判目录在否', /pathsFor\(v\.name\)[\s\S]{0,120}stat\(pdir\.meta\)/.test(pui2));
+
 /* 缓存 */
 check('index.html cache v60', html.includes('av-ui.js?v=60') && html.includes('cardgroups-ui.js?v=60'));
 

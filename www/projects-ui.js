@@ -205,6 +205,8 @@
         cancel.addEventListener('click', close);
         newDlg.addEventListener('click', function (e) { if (e.target === newDlg) close(); });
 
+        /* v59kb：同名报已存在前，先看工程目录是否真的还在。
+         * 删除流程任何竞态残留的注册表条目（目录已没了）自动清理并放行重建。 */
         var submit = function () {
             var v = L.validateProjectName(newInput.value);
             if (!v.ok) {
@@ -212,8 +214,22 @@
                 return;
             }
             var reg = L.loadRegistry();
-            if ((reg.projects || []).some(function (p) { return p.name === v.name; })) {
-                hint.textContent = '工程「' + v.name + '」已存在';
+            var dup = (reg.projects || []).filter(function (p) { return p.name === v.name; })[0];
+            if (dup) {
+                var pdir = L.pathsFor(v.name);
+                store().stat(pdir.meta).then(function (st) {
+                    if (st) {
+                        hint.textContent = '工程「' + v.name + '」已存在';
+                    } else {
+                        /* 目录已删，注册表条目是残留 → 自愈 */
+                        L.saveRegistry(L.removeProject(reg, v.name));
+                        pjDlog('dup ghost cleaned: ' + v.name);
+                        close();
+                        createProject(v.name, newMode);
+                    }
+                }).catch(function () {
+                    hint.textContent = '工程「' + v.name + '」已存在';
+                });
                 return;
             }
             close();
