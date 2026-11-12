@@ -58,6 +58,19 @@ node tests/v61e-dom.mjs          # 只导 JSON 回头像+原图 5 项
 node tests/v61f-dom.mjs          # 真机链路复现 8 项         ← 现行
 ```
 
+## 生产代码里的测试钩子
+
+以下全局对象是为了让 headless 测试能走内部链路而挂上去的，**不是产品功能**，改相关模块时别顺手删：
+
+| 钩子 | 位置 | 用途 |
+|---|---|---|
+| `window.__cardgroups` | cardgroups-ui.js | 打开卡组 sheet |
+| `window.__cardgroupsTest.importForTest(data, imgMap)` | cardgroups-ui.js | 绕过 file input 直接走 `applyImport`（v61f 起返回 Promise） |
+| `window.__cardgroupsTest.mergeFulls(data, fulls)` | cardgroups-ui.js | 导出前合并 IDB 原图 |
+| `window.CC` / `window.CCG` / `window.CGFull` | charcards.js / cardgroups.js / cardgroups-full.js | 数据层与存储层 |
+
+新增钩子请在对应文件的注释里写一句用途，并在本表补一行。
+
 ## 写新探针的约定
 
 1. **断言要结构化**，不要全文关键字匹配（注释里出现同样的字会把全绿代码判失败，v49 事故）。
