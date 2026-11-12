@@ -33,7 +33,8 @@
     function _write(o) { localStorage.setItem(KEY, JSON.stringify(o)); }
 
     function validData(d) {
-        return d && d.schema === 'moyutai.charcards.v1' && Array.isArray(d.cards);
+        /* v61a：v1/v2 都接受（CC.normalize 产出 v2；旧素材仍 v1）——只认 v1 会让 v2 保存静默失败 */
+        return d && (d.schema === 'moyutai.charcards.v1' || d.schema === 'moyutai.charcards.v2') && Array.isArray(d.cards);
     }
 
     var CCG = {

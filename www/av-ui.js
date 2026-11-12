@@ -2164,6 +2164,47 @@ function hasMerge(seg) {
         return [];
     }
 
+    /* v61a: pack the referenced character group into the video export (reuses CC.exportPlan) */
+    function dataUrlToU8(dataUrl) {
+        var b64 = String(dataUrl).split(",")[1] || "";
+        var bin = atob(b64);
+        var u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return u8;
+    }
+
+    function refCharNames() {
+        var names = {};
+        (S.marks && S.marks.marks || []).forEach(function (m) {
+            if (m.type !== "char_ref") return;
+            (m.chars || []).forEach(function (c) { if (c.name) names[c.name] = true; });
+        });
+        return Object.keys(names);
+    }
+
+    async function buildCharGroupEntries(names) {
+        var gid = S.meta && S.meta.charGroupRef;
+        if (!gid || !window.CCG || !window.CC) return null;
+        var data = window.CCG.get(gid);
+        if (!data || !data.cards || !data.cards.length) return null;
+        var want = {};
+        names.forEach(function (n) { want[n] = true; });
+        var picked = data.cards.filter(function (c) { return want[c.name]; });
+        if (!picked.length) return null;
+        var slim = { schema: data.schema, orig_char_descs: data.orig_char_descs || [], dest_char_descs: data.dest_char_descs || [],
+            descGroups: data.descGroups || [], cards: picked };
+        if (window.CGFull && window.CGFull.all) {
+            try {
+                var fulls = await window.CGFull.all(gid);
+                slim.cards.forEach(function (c) { if (fulls[c.id]) c.imgFull = fulls[c.id]; });
+            } catch (e) { dlog("export: cg fulls read ERR " + (e && e.message || e)); }
+        }
+        var plan = window.CC.exportPlan(slim);
+        var entries = { "charcards.json": new TextEncoder().encode(JSON.stringify(plan.json, null, 2)) };
+        plan.images.forEach(function (im) { entries[im.file] = dataUrlToU8(im.dataUrl); });
+        return { entries: entries, count: picked.length };
+    }
+
     async function exportJson() {
         if (!S.project) return;
         toast('正在整理打标遮罩…');
@@ -2171,14 +2212,26 @@ function hasMerge(seg) {
         var json = L.buildExport(S.meta, S.marks, S.files);
         var text = JSON.stringify(json, null, 2);
         var sp = savePlug();
+        var refNames = refCharNames();
+        var groupPack = null;
+        if (refNames.length) {
+            try { groupPack = await buildCharGroupEntries(refNames); }
+            catch (e) { dlog("export: chargroup pack ERR " + (e && e.message || e)); }
+        }
+        var needZip = resolved.count > 0 || !!groupPack;
         var name = 'marks-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '-' +
             new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) +
-            (resolved.count > 0 ? '.zip' : '.json');
+            (needZip ? '.zip' : '.json');
         /* v53：有遮罩 → fflate zip（marks.json + masks/*.png）；无遮罩 → 裸 JSON（原链路） */
-        if (resolved.count > 0) {
+        if (needZip) {
             if (!window.fflate) { toast('fflate 未加载，无法打包遮罩', true); return; }
             var entries = { 'marks.json': window.fflate.strToU8(text) };
             Object.keys(resolved.pngByPath).forEach(function (p) { entries[p] = resolved.pngByPath[p]; });
+            var groupCount = 0;
+            if (groupPack) {
+                Object.keys(groupPack.entries).forEach(function (k) { entries[k] = groupPack.entries[k]; });
+                groupCount = groupPack.count;
+            }
             var zipped = window.fflate.zipSync(entries, { level: 0 });  /* PNG 已压缩 */
             var bin = ''; var CH = 8192;
             for (var zi = 0; zi < zipped.length; zi += CH) {
