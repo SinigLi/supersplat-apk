@@ -927,12 +927,11 @@
              * 太稀会在拐角处切角。 */
             /* v53j/v53k：打标模式下未启用当前角色时禁止落笔。
              * enabled 存的是 cardId；激活层通过层名（=card.name）映射回 card 判断。 */
+            /* v60h：只要有选中遮罩层（激活层）即可画，不再需要旧「启用」登记 */
             if (S.tagMode) {
                 var act = (S.state && S.state.layers) ? S.state.layers.filter(function (l) { return l.id === S.state.activeId; })[0] : null;
-                var actCard = act ? S.tagMode.cards.cards.filter(function (c) { return c.name === act.name; })[0] : null;
-                var enabledIds = S.tagMode.enabled || [];
-                if (!act || !actCard || enabledIds.indexOf(actCard.id) < 0) {
-                    toast('先点右上「启用」再画');
+                if (!act) {
+                    toast('先点「角色」选人建层，或在图层列表点选一层');
                     S.drawing = false;
                     return;
                 }
@@ -1902,14 +1901,6 @@
         var ins = panel.querySelectorAll('input');
         if (ins[0]) ins[0].value = S.tagMode.orig[card.id] || '';
         if (ins[1]) ins[1].value = S.tagMode.dest[card.id] || '';
-    }
-
-    function enableChar(c) {
-        if (tm_enabledHas(c.id)) return;
-        S.tagMode.enabled.push(c.id);
-    }
-    function tm_enabledHas(id) {
-        return S.tagMode.enabled.indexOf(id) >= 0;
     }
 
     function curTagCard() {
