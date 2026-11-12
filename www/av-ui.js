@@ -2125,14 +2125,20 @@ function hasMerge(seg) {
 
     /* 读某 char_ref 某角色的 tagmask 层结构（与 img-ui loadTagStrokes 同 key 规则） */
     function loadTagMaskLayers(ref, cardId) {
-        var key = 'av-' + S.project + '-tagmask-' + ref.id;
-        try {
-            var raw = localStorage.getItem(key);
-            if (raw) {
+        /* v60j：首次打标时 img-ui 按 seg_frame 存草稿（当时还没有 char_ref.id），
+         * 确认后 char_ref.id 才生成；这里两种 key 都试，否则首次导出会漏掉遮罩。 */
+        var keys = [
+            'av-' + S.project + '-tagmask-' + ref.id,
+            'av-' + S.project + '-tagmask-' + ref.seg + '_' + L.frameAt(ref.at, effFps())
+        ];
+        for (var ki = 0; ki < keys.length; ki++) {
+            try {
+                var raw = localStorage.getItem(keys[ki]);
+                if (!raw) continue;
                 var o = JSON.parse(raw);
                 if (o && o.schema === 'moyutai.imgmask.v2' && Array.isArray(o.layers)) return o.layers;
-            }
-        } catch (e) { /* */ }
+            } catch (e) { /* skip */ }
+        }
         return [];
     }
 
