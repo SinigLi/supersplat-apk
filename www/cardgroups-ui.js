@@ -528,40 +528,82 @@
     }
     function importFile(groupId, parentSheet) {
         var inp = document.createElement('input');
-        inp.type = 'file'; inp.accept = '.json,.zip,application/json,application/zip';
+        inp.type = 'file'; inp.accept = '*/*'; /* SAF 常按 MIME 过滤，锁死 .zip 会导致导出的 zip 选不到 */
         inp.addEventListener('change', function () {
-            var f = inp.files && inp.files[0]; if (!f) return;
+            var f = inp.files && inp.files[0]; if (!f) { dlog('import: no file'); return; }
+            dlog('import: file=' + f.name + ' size=' + f.size + ' type=' + (f.type || '?'));
             var rd = new FileReader();
             rd.onload = function () {
                 try {
                     if (window.Prog) window.Prog.show('\u5bfc\u5165\u5361\u7ec4\u2026');
-                    if (/\.zip$/i.test(f.name) || rd.result instanceof ArrayBuffer) {
+                    /* v61c：按魔数判 zip（分享面板保存后可能丢掉扩展名） */
+                    var isZip = false;
+                    if (rd.result instanceof ArrayBuffer) {
+                        var head = new Uint8Array(rd.result.slice(0, 4));
+                        isZip = (head[0] === 0x50 && head[1] === 0x4B) ||
+                                /^\.(zip|apk)$/i.test(f.name) || /\.zip$/i.test(f.type || '');
+                    }
+                    dlog('import: mode=' + (isZip ? 'zip' : 'json'));
+                    if (isZip) {
                         var bytes = rd.result instanceof ArrayBuffer ? new Uint8Array(rd.result) : null;
-                        if (!bytes) { toast('读文件失败', true); return; }
+                        if (!bytes) { if (window.Prog) window.Prog.hide(); toast('\u8bfb\u6587\u4ef6\u5931\u8d25', true); return; }
                         window.fflate.unzip(bytes, function (err, unzipped) {
-                            if (err) { if (window.Prog) window.Prog.hide(); toast('zip 解析失败', true); return; }
-                            var jb = unzipped['charcards.json'];
-                            if (!jb) { if (window.Prog) window.Prog.hide(); toast('zip 里缺 charcards.json', true); return; }
-                            var data = JSON.parse(new TextDecoder().decode(jb));
+                            if (err) { if (window.Prog) window.Prog.hide(); dlog('import: unzip ERR ' + (err && err.message || err)); toast('zip \u89e3\u6790\u5931\u8d25', true); return; }
+                            var keys = Object.keys(unzipped || {});
+                            dlog('import: zip entries=' + keys.length + ' ' + keys.slice(0, 8).join(','));
+                            /* charcards.json 允许在子目录 */
+                            var jk = keys.filter(function (k) { return /(^|\/)charcards\.json$/i.test(k); })[0];
+                            if (!jk) { if (window.Prog) window.Prog.hide(); dlog('import: no charcards.json in zip'); toast('zip \u91cc\u7f3a charcards.json', true); return; }
+                            var data = JSON.parse(new TextDecoder().decode(unzipped[jk]));
+                            /* 头像 + 原图都入表；同时放带前缀键和纯文件名键 */
                             var imgMap = {};
-                            Object.keys(unzipped).forEach(function (k) {
-                                if (k.indexOf('chars/') === 0) imgMap[k.slice('chars/'.length)] = u8ToDataUrl(unzipped[k]);
+                            keys.forEach(function (k) {
+                                if (!/^chars(_full)?\//i.test(k)) return;
+                                var du = u8ToDataUrl(unzipped[k]);
+                                imgMap[k] = du;                                   /* chars/GPT.jpg */
+                                imgMap[k.replace(/^chars(_full)?\//i, '')] = du;  /* GPT.jpg */
                             });
+                            dlog('import: cards=' + ((data.cards || []).length) + ' imgs=' + Object.keys(imgMap).length);
                             if (window.Prog) window.Prog.set(0.75, '\u5199\u5165\u5361\u7ec4\u2026');
                             applyImport(data, imgMap, groupId, parentSheet);
                             if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165 ' + ((data.cards || []).length) + ' \u4e2a\u89d2\u8272');
                         });
                         return;
                     }
+                    /* JSON 分支：先解码字节（rd.result 是 ArrayBuffer） */
+                    var raw = '';
+                    try {
+                        var u8 = new Uint8Array(rd.result);
+                        /* 去 BOM */
+                        var s0 = u8.length && u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF ? 3 : 0;
+                        raw = new TextDecoder('utf-8').decode(u8.subarray(s0));
+                    } catch (e0) { raw = String(rd.result || ''); }
+                    var jd = JSON.parse(raw);
+                    if (!jd || !Array.isArray(jd.cards)) {
+                        if (window.Prog) window.Prog.hide();
+                        var isMarks = !!(jd && jd.marks && jd.schema);
+                        dlog('import: json without cards (marks=' + isMarks + ')');
+                        toast(isMarks ? '这是打标 JSON，不含角色卡；请导入导出的 ZIP' : '这个 JSON 里没有角色卡', true);
+                        return;
+                    }
+                    var inline = 0;
+                    (jd.cards || []).forEach(function (c) { if (c.img || c.imgFull) inline++; });
+                    var refs = (jd.cards || []).filter(function (c) { return c.imgFile || c.imgFullFile; }).length;
+                    dlog('import: json cards=' + ((jd.cards || []).length) + ' inlineImgs=' + inline + ' fileRefs=' + refs);
                     if (window.Prog) window.Prog.set(0.7, '\u5199\u5165\u5361\u7ec4\u2026');
-                    applyImport(JSON.parse(rd.result), {}, groupId, parentSheet);
+                    applyImport(jd, {}, groupId, parentSheet);
                     if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165');
-                } catch (e) { if (window.Prog) window.Prog.hide(); toast('导入失败：' + e.message, true); }
+                    if (refs && !inline) {
+                        toast('此 JSON 只引用了图片路径，请改导入导出的 ZIP（含图片）', true);
+                    }
+                } catch (e) { if (window.Prog) window.Prog.hide(); dlog('import: ERR ' + (e && (e.message || e))); toast('\u5bfc\u5165\u5931\u8d25: ' + (e && e.message), true); }
             };
-            if (/\.zip$/i.test(f.name)) rd.readAsArrayBuffer(f); else rd.readAsText(f);
+            /* v61c：一律先读 ArrayBuffer，再按魔数决定 zip/json */
+            rd.readAsArrayBuffer(f);
         });
         inp.click();
     }
+
     function applyImport(data, imgMap, groupId, parentSheet) {
         /* 目标：有 groupId（组内导入）→ 覆写该组；无 → 新建卡组（名取文件名去前缀） */
         var v2 = window.CC.importFromParts(data, imgMap);
