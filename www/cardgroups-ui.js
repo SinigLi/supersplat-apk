@@ -464,6 +464,27 @@
         var data = window.CCG.get(id);
         var nm = window.CCG.nameOf(id);
         if (!data) return;
+        /* v60d：原图在 IDB（localStorage 只留头像）——导出前合并 */
+        var doExport = function (data2) {
+            exportGroupInner(id, data2, nm);
+        };
+        if (window.CGFull && window.CGFull.all) {
+            window.CGFull.all(id).then(function (fulls) {
+                var data2 = JSON.parse(JSON.stringify(data));
+                (data2.cards || []).forEach(function (c) {
+                    if (fulls[c.id]) c.imgFull = fulls[c.id];
+                });
+                doExport(data2);
+            }).catch(function (e) {
+                dlog('exportGroup fulls read ERR: ' + (e && e.message || e));
+                doExport(data);   /* 降级：只导头像 */
+            });
+        } else {
+            doExport(data);
+        }
+    }
+
+    function exportGroupInner(id, data, nm) {
         var plan = window.CC.exportPlan(data);
         var jsonU8 = new TextEncoder().encode(JSON.stringify(plan.json, null, 2));
         var entries = { 'charcards.json': jsonU8 };

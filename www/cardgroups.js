@@ -69,14 +69,22 @@
             var before = o.groups.length;
             o.groups = o.groups.filter(function (x) { return x.id !== id; });
             if (o.groups.length === before) return false;
-            _write(o); return true;
+            _write(o);
+            /* v60d：原图同步清理 */
+            try { window.CGFull.delGroup(id); } catch (e) { }
+            return true;
         },
         saveData: function (id, data) {
             if (!validData(data)) return false;
             var o = _raw();
             var g = o.groups.filter(function (x) { return x.id === id; })[0];
             if (!g) return false;
-            g.data = data; _write(o); return true;
+            /* v60d：原图（imgFull）剥离进 IndexedDB，localStorage 只留头像（debug_23 配额实锤） */
+            var sp = (global.CGFull || window.CGFull) ? window.CGFull.stripFull(data) : { slim: data, fulls: [] };
+            g.data = sp.slim;
+            _write(o);
+            sp.fulls.forEach(function (f) { try { window.CGFull.put(id, f.cardId, f.dataUrl); } catch (e) { } });
+            return true;
         },
         importPack: function (name, data) {
             if (!validData(data)) return null;
