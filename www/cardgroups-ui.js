@@ -382,7 +382,8 @@
                     if (seen[base]) return;   /* 重名取第一张 */
                     seen[base] = true;
                     if (!f.uri) { dlog('imgFolder skip no-uri: ' + f.name); return; }   /* 修复后 listFiles 必带 uri */
-                picked.push({ name: base, uri: f.uri, docId: f.docId, raw: f });
+                    var mExt = (/\.(jpg|jpeg|png|webp|gif|bmp)$/i.exec(f.name) || ['', 'png'])[1].toLowerCase();
+                    picked.push({ name: base, uri: f.uri, docId: f.docId, ext: mExt, raw: f });
                 });
                 if (!picked.length) { toast('该文件夹没有图片（支持 jpg/png/webp）', true); return; }
                 dlog('imgFolder files=' + picked.length + '/' + files.length);
@@ -418,6 +419,8 @@
                         cx.drawImage(im, (S2 - im.width * sc) / 2, (S2 - im.height * sc) / 2, im.width * sc, im.height * sc);
                         var card = { id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), name: it.name, tag: '' };
                         card.img = cv.toDataURL('image/jpeg', 0.82);
+                        /* v60c：原图完整保留（导出时进 chars_full/） */
+                        card.imgFull = 'data:image/' + (it.ext || 'png') + ';base64,' + rb.base64;
                         cards.cards.push(card);
                         ok++;
                     } catch (e) { fail++; dlog('imgFolder decode ERR ' + it.name + ': ' + e.message); }

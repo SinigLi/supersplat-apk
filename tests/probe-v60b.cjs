@@ -19,7 +19,7 @@ check('u8ToB64 分段编码', cui.includes('function u8ToB64'));
 check('json 图片引用 chars/', cc.includes("imgFile = 'chars/'"));
 
 /* 需求3：打标 UI 重构 */
-check('确认/取消独立左上角（img-tag-okbar）', img.includes('img-tag-okbar') && img.includes("okBar.style.top = '12px'"));
+check('确认/取消独立左上角（img-tag-okbar）', img.includes('img-tag-okbar') && img.includes("okBar.style.top = '10px'"));
 check('启用/隐藏/停用按钮已删', !img.includes("'启用'") && !img.includes("'停用'") && !/gHide\.appendChild\(el\('span', 'ico', '🙈'\)/.test(img));
 check('角色下拉 select 已删（tagSelEl 无 DOM 构建）', !/tagSelEl = el\('select'/.test(img));
 check('底部中间工具条（图层/当前层名/描述/角色）', img.includes('img-tagbar-bottom') && img.includes("'图层'") && img.includes("'描述'") && img.includes("'角色'"));

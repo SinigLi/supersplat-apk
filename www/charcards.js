@@ -60,6 +60,8 @@
             if (!c || typeof c.id !== 'string' || !c.id || typeof c.name !== 'string' || !c.name) return;
             var card = { id: c.id, name: c.name, tag: typeof c.tag === 'string' ? c.tag : '' };
             if (typeof c.img === 'string' && c.img.indexOf('data:image') === 0) card.img = c.img;
+            /* v60c：原图完整保留（导入时未缩放的 dataURL）；ext 从 mime 嗅探 */
+            if (typeof c.imgFull === 'string' && c.imgFull.indexOf('data:image') === 0) card.imgFull = c.imgFull;
             f.cards.push(card);
         });
         return f;
@@ -185,18 +187,26 @@
     function safeFileName(name) {
         return String(name).replace(/[\\/:*?"<>|\s]+/g, '_');
     }
+    function dataUrlExt(u) {
+        var m = /^data:image\/([a-z0-9+.-]+)[;,]/i.exec(u || '');
+        return m ? (m[1] === 'jpeg' ? 'jpg' : m[1]) : 'jpg';
+    }
     function exportPlan(f) {
         var cards = f.cards.map(function (c) {
             var cc = { id: c.id, name: c.name, tag: c.tag || '' };
             if (c.img) cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';
+            /* v60c：原图导出引用（保留原格式扩展名） */
+            if (c.imgFull) cc.imgFullFile = 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull);
             return cc;
         });
-        return {
-            json: { schema: SCHEMA_V2, descGroups: f.descGroups, cards: cards },
-            images: f.cards.filter(function (c) { return c.img; }).map(function (c) {
-                return { file: 'chars/' + safeFileName(c.name) + '.jpg', name: c.name, dataUrl: c.img };
-            })
-        };
+        var images = f.cards.filter(function (c) { return c.img; }).map(function (c) {
+            return { file: 'chars/' + safeFileName(c.name) + '.jpg', name: c.name, dataUrl: c.img };
+        });
+        /* v60c：原图进包（与头像同名不同目录，互不冲突） */
+        f.cards.filter(function (c) { return c.imgFull; }).forEach(function (c) {
+            images.push({ file: 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull), name: c.name, dataUrl: c.imgFull });
+        });
+        return { json: { schema: SCHEMA_V2, descGroups: f.descGroups, cards: cards }, images: images };
     }
     /* zip 解包后的组装：jsonObj + imgMap{ '<角色名>.jpg': dataUrl } → v2 */
     function importFromParts(jsonObj, imgMap) {
@@ -208,7 +218,10 @@
                 var cc = Object.assign({}, c);
                 if (cc.imgFile && imgMap[cc.imgFile]) cc.img = imgMap[cc.imgFile];
                 else if (!cc.img && imgMap[(cc.name || '') + '.jpg']) cc.img = imgMap[cc.name + '.jpg'];
+                /* v60c：原图回填 */
+                if (cc.imgFullFile && imgMap[cc.imgFullFile]) cc.imgFull = imgMap[cc.imgFullFile];
                 delete cc.imgFile;
+                delete cc.imgFullFile;
                 return cc;
             });
         }
