@@ -594,7 +594,9 @@
                     applyImport(jd, {}, groupId, parentSheet);
                     if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165');
                     if (refs && !inline) {
-                        toast('此 JSON 只引用了图片路径，请改导入导出的 ZIP（含图片）', true);
+                        var noImg = (jd.cards || []).filter(function (c) { return !c.img; }).length;
+                        if (noImg) toast('角色已导入，但 ' + noImg + ' 个角色没带图片（该 JSON 仅引用路径）；请改导入导出的 ZIP', true);
+                        else toast('已导入');
                     }
                 } catch (e) { if (window.Prog) window.Prog.hide(); dlog('import: ERR ' + (e && (e.message || e))); toast('\u5bfc\u5165\u5931\u8d25: ' + (e && e.message), true); }
             };
@@ -604,9 +606,29 @@
         inp.click();
     }
 
+    /* v61d: imported cards missing avatars borrow from same-named cards in other groups */
+    function borrowAvatars(v2) {
+        var lib = window.CCG.list();
+        var byName = {};
+        lib.forEach(function (g) {
+            (g.data && g.data.cards || []).forEach(function (c) {
+                if (c.img && !byName[c.name]) byName[c.name] = c.img;
+            });
+        });
+        var filled = 0;
+        (v2.cards || []).forEach(function (c) {
+            if (!c.img && byName[c.name]) { c.img = byName[c.name]; filled++; }
+        });
+        return filled;
+    }
+
     function applyImport(data, imgMap, groupId, parentSheet) {
         /* 目标：有 groupId（组内导入）→ 覆写该组；无 → 新建卡组（名取文件名去前缀） */
         var v2 = window.CC.importFromParts(data, imgMap);
+        var borrowed = borrowAvatars(v2);
+        var missing = (v2.cards || []).filter(function (c) { return !c.img; }).length;
+        if (borrowed) dlog('import: borrowed avatars=' + borrowed);
+        if (missing) dlog('import: cards without avatar=' + missing);
         var gid;
         if (groupId) {
             gid = groupId;

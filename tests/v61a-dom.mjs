@@ -43,7 +43,7 @@ try {
       var img = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
       var cards = window.CC.normalize({ schema:'moyutai.charcards.v1', orig_char_descs:['origA'], dest_char_descs:['destB'],
         cards:[{ id:'c1', name:'GPT', tag:'', img:img }, { id:'c2', name:'OTHER', tag:'', img:img }] });
-      var g = window.CCG.create('TG');
+      var g = window.CCG.create('TG-' + Date.now());
       window.CCG.saveData(g.id, cards);
 
       var L = window.__avLogic;

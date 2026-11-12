@@ -194,7 +194,11 @@
     function exportPlan(f) {
         var cards = f.cards.map(function (c) {
             var cc = { id: c.id, name: c.name, tag: c.tag || '' };
-            if (c.img) cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';
+            if (c.img) {
+                cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';
+                /* v61d：同时内嵌头像，保证「单独拿 charcards.json 去导入」也能带回图片 */
+                cc.img = c.img;
+            }
             /* v60c：原图导出引用（保留原格式扩展名） */
             if (c.imgFull) cc.imgFullFile = 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull);
             return cc;
