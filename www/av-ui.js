@@ -2063,6 +2063,8 @@ function hasMerge(seg) {
         var PJ = window.__projects && window.__projects._pj ? window.__projects._pj : null;
         if (!imgMod || !imgMod.renderTagMaskCanvas) throw new Error('打标渲染模块未就绪');
         var refs = S.marks.marks.filter(function (m) { return m.type === 'char_ref'; });
+        var _rt = refs.length, _rd = 0;
+        if (window.Prog) window.Prog.show('敷理打标遮罩…');
         for (var ri = 0; ri < refs.length; ri++) {
             var ref = refs[ri];
             var f = S.files.filter(function (x) { return x.label === ref.seg; })[0];
@@ -2085,7 +2087,7 @@ function hasMerge(seg) {
                 }
                 return false;
             });
-            if (!need.length) continue;
+            if (!need.length) { _rd++; if (window.Prog && _rt) window.Prog.set(_rd / _rt * 0.8); continue; }
             var frameCanvas = await captureTagFrame(f.name, frame, effFps());
             for (var ci = 0; ci < need.length; ci++) {
                 var ent = need[ci];
@@ -2111,6 +2113,7 @@ function hasMerge(seg) {
                 PNG_BY_PATH[path] = u8;
                 ent.mask = path;
                 count++;
+                if (window.Prog) window.Prog.set(((_rd / (_rt || 1)) * 0.8) + (count / (count + 3)) * 0.15, '遮罩 ' + count + ' 张');
                 /* 内容寻址备份（导出 zip 之外的持久层，重导出不重写） */
                 try {
                     var pjMod = window.__projectLogic;
@@ -2120,6 +2123,8 @@ function hasMerge(seg) {
                 } catch (e2) { dlog('tagmask backup skip: ' + (e2 && e2.message || e2)); }
             }
         }
+        _rd = _rt;
+        if (window.Prog) window.Prog.set(0.82, '遮罩 ' + count + ' 张');
         return { pngByPath: PNG_BY_PATH, count: count };
     }
 
@@ -2212,6 +2217,7 @@ function hasMerge(seg) {
         var json = L.buildExport(S.meta, S.marks, S.files);
         var text = JSON.stringify(json, null, 2);
         var sp = savePlug();
+        if (window.Prog) window.Prog.show('导出打标包…');
         var refNames = refCharNames();
         var groupPack = null;
         if (refNames.length) {
@@ -2219,6 +2225,7 @@ function hasMerge(seg) {
             catch (e) { dlog("export: chargroup pack ERR " + (e && e.message || e)); }
         }
         var needZip = resolved.count > 0 || !!groupPack;
+        if (window.Prog) window.Prog.set(0.86, groupPack ? ('卡绋 ' + groupPack.count + ' 觇色') : '编码　');
         var name = 'marks-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '-' +
             new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) +
             (needZip ? '.zip' : '.json');
@@ -2232,6 +2239,7 @@ function hasMerge(seg) {
                 Object.keys(groupPack.entries).forEach(function (k) { entries[k] = groupPack.entries[k]; });
                 groupCount = groupPack.count;
             }
+            if (window.Prog) window.Prog.set(0.92, '厇包 zip…');
             var zipped = window.fflate.zipSync(entries, { level: 0 });  /* PNG 已压缩 */
             var bin = ''; var CH = 8192;
             for (var zi = 0; zi < zipped.length; zi += CH) {
@@ -2240,8 +2248,8 @@ function hasMerge(seg) {
             var zb64 = btoa(bin);
             if (sp && sp.shareFile) {
                 sp.shareFile({ data: zb64, filename: name, mime: 'application/zip' })
-                    .then(function () { toast('已导出打标包（' + resolved.count + ' 张遮罩）'); })
-                    .catch(function (e2) { toast('分享失败：' + (e2 && e2.message || e2)); });
+                    .then(function () { if (window.Prog) window.Prog.done('巼导出 ' + resolved.count + ' 遮罩'); toast('已导出打标包（' + resolved.count + ' 张遮罩）'); })
+                    .catch(function (e2) { if (window.Prog) window.Prog.hide(); toast('分享失败：' + (e2 && e2.message || e2)); });
             } else {
                 var blob = new Blob([zipped], { type: 'application/zip' });
                 var a = document.createElement('a');
@@ -2253,11 +2261,12 @@ function hasMerge(seg) {
             }
             return;
         }
+        if (window.Prog) window.Prog.set(0.95, '\u751f\u6210 JSON\u2026');
         if (sp && sp.shareFile) {
             var b64 = btoa(unescape(encodeURIComponent(text)));
             sp.shareFile({ data: b64, filename: name, mime: 'application/json' })
-                .then(function () { toast('已唤起分享，把 JSON 发给音视频助手'); })
-                .catch(function (e) { toast('分享失败：' + (e && e.message || e)); });
+                .then(function () { if (window.Prog) window.Prog.done('\u5df2\u5bfc\u51fa JSON'); toast('已唤起分享，把 JSON 发给音视频助手'); })
+                .catch(function (e) { if (window.Prog) window.Prog.hide(); toast('分享失败：' + (e && e.message || e)); });
         } else {
             var blob = new Blob([text], { type: 'application/json' });
             var a = document.createElement('a');
@@ -2265,6 +2274,7 @@ function hasMerge(seg) {
             a.download = name;
             a.click();
             setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+            if (window.Prog) window.Prog.done('\u5df2\u4e0b\u8f7d JSON');
             toast('JSON 已下载（APK 内走分享）');
         }
     }

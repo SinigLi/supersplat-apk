@@ -399,16 +399,21 @@
         var cards = { schema: 'moyutai.charcards.v1', orig_char_descs: [], dest_char_descs: [], cards: [] };
         var idx = 0, ok = 0, fail = 0;
         var S2 = 256;
+        var total = picked.length;
+        if (window.Prog) window.Prog.show('导入角色图片 (0/' + total + ')');
         function next() {
             if (idx >= picked.length) {
+                if (window.Prog) window.Prog.set(1, '保存卡组…');
                 var r = window.CCG.importPack(folderName, cards);
                 if (!r) { toast('保存卡组失败', true); return; }
                 dlog('imgFolder done: ok=' + ok + ' fail=' + fail + ' group=' + folderName);
+                if (window.Prog) window.Prog.done('已导入 ' + ok + ' 个角色');
                 toast(ok ? '已导入 ' + ok + ' 个角色' + (fail ? '（' + fail + ' 张读取失败）' : '') : '没有可用图片', !ok);
                 renderList();
                 return;
             }
             var it = picked[idx++];
+            if (window.Prog) window.Prog.set((idx - 1) / total, '处理 ' + it.name);
             p.readBytes({ uri: it.uri, tree: treeUriStr, docId: it.docId }).then(function (rb) {
                 var im = new Image();
                 im.onload = function () {
@@ -486,11 +491,14 @@
 
     function exportGroupInner(id, data, nm) {
         var plan = window.CC.exportPlan(data);
+        if (window.Prog) window.Prog.show('导出卡组…');
         var jsonU8 = new TextEncoder().encode(JSON.stringify(plan.json, null, 2));
         var entries = { 'charcards.json': jsonU8 };
         var done = function () {
+            if (window.Prog) window.Prog.set(0.95, '打包 zip…');
             window.fflate.zip(entries, function (err, zipped) {
-                if (err) { toast('打包失败', true); return; }
+                if (err) { if (window.Prog) window.Prog.hide(); toast('打包失败', true); return; }
+                if (window.Prog) window.Prog.done('已编码 ' + (zipped ? zipped.length : 0) + ' B');
                 /* v60b：APK 走原生分享面板（<a download> 在 WebView 无效）；网页保留下载兜底 */
                 var sp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SaveImage;
                 var fname = 'charcards-' + nm + '.zip';
@@ -510,10 +518,11 @@
             });
         };
         if (!plan.images.length) { done(); return; }
-        var left = plan.images.length;
+        var left = plan.images.length, gi = 0, gt = plan.images.length;
         plan.images.forEach(function (im) {
             entries[im.file] = dataUrlToU8(im.dataUrl);
-            left--;
+            left--; gi++;
+            if (window.Prog) window.Prog.set(gt ? gi / gt * 0.9 : 0.9, '打包图片 ' + gi + '/' + gt);
             if (left === 0) done();
         });
     }
@@ -525,24 +534,29 @@
             var rd = new FileReader();
             rd.onload = function () {
                 try {
+                    if (window.Prog) window.Prog.show('\u5bfc\u5165\u5361\u7ec4\u2026');
                     if (/\.zip$/i.test(f.name) || rd.result instanceof ArrayBuffer) {
                         var bytes = rd.result instanceof ArrayBuffer ? new Uint8Array(rd.result) : null;
                         if (!bytes) { toast('读文件失败', true); return; }
                         window.fflate.unzip(bytes, function (err, unzipped) {
-                            if (err) { toast('zip 解析失败', true); return; }
+                            if (err) { if (window.Prog) window.Prog.hide(); toast('zip 解析失败', true); return; }
                             var jb = unzipped['charcards.json'];
-                            if (!jb) { toast('zip 里缺 charcards.json', true); return; }
+                            if (!jb) { if (window.Prog) window.Prog.hide(); toast('zip 里缺 charcards.json', true); return; }
                             var data = JSON.parse(new TextDecoder().decode(jb));
                             var imgMap = {};
                             Object.keys(unzipped).forEach(function (k) {
                                 if (k.indexOf('chars/') === 0) imgMap[k.slice('chars/'.length)] = u8ToDataUrl(unzipped[k]);
                             });
+                            if (window.Prog) window.Prog.set(0.75, '\u5199\u5165\u5361\u7ec4\u2026');
                             applyImport(data, imgMap, groupId, parentSheet);
+                            if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165 ' + ((data.cards || []).length) + ' \u4e2a\u89d2\u8272');
                         });
                         return;
                     }
+                    if (window.Prog) window.Prog.set(0.7, '\u5199\u5165\u5361\u7ec4\u2026');
                     applyImport(JSON.parse(rd.result), {}, groupId, parentSheet);
-                } catch (e) { toast('导入失败：' + e.message, true); }
+                    if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165');
+                } catch (e) { if (window.Prog) window.Prog.hide(); toast('导入失败：' + e.message, true); }
             };
             if (/\.zip$/i.test(f.name)) rd.readAsArrayBuffer(f); else rd.readAsText(f);
         });

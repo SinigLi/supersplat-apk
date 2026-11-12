@@ -209,6 +209,21 @@
         return { json: { schema: SCHEMA_V2, descGroups: f.descGroups, cards: cards }, images: images };
     }
     /* zip 解包后的组装：jsonObj + imgMap{ '<角色名>.jpg': dataUrl } → v2 */
+    /* v61b：zip 导入时 imgMap 的 key 有两种约定（带 chars/ 前缀 或 只有文件名），
+     * 统一用 lookupAny 兼容，避免「图片一张都回不来」或只回来名字刚好等于文件名的那些。 */
+    function _lookupImg(imgMap, pathLike) {
+        if (!imgMap || !pathLike) return null;
+        var keys = [
+            String(pathLike),
+            String(pathLike).replace(/^chars_full\//, '').replace(/^chars\//, ''),
+            String(pathLike).split('/').pop()      /* basename */
+        ];
+        for (var i = 0; i < keys.length; i++) {
+            if (keys[i] && imgMap[keys[i]]) return imgMap[keys[i]];
+        }
+        return null;
+    }
+
     function importFromParts(jsonObj, imgMap) {
         imgMap = imgMap || {};
         /* imgFile 在 normalize 前回填成 img（normalize 只认 data:image 字段） */
@@ -216,10 +231,17 @@
         if (pre && Array.isArray(pre.cards)) {
             pre.cards = pre.cards.map(function (c) {
                 var cc = Object.assign({}, c);
-                if (cc.imgFile && imgMap[cc.imgFile]) cc.img = imgMap[cc.imgFile];
-                else if (!cc.img && imgMap[(cc.name || '') + '.jpg']) cc.img = imgMap[cc.name + '.jpg'];
+                var hit = _lookupImg(imgMap, cc.imgFile);
+                if (hit) cc.img = hit;
+                else if (!cc.img) {
+                    /* 老格式兜底：文件名 = 角色名 + .jpg（含安全化后的名字） */
+                    var nm = cc.name || '';
+                    cc.img = _lookupImg(imgMap, nm + '.jpg') || _lookupImg(imgMap, safeFileName(nm) + '.jpg') || null;
+                    if (!cc.img) delete cc.img;
+                }
                 /* v60c：原图回填 */
-                if (cc.imgFullFile && imgMap[cc.imgFullFile]) cc.imgFull = imgMap[cc.imgFullFile];
+                var fullHit = _lookupImg(imgMap, cc.imgFullFile);
+                if (fullHit) cc.imgFull = fullHit;
                 delete cc.imgFile;
                 delete cc.imgFullFile;
                 return cc;
