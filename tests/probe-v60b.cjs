@@ -29,7 +29,7 @@ check('选中即建层激活（switchTagLayer）', /onPick[\s\S]{0,400}switchTag
 check('tagEntries 层派生 enabled', /遮罩层名单/.test(img) && /enabledCards\.map/.test(img));
 check('图层面板打标可编辑（锁定代码已移除）', !/b\.disabled = !!S\.tagMode/.test(img));
 check('新增按钮 tagMode → 角色卡选择', /addBtn\.addEventListener[\s\S]{0,300}openTagCardPicker\('add'/.test(img));
-check('层行删除按钮（img-layer-rm）', img.includes('img-layer-rm'));
+check('删除入口收敛到顶部🗑（v60g）'.replace('🗑',''), !img.includes('img-layer-rm') && img.includes("delBtn.addEventListener('click'"));
 
 console.log('probe-v60b: ' + pass + '/' + (pass + fail) + (fail ? ' === FAIL ===' : ' === ALL PASS ==='));
 process.exit(fail ? 1 : 0);

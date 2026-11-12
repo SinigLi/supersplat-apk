@@ -156,8 +156,6 @@
         ".img-cardpicker-ava{width:38px;height:38px;border-radius:50%;overflow:hidden;background:#22263a;display:flex;align-items:center;justify-content:center;color:#8f95a8;font-size:15px;flex-shrink:0;}",
         ".img-cardpicker-ava img{width:100%;height:100%;object-fit:cover;}",
         ".img-cardpicker-name{font-size:14px;color:#e8eaf2;}",
-        ".img-layer-rm{margin-left:auto;color:#99a;opacity:.6;padding:2px 6px;}",
-        ".img-layer-rm:active{opacity:1;color:#ff7d7d;}",
                 ".img-handle{min-width:18px;min-height:18px;display:flex;align-items:center;justify-content:center;color:#777;font-size:14px;cursor:grab;touch-action:none;flex-shrink:0;letter-spacing:2px;border-radius:10px;}",
   ".img-handle:active{cursor:grabbing;color:#4a9eff}",
   ".img-dock.img-dock-top .img-handle,.img-dock.img-dock-bottom .img-handle{writing-mode:vertical-lr}",
@@ -879,19 +877,7 @@
                     hint('已激活「' + lay.name + '」');
                 }
             });
-            /* v60b：行尾删除（打标模式也可删） */
-            var rm = el('span', 'img-layer-rm', '✕');
-            rm.title = '删除此层';
-            rm.addEventListener('click', function (e) {
-                e.stopPropagation();
-                if (!window.confirm('删除遮罩层「' + lay.name + '」及其笔画？')) return;
-                var op = OPS.makeDelLayer(S.state, lay.id, { allowEmpty: !!S.tagMode });   /* v60f: tagMode 可删光 */
-                if (op) applyAndPush(op);
-                renderLayersPanel();
-                tmSyncCurLayerName();
-                saveTagStrokes();
-            });
-            row.appendChild(rm);
+            /* v60g：行尾删除按老板要求移除，删除只留列表顶部的🗑按钮 */
             var nm = el('span', 'img-layer-name', lay.name +
                 (lay.strokes.length ? ' (' + lay.strokes.length + ')' : ''));
             row.appendChild(nm);
@@ -1166,10 +1152,12 @@
         });
         delBtn.addEventListener('click', function () {
             var lay = curLayer();
-            if (S.state.layers.length <= 1) { hint('至少要保留一个图层', true); return; }
+            if (!lay) return;
+            /* v60f/g：打标模式可删光（0 层确认 = 清除该帧打标）；普通图片模式至少保留一层 */
+            if (!S.tagMode && S.state.layers.length <= 1) { hint('至少要保留一个图层', true); return; }
             if (!confirm('删除图层「' + lay.name + '」及其全部笔画？')) return;
-            var op = OPS.makeDelLayer(S.state, lay.id);
-            if (op && applyAndPush(op)) hint('已删除「' + lay.name + '」');
+            var op = OPS.makeDelLayer(S.state, lay.id, { allowEmpty: !!S.tagMode });
+            if (op && applyAndPush(op)) { hint('已删除「' + lay.name + '」'); renderLayersPanel(); tmSyncCurLayerName(); if (S.tagMode) saveTagStrokes(); }
         });
         renBtn.addEventListener('click', function () {
             var lay = curLayer();

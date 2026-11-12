@@ -53,13 +53,15 @@ try {
   /* 点「图层」按钮 → 打开图层面板（渲染行） */
   await q(`[...document.querySelectorAll('.img-tagbar-bottom .img-grp')].find(g=>g.textContent.includes('图层')).click()`);
   await new Promise(r => setTimeout(r, 200));
-  const rmInfo = await q(`JSON.stringify({ rm: document.querySelectorAll('.img-layer-rm').length })`);
+  const rmInfo = await q(`JSON.stringify({ rm: [...document.querySelectorAll('.img-layers-top .img-sub-btn')].filter(function(b){ return (b.title||'').indexOf('\u5220\u9664') >= 0; }).length })`);
   check('图层面板出现删除按钮', JSON.parse(rmInfo).rm >= 1, rmInfo);
 
   /* 点行尾删除 → confirm 已自动 true → 0 层 */
   const del = await q(`(function(){
-    var rm = document.querySelector('.img-layer-rm');
-    rm.click();
+    var btns = [...document.querySelectorAll('.img-layers-top .img-sub-btn')];
+    var delBtn = btns.find(function(b){ return (b.title || '').indexOf('\u5220\u9664') >= 0; });
+    if (!delBtn) return { err: 'NO TOP DEL BTN' };
+    delBtn.click();
     var s = window.__img.state();
     return { layers: s.layers, activeId: s.activeId };
   })()`);
