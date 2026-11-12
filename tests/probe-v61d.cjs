@@ -12,7 +12,7 @@ check('exportPlan 内嵌头像 img', cc.includes('cc.img = c.img;'));
 check('仍保留 imgFile 路径引用', cc.includes("cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';"));
 check('仍保留 imgFullFile', cc.includes("cc.imgFullFile = 'chars_full/'"));
 check('borrowAvatars 已实现', cui.includes('function borrowAvatars(v2)'));
-check('导入时调用 borrowAvatars', cui.includes('var borrowed = borrowAvatars(v2);'));
+check('applyImport 调用 borrowAvatars（v61f 改为 Promise 链）', /return borrowAvatars\(v2\)/.test(cui));
 check('缺图数量写日志', cui.includes("dlog('import: cards without avatar=' + missing)"));
 check('缺图时 toast 提示改导 ZIP', cui.includes('个角色没带图片'));
 

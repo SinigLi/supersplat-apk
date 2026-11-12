@@ -132,6 +132,7 @@
     }
 
     function renderList() {
+        if (!dlgEl) return;   /* v61f: 角色卡面板没打开时（脚本/后台导入）不碰 DOM */
         dlog('renderList: groups=' + window.CCG.list().length);
         var v = dlgEl.querySelector('#cgmList');
         v.innerHTML = '';
@@ -464,6 +465,17 @@
         return btoa(out.join(''));
     }
 
+    /* v61f：导出前把 IndexedDB 里的原图并回内存数据（localStorage 版本已被 stripFull 剥掉） */
+    function mergeFulls(data, fulls) {
+        var data2 = JSON.parse(JSON.stringify(data));
+        var n = 0;
+        (data2.cards || []).forEach(function (c) {
+            if (fulls && fulls[c.id]) { c.imgFull = fulls[c.id]; n++; }
+        });
+        dlog('export: merged originals=' + n);
+        return data2;
+    }
+
     function exportGroup(id) {
         dlog('exportGroup: ' + id);
         var data = window.CCG.get(id);
@@ -475,11 +487,7 @@
         };
         if (window.CGFull && window.CGFull.all) {
             window.CGFull.all(id).then(function (fulls) {
-                var data2 = JSON.parse(JSON.stringify(data));
-                (data2.cards || []).forEach(function (c) {
-                    if (fulls[c.id]) c.imgFull = fulls[c.id];
-                });
-                doExport(data2);
+                doExport(mergeFulls(data, fulls));
             }).catch(function (e) {
                 dlog('exportGroup fulls read ERR: ' + (e && e.message || e));
                 doExport(data);   /* 降级：只导头像 */
@@ -493,6 +501,9 @@
         var plan = window.CC.exportPlan(data);
         if (window.Prog) window.Prog.show('导出卡组…');
         var jsonU8 = new TextEncoder().encode(JSON.stringify(plan.json, null, 2));
+        dlog('export: json=' + jsonU8.length + 'B cards=' + plan.json.cards.length +
+            ' inlineFull=' + plan.json.cards.filter(function (c) { return !!c.imgFull; }).length +
+            ' images=' + plan.images.length);
         var entries = { 'charcards.json': jsonU8 };
         var done = function () {
             if (window.Prog) window.Prog.set(0.95, '打包 zip…');
@@ -565,8 +576,9 @@
                             });
                             dlog('import: cards=' + ((data.cards || []).length) + ' imgs=' + Object.keys(imgMap).length);
                             if (window.Prog) window.Prog.set(0.75, '\u5199\u5165\u5361\u7ec4\u2026');
-                            applyImport(data, imgMap, groupId, parentSheet);
-                            if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165 ' + ((data.cards || []).length) + ' \u4e2a\u89d2\u8272');
+                            Promise.resolve(applyImport(data, imgMap, groupId, parentSheet)).then(function () {
+                                if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165 ' + ((data.cards || []).length) + ' \u4e2a\u89d2\u8272');
+                            });
                         });
                         return;
                     }
@@ -591,8 +603,9 @@
                     var refs = (jd.cards || []).filter(function (c) { return c.imgFile || c.imgFullFile; }).length;
                     dlog('import: json cards=' + ((jd.cards || []).length) + ' inlineImgs=' + inline + ' fileRefs=' + refs);
                     if (window.Prog) window.Prog.set(0.7, '\u5199\u5165\u5361\u7ec4\u2026');
-                    applyImport(jd, {}, groupId, parentSheet);
-                    if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165');
+                    Promise.resolve(applyImport(jd, {}, groupId, parentSheet)).then(function () {
+                        if (window.Prog) window.Prog.done('\u5df2\u5bfc\u5165');
+                    });
                     if (refs && !inline) {
                         var noImg = (jd.cards || []).filter(function (c) { return !c.img; }).length;
                         if (noImg) toast('角色已导入，但 ' + noImg + ' 个角色没带图片（该 JSON 仅引用路径）；请改导入导出的 ZIP', true);
@@ -606,48 +619,79 @@
         inp.click();
     }
 
-    /* v61d: imported cards missing avatars borrow from same-named cards in other groups */
+    /* v61f: 借用同名角色的图片时必须同时读 IndexedDB 原图。
+     * 原因（debug_27）：CCG.list() 返回的是 localStorage 里的精简数据，imgFull 早在
+     * CCG.saveData() 时被 CGFull.stripFull() 剥到 IDB 了 —— 只读 list() 永远借不到原图，
+     * 导入旧 JSON 时表现为 "borrowed avatars=11" 但原图一张没回来，再导出自然也没有 chars_full。 */
     function borrowAvatars(v2) {
         var lib = window.CCG.list();
-        var byName = {};
-        lib.forEach(function (g) {
-            (g.data && g.data.cards || []).forEach(function (c) {
-                if (!byName[c.name]) byName[c.name] = {};
-                if (c.img && !byName[c.name].img) byName[c.name].img = c.img;
-                if (c.imgFull && !byName[c.name].imgFull) byName[c.name].imgFull = c.imgFull;
+        var jobs = lib.map(function (g) {
+            var one = {};
+            var pFull = (window.CGFull && window.CGFull.all)
+                ? window.CGFull.all(g.id).catch(function (e) {
+                    dlog('import: fulls read ERR ' + (e && e.message || e));
+                    return {};
+                })
+                : Promise.resolve({});
+            return pFull.then(function (fulls) {
+                (g.data && g.data.cards || []).forEach(function (c) {
+                    var cur = one[c.name] || (one[c.name] = {});
+                    if (c.img && !cur.img) cur.img = c.img;
+                    var full = (fulls && fulls[c.id]) || c.imgFull || null;
+                    if (full && !cur.imgFull) cur.imgFull = full;
+                });
+                return one;
             });
         });
-        var filled = 0, filledFull = 0;
-        (v2.cards || []).forEach(function (c) {
-            var s = byName[c.name];
-            if (!s) return;
-            if (!c.img && s.img) { c.img = s.img; filled++; }
-            if (!c.imgFull && s.imgFull) { c.imgFull = s.imgFull; filledFull++; }
+        return Promise.all(jobs).then(function (maps) {
+            var byName = {};
+            maps.forEach(function (m) {
+                Object.keys(m).forEach(function (nm) {
+                    var tgt = byName[nm] || (byName[nm] = {});
+                    if (!tgt.img && m[nm].img) tgt.img = m[nm].img;
+                    if (!tgt.imgFull && m[nm].imgFull) tgt.imgFull = m[nm].imgFull;
+                });
+            });
+            var filled = 0, filledFull = 0;
+            (v2.cards || []).forEach(function (c) {
+                var s = byName[c.name];
+                if (!s) return;
+                if (!c.img && s.img) { c.img = s.img; filled++; }
+                if (!c.imgFull && s.imgFull) { c.imgFull = s.imgFull; filledFull++; }
+            });
+            dlog('import: borrowed avatars=' + filled + ' originals=' + filledFull);
+            return filledFull;
         });
-        if (filledFull) dlog('import: borrowed originals=' + filledFull);
-        return filled;
     }
 
     function applyImport(data, imgMap, groupId, parentSheet) {
-        /* 目标：有 groupId（组内导入）→ 覆写该组；无 → 新建卡组（名取文件名去前缀） */
+        /* 目标：有 groupId（组内导入）→ 覆写该组；无 → 新建卡组 */
         var v2 = window.CC.importFromParts(data, imgMap);
-        var borrowed = borrowAvatars(v2);
         var missing = (v2.cards || []).filter(function (c) { return !c.img; }).length;
-        if (borrowed) dlog('import: borrowed avatars=' + borrowed);
         if (missing) dlog('import: cards without avatar=' + missing);
-        var gid;
-        if (groupId) {
-            gid = groupId;
-        } else {
-            var r = window.CCG.importPack('导入卡组 ' + new Date().toISOString().slice(0, 10), v2);
-            if (!r) { toast('导入失败', true); return; }
-            gid = r.id;
-            toast('已导入为新卡组');
-        }
-        window.CCG.saveData(gid, v2);
-        if (parentSheet) renderCards(parentSheet, gid, window.CCG.get(gid));
-        renderList();
+        return borrowAvatars(v2).catch(function (e) {
+            dlog('import: borrow ERR ' + (e && e.message || e));
+            return 0;
+        }).then(function () {
+            var gid;
+            if (groupId) {
+                gid = groupId;
+            } else {
+                var r = window.CCG.importPack('导入卡组 ' + new Date().toISOString().slice(0, 10), v2);
+                if (!r) { toast('导入失败', true); return; }
+                gid = r.id;
+                toast('已导入为新卡组');
+            }
+            window.CCG.saveData(gid, v2);
+            if (parentSheet) renderCards(parentSheet, gid, window.CCG.get(gid));
+            renderList();
+        });
     }
 
     window.__cardgroups = { open: open };
+    /* v61f: headless DOM 测试入口（与 UI 无关，仅暴露 applyImport） */
+    window.__cardgroupsTest = {
+        importForTest: function (data, imgMap) { return applyImport(data, imgMap || {}, null, null); },
+        mergeFulls: mergeFulls
+    };
 })();
