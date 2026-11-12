@@ -1609,24 +1609,33 @@
         /* 从层与选择组 entries：只收「启用」的角色；有笔画的层带 mask 标记（M5 导出时解析路径） */
         var tm = S.tagMode;
         /* v60b：enabled 派生 = 遮罩层名单（层名=卡名）——不再有独立「启用」登记 */
-        var enabledCards = (S.state.layers || []).map(function (l) {
-            return tm.cards.cards.filter(function (c) { return c.name === l.name; })[0];
-        }).filter(Boolean);
-        return enabledCards.map(function (card) {
-            var cardId = card.id;
-            var card = tm.cards.cards.filter(function (c) { return c.id === cardId; })[0];
-            if (!card) return null;
-            var lay = S.state.layers.filter(function (l) { return l.name === card.name; })[0];
-            var hasStrokes = !!(lay && lay.strokes.length);
-            return {
-                cardId: card.id,
-                name: card.name,
-                orig_char_desc: tm.orig[card.id] || '',
-                dest_char_desc: tm.dest[card.id] || '',
-                mask: hasStrokes ? ('pending:' + card.id) : null
-            };
-        }).filter(Boolean);
-    }
+        /* v60i：逐层出条目。层名命中角色卡时用卡信息；
+         * 层名被改名/不匹配时用层名兼底（否则该角色依旧会静默消失）。
+         * 无笔画层的 mask 为 null——导出时仍写 name + 两个描述。 */
+        var out = [];
+        (S.state.layers || []).forEach(function (l) {
+            var card = tm.cards.cards.filter(function (c) { return c.name === l.name; })[0];
+            var hasStrokes = !!(l.strokes && l.strokes.length);
+            if (card) {
+                out.push({
+                    cardId: card.id,
+                    name: card.name,
+                    orig_char_desc: tm.orig[card.id] || '',
+                    dest_char_desc: tm.dest[card.id] || '',
+                    mask: hasStrokes ? ('pending:' + card.id) : null
+                });
+            } else {
+                out.push({
+                    cardId: l.id,
+                    name: l.name,
+                    orig_char_desc: tm.orig[l.id] || '',
+                    dest_char_desc: tm.dest[l.id] || '',
+                    mask: hasStrokes ? ('pending:' + l.id) : null,
+                    layerOnly: true
+                });
+            }
+        });
+        return out;    }
 
     function finishTag(ok) {
         if (!ok) {

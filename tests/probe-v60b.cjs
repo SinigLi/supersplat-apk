@@ -26,7 +26,7 @@ check('底部中间工具条（图层/当前层名/描述/角色）', img.includ
 check('当前遮罩层名常显', img.includes('tmTagCurLayerName') && img.includes('imgTagCurLayerName'));
 check('角色卡选择弹层（搜索+头像）', img.includes('openTagCardPicker') && img.includes('img-cardpicker-search') && img.includes('img-cardpicker-ava'));
 check('选中即建层激活（switchTagLayer）', /onPick[\s\S]{0,400}switchTagLayer\(c\)/.test(img) || img.includes('switchTagLayer(c);'));
-check('tagEntries 层派生 enabled', /遮罩层名单/.test(img) && /enabledCards\.map/.test(img));
+check('tagEntries 层派生（遍历 layers，无独立 enabled）', img.includes('(S.state.layers || []).forEach(function (l)') && !img.includes('S.tagMode.enabled'));
 check('图层面板打标可编辑（锁定代码已移除）', !/b\.disabled = !!S\.tagMode/.test(img));
 check('新增按钮 tagMode → 角色卡选择', /addBtn\.addEventListener[\s\S]{0,300}openTagCardPicker\('add'/.test(img));
 check('删除入口收敛到顶部🗑（v60g）'.replace('🗑',''), !img.includes('img-layer-rm') && img.includes("delBtn.addEventListener('click'"));
