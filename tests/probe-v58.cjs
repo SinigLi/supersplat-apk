@@ -32,7 +32,7 @@ check('新建空组入口', cui.includes('cgmNew'));
 /* M4 开始页入口 */
 check('projects-ui 角色卡按钮', pui.includes('🎭 角色卡') && pui.includes('__cardgroups.open'));
 check('cardgroups-ui 管理对话框（v59k：图片文件夹导入）', cui.includes('cgm-sheet') && cui.includes('importImageFolder') && cui.includes('fflate.zip'));
-check('index.html 加载新文件（v60）', html.includes('cardgroups.js?v=60') && html.includes('cardgroups-ui.js?v=60'));
+check('index.html 加载新文件（v61）', html.includes('cardgroups.js?v=61') && html.includes('cardgroups-ui.js?v=61'));
 
 /* M5 导出结构 */
 check('帧号目录 + 纯角色名文件', av.includes("'masks/' + ref.seg + '/' + frame + '/' + safeName + '.png'"));
@@ -45,7 +45,7 @@ check('按名找草稿（兼容旧键）', av.includes('loadTagMaskLayersAnyName
 check('空层防黑图保留（v57c）', av.includes('tagmask skip empty') || av.includes("layMatch.strokes.length"));
 check('极性黑底抠洞保留（v56b）', img.includes('drawStrokes(og, lay.strokes)'));
 check('即画即存保留（v54）', img.includes(`if (S.tagMode) saveTagStrokes();`));
-check('切层回写下拉（v55c）', img.includes(`if (tagSelEl) tagSelEl.value = card.id;`));
+check('切层 activeId 单一事实源（v60b）', !img.includes('tagSelEl.value') && img.includes('S.state.activeId = lay.id'));
 
 console.log('========================');
 console.log('probe-v58: ' + pass + '/' + (pass + fail) + (fail === 0 ? ' === ALL PASS ===' : ' === FAIL ==='));

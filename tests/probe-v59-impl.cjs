@@ -51,11 +51,11 @@ check('极性黑底抠洞保留（v56b）', img.includes('drawStrokes(og, lay.st
 
 /* 开始页入口 + html */
 check('开始页入口按钮', pui.includes('🎭 角色卡') && pui.includes('__cardgroups.open'));
-check('index.html 脚本版本统一 v60', ['av-ui.js?v=60', 'charcards.js?v=60', 'cardgroups.js?v=60', 'cardgroups-ui.js?v=60', 'img-ui.js?v=60'].every(x => html.includes(x)));
+check('index.html 脚本版本统一 v61', ['av-ui.js?v=61', 'charcards.js?v=61', 'cardgroups.js?v=61', 'cardgroups-ui.js?v=61', 'img-ui.js?v=61'].every(x => html.includes(x)));
 
 /* 回归锚：不受影响的功能 */
 check('即画即存（v54）', img.includes('if (S.tagMode) saveTagStrokes();'));
-check('切层回写（v55c）', img.includes("if (tagSelEl) tagSelEl.value = card.id;"));
+check('切层单一事实源=activeId（v60b 无下拉派生）', !img.includes("tagSelEl.value") && img.includes('switchTagLayer'));
 check('CCG 多套存储', cg.includes('moyutai-cardgroups-v1'));
 
 console.log('========================');

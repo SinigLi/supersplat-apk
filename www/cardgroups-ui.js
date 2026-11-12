@@ -447,6 +447,15 @@
         for (var i = 0; i < u8.length; i += CH) bin += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
         return 'data:image/jpeg;base64,' + btoa(bin);
     }
+    function u8ToB64(u8) {
+        var CH = 0x8000, out = [], pos = 0;
+        while (pos < u8.length) {
+            out.push(String.fromCharCode.apply(null, u8.subarray(pos, pos + CH)));
+            pos += CH;
+        }
+        return btoa(out.join(''));
+    }
+
     function exportGroup(id) {
         dlog('exportGroup: ' + id);
         var data = window.CCG.get(id);
@@ -458,12 +467,22 @@
         var done = function () {
             window.fflate.zip(entries, function (err, zipped) {
                 if (err) { toast('打包失败', true); return; }
+                /* v60b：APK 走原生分享面板（<a download> 在 WebView 无效）；网页保留下载兜底 */
+                var sp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SaveImage;
+                var fname = 'charcards-' + nm + '.zip';
+                if (sp && sp.shareFile) {
+                    var b64 = u8ToB64(zipped);
+                    sp.shareFile({ data: b64, filename: fname, mime: 'application/zip' }).then(function () {
+                        toast('已导出 ' + fname + '（分享面板）');
+                    }).catch(function (e) { toast('分享失败：' + (e && e.message || e), true); });
+                    return;
+                }
                 var blob = new Blob([zipped], { type: 'application/zip' });
                 var a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = 'charcards-' + nm + '.zip';
+                a.download = fname;
                 a.click();
-                toast('已导出 charcards-' + nm + '.zip');
+                toast('已导出 ' + fname);
             });
         };
         if (!plan.images.length) { done(); return; }

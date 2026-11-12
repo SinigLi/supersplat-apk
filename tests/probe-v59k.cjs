@@ -42,7 +42,7 @@ check('submit 目录感知自愈（stat→ghost clean）', pui2.includes('dup gh
 check('stat 用 meta.json 判目录在否', /pathsFor\(v\.name\)[\s\S]{0,120}stat\(pdir\.meta\)/.test(pui2));
 
 /* 缓存 */
-check('index.html cache v60', html.includes('av-ui.js?v=60') && html.includes('cardgroups-ui.js?v=60'));
+check('index.html cache v61', html.includes('av-ui.js?v=61') && html.includes('cardgroups-ui.js?v=61'));
 
 console.log('probe-v59k: ' + pass + '/' + (pass + fail) + (fail ? ' === FAIL ===' : ' === ALL PASS ==='));
 process.exit(fail ? 1 : 0);

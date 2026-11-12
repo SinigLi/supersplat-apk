@@ -65,7 +65,16 @@
         return f;
     }
 
-    function normalize(raw) { return toV2(raw); }
+    function normalize(raw) {
+        var f = toV2(raw);
+        /* v60b：默认两组常驻——有词保词、没词补空组、顺序固定最前（打开词库必见） */
+        DEFAULT_GROUPS().forEach(function (dg, di) {
+            var idx = f.descGroups.indexOf(f.descGroups.filter(function (g) { return g.name === dg.name; })[0]);
+            var g = idx >= 0 ? f.descGroups.splice(idx, 1)[0] : { name: dg.name, items: [] };
+            f.descGroups.splice(di, 0, g);
+        });
+        return f;
+    }
 
     /* ---------- 卡 CRUD（与 v1 语义一致，去掉描述绑定） ---------- */
     function addCard(f, name, tag) {
