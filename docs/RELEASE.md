@@ -134,6 +134,26 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v58 | 全局角色卡库+工程引用切换（缺角色警告）；遮罩导出 masks/段/帧号/角色名.png |
 | v58b | 切换弹层乱码标签修复 |
 | v59 | 角色卡系统 v2（原型 r3 实装）：descGroups 词库两段式分组、头像图片、zip 导入导出（chars/ 文件夹）、开始页/视频页统一移动端 sheet UI；打标描述下拉读词库分组；旧 v1 只读迁移不反向兼容 |
+| v59i | 诊断日志全链：开始页角色卡按钮 + cardgroups-ui 全流程（`[pj]`/`[cg]` 走 Capacitor DebugLog），补 JS error / unhandledrejection 捕获（debug_xx 无日志时的定位手段） |
+| v59j | 旧 WebView 丢 `inset:0` 简写（Chrome 87+ 语法），cgm-sheet 计算成隐形 → 全部展开为 `top/right/bottom/left`，mask 同步，z-index 120→2000；av-ui / img-ui 同批处理 |
+| v59k | 「🖼 导入图片文件夹」批量建卡组；角色库默认空；视频页 🎭 改为纯组选择器（无引用时先选组再开对话框） |
+| v59kb | 真机 `No content provider: primary:0/...`：readBytes 改为原生 `docUriForId(tree, docId)` 构造（字符串往返会退化成 docId）；组名取路径末段；cache 提到 v60 |
+| v59kb2 | 删组后同名重建误报「角色已存在」：registry 幽灵项自愈 |
+| v60b | 三条 UX：默认词库分组固定置顶、导出走原生分享面板、打标顶栏重做 |
+| v60c | 原始角色图贯穿导出（`chars_full/` 一并进 ZIP，扩展名按 mime 嗅探）；打标栏停靠化 |
+| v60d | **原图迁 IndexedDB**（`moyutai-cg-full` / store `cards` / 键 `groupId::cardId`），localStorage 只留 256 头像——debug_23 的 `QuotaExceededError` 根因是 11 张全尺寸 base64 塞爆 5MB 配额 |
+| v60e | 两条打标栏半屏外 / 纵向叠在一起：`.img-dock` 基础 CSS 泄漏进两条 bar |
+| v60f | 打标遮罩层可删到 0 层；确认时 0 层 = 清掉该帧角色打标（char_ref 移除，分镜打点保留） |
+| v60g | 层面板删除入口收敛：保留顶栏垃圾桶，去掉行内 ✕ |
+| v60h | 打标绘制只认「有活动遮罩层」；旧的 per-card enabled 门禁彻底移除（状态唯一事实源 = layers + activeId） |
+| v60i | 无遮罩的角色层也把名字 + 描述写进 marks.json（char_ref 保留、mask 缺省） |
+| v60j | 首轮打标导出丢遮罩：草稿 key 不匹配（`seg_frame` vs `char_ref.id`） |
+| v61a | 视频导出打包引用卡组（复用 `CC.exportPlan`）：marks zip 内附 charcards.json + chars/ + chars_full/ |
+| v61b | 统一进度浮层 `www/progress.js`（`window.Prog`：固定深色遮罩 + 渐变条 + 百分比 + 文案，show/set/done/hide），接入图片文件夹导入、卡组 ZIP 导出/导入、视频导出；失败与取消路径都要 hide。卡组图片回查改为 `_lookupImg`（原路径 / 去 chars\_full 前缀 / basename 三档） |
+| v61c | 卡组导入必须可靠接受 ZIP：无后缀 ZIP 按 PK 魔数判定、charcards.json 允许在子目录、ArrayBuffer 走 TextDecoder（BOM 剥离）、`accept=*/*` 防 Android SAF 过滤掉 ZIP、明确拒绝 marks JSON |
+| v61d | 导出 charcards.json 内嵌头像 `img`，单独拿这份 JSON 导入也有图（原图当时仍只有路径引用） |
+| v61e | 再把原图 `imgFull` 也内嵌（当时带 2.5MB 上限，v61f 已删） |
+| **v61f** | **「只导 JSON 原图不回来」真因**：导入借图只读 `CCG.list()`，而它返回的是 localStorage 精简副本——原图早在 `CCG.saveData()` 里被 `CGFull.stripFull()` 剥进 IndexedDB，所以永远借不到（日志 `borrowed avatars=11` 但原图 0 张，新组只有头像，再导出自然没有 chars_full）。改为逐组 `await CGFull.all(gid)` 借 img + imgFull（日志 `borrowed avatars=N originals=M`）；`applyImport` 返回 Promise，两处调用都等借用完成才落盘；删除 2.5MB 上限，`exportPlan` 一律内嵌原图；`exportGroup` 抽出 `mergeFulls` 合并 IDB 原图并打印 json 字节数 / inlineFull / images |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
@@ -151,6 +171,8 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 - WMI 启动的后台任务父进程是 WmiPrvSE，不受 exec Job Object 连坐；**不要** WMI+stdout 重定向，日志由脚本自写。
 - **门禁断言别用全文关键字匹配**——v49 事故：检查「file input 不带 `accept`」的正则 `/type \*= *['"]file['"][^>]*accept/` 把注释里解释该约束的 `accept` 字样也匹配了，导致全绿代码被判失败、白等一轮 CI。改结构性断言（`!/.accept\s*=/`），或锚定到具体元素的属性。
 - **`--registry` 救不了 lock 文件里的 resolved**——v55b 交付事故（2026-11-09）：npmmirror E500（yauzl tgz 表损坏），`npm ci --registry=官方` 照挂——package-lock.json 的 `resolved` 写死了镜像域名，registry 旗标不改变它。workflow 加 `sed` 改写 lockfile 域名兜底（`build-apk.yml`）。诊断套路：CI 挂在依赖安装时先用 jobs API 查失败步骤 + 拉日志原文，别盲目重跑（本次盲目重跑烧掉两轮 CI）。
+- **localStorage 里的只是派生副本**——v61e→v61f 连环返工（2026-11-12）：`CGFull.stripFull` 在 saveData 时把 `imgFull` 剥进 IndexedDB，任何只读 `CCG.list()` 的逻辑都拿不到原图。凡是要「复用已有卡组里的原图」，必须 `await CGFull.all(groupId)`；只读 list 的代码能跑、日志也像成功（`borrowed avatars=11`），但原图 0 张——**日志要分别记头像数和原图数**，混在一个数字里会掩盖问题。
+- **导出的 JSON 体积随原图线性增长**——v61f 取消了 2.5MB 内嵌上限（老板要求单独导 JSON 就能完整恢复），代价是一套 11 角色 × 原图 2MB 的卡组会导出 ~30MB 的 charcards.json。日常分发仍以 ZIP 为首选（ZIP 里既有内嵌 JSON 也有 chars\_full/ 文件）；卡片数量大的库要提前提醒用户。
 - **派生视图必须从事实源回写**——v55/v55b 连环返工（2026-11-09~10）：角色下拉是 activeId 的派生视图，却在恢复段和收尾段各自写一遍，收尾「默认激活」无条件覆盖恢复结果。修法：单一事实源（activeId），任何切层路径统一经 `switchTagLayer` 回写下拉；初始化顺序里"默认值"只允许在"无既有状态"时生效。
 - **半透明不要画在 primitive 上**——v49b 事故：预览蒙版每笔 `rgba(...,0.82)` `source-over` 叠加，同一处涂 2 遍变 96.8%、3 遍 99.4%，被当成「厚度控制」。层内叠加 + 层统一半透明的场景，透明度放层上（CSS `opacity`），primitive 一律 `alpha=1`。
 - **`height` 与 `padding` 相加**——`box-sizing` 默认 `content-box`，动态设 `height:52+inset` 再加 `padding-top:inset` 会得到 `52+2×inset`。凡是要「内边距从高度里吃」的容器，样式里必须写 `border-box`。

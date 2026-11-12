@@ -11,7 +11,7 @@ SuperSplat 3.5.2 fork 的 Capacitor 7 Android 壳 + 移动端 UI 改造层 + 内
 - 本仓库：APK 壳 + `www/` 产物覆盖层（dock UI、导演台面板、角色资产）
 - 发版：push 到 `main` → GitHub Actions 构建 debug APK → 下载 artifact → 打 zip 发飞书
 
-**当前版本 v55c**（2026-11-10）
+**当前版本 v61f**（2026-11-12）
 
 ## 目录
 
@@ -24,6 +24,11 @@ www/                     Capacitor webDir（编辑器产物 + 覆盖层）
   projects-ui.js         工程列表页 / 编辑页 / 新建-退出对话框
   projects.css           工程双页 UI 样式
   fflate.js              zip 读写（工程文件自包含，不走 SS 的 .ssproj）
+  charcards.js           角色卡 v2 数据层（卡/词库 CRUD、zip 组包计划）
+  cardgroups.js          多套全局卡组存储（CCG）
+  cardgroups-full.js     角色原图 IndexedDB 存储（CGFull，localStorage 只留头像）
+  cardgroups-ui.js       开始页卡组管理器（sheet 全套 + 导入导出 + 借图）
+  progress.js            统一进度浮层（window.Prog）
   mobile.css / mobile.js body.mobile-mode 标记等小补充
   static/director/       woman / male / shiba / tuxedo 角色 GLB（含 43 clips）
 android/                 Capacitor Android 工程
@@ -36,11 +41,15 @@ tools/
   dev/staticsrv.cjs      本地静态服务（headless 回归用）
   ci/                    CI 轮询、artifact 下载、APK 解包与校验
 tests/                   headless（Edge + CDP）回归与布局量测
+tests/archive/           一次性诊断脚本归档（v59h/v60e/v60f/r3 排查期产物，不进回归）
 spike/glb-load-test/     F0 技术验证页（GLB + 泼溅同场景）
 prototype/               网页交互原型（定稿后再移植 APK）
 docs/DIRECTOR.md         导演台模块架构 / API / 资产流水线 / 版本史
 docs/PROJECTS.md         工程管理：存储布局 / .svproj 格式 / 双页 UI / 脏检查
 docs/KNOWN-ISSUES.md     已知未解决问题（ISS-001 真机缩略图等证据链与重启切入点）
+docs/CARDGROUPS-UI.md    角色卡库：数据模型 / 图片存储分工 / 导入导出契约 / UI 规范
+docs/IMAGE-MODE.md       图片模式：双层画布 / 蒙版分层 / 导出
+docs/CHAR-TAG.md         角色打标：遮罩链路 / 导出格式
 docs/RELEASE.md          构建与发版手册
 DOCK.md                  停靠组 UI 架构与真机事故红线
 ```
@@ -52,7 +61,7 @@ DOCK.md                  停靠组 UI 架构与真机事故红线
 # 核心回归 —— 改任何东西都要跑
 node tests/director.mjs        # 导演台 16 项回归
 node tests/v13.mjs             # v13 起行为回归 15 项
-node tests/project.mjs         # 工程管理 26 项（新建/保存/重开/删除）
+node tests/project.mjs         # 工程管理 27 项（新建/保存/重开/删除）
 
 # 按版本存档的验收探针 —— 改了相关模块时重跑
 node tests/probe-v22a.mjs      # 机位相机模型 + 预览层按钮
@@ -65,6 +74,13 @@ node tests/probe-v26.mjs       # 三种对象黄点 + 泼溅基准点 + 重设
 node tests/probe-v27.mjs       # 黄点屏幕等比 + 抓拍隐藏 + 跟随基准点 + 密度中心
 node tests/probe-v28b.mjs      # 停靠区避让保存条（按钮位置不动）
 node tests/probe-empty-project.mjs  # 空工程「新建→返回→再打开」闭环
+
+# 角色卡库（改卡组/导入导出/打标相关必跑）
+node tests/charcards.test.cjs       # 33 项 · v2 数据层
+node tests/cardgroups.test.cjs      # 19 项 · CCG 存储
+node tests/export-chars.test.cjs    # 23 项 · 遮罩导出
+node tests/probe-v61f.cjs           # 13 项 · 原图内嵌 + 借图读 IDB
+node tests/v61f-dom.mjs             # 8 项 · 真机链路复现（导入只写路径的 JSON → 再导出）
 
 # 布局量测（截图，非断言）
 node tests/probe-layout.mjs    # 390x844 面板布局量测

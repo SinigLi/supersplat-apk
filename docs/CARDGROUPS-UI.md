@@ -1,4 +1,4 @@
-# 角色卡库系统 v59（2026-11-11 定稿实装）
+# 角色卡库系统（v59 定稿实装 → v61f 现状）
 
 老板定稿（原型 r3 → 实装）：**多套全局卡组 + 工程引用**，移动端 sheet 交互为后续配置 UI 的标准范式。
 
@@ -14,7 +14,8 @@
   ],
   "cards": [
     { "id": "c-xxxxxxxx", "name": "小圆", "tag": "主角",
-      "img": "data:image/jpeg;base64,..." }   // 头像（256px 圆裁 jpeg）
+      "img": "data:image/jpeg;base64,...",      // 头像（256px 圆裁 jpeg）
+      "imgFull": "data:image/png;base64,..." }  // 原图（仅内存/导出时有；落盘剥进 IDB）
   ]
 }
 ```
@@ -22,6 +23,16 @@
 - **v1 兼容只读**：旧 `orig_char_descs/dest_char_descs` 导入时迁入默认两组；卡上多余字段丢弃。不做反向兼容（旧系统未正式使用）。
 - 多套卡组存 `localStorage['moyutai-cardgroups-v1']`（cardgroups.js CCG），每套一份 charcards.v2。
 - 视频工程 `meta.charGroupRef` 指向引用的组 id；未引用时回退旧 `av-<工程>-chars` 键（只读兼容）。
+
+### 图片存储分工（v60d 起，v61f 补全导出侧）
+
+| 位置 | 存什么 | 谁写 |
+|---|---|---|
+| `localStorage['moyutai-cardgroups-v1']` | 卡组列表 + 卡（id/name/tag/**img 头像**），**没有 imgFull** | `cardgroups.js` CCG.saveData |
+| IndexedDB `moyutai-cg-full` / store `cards` / 键 `groupId::cardId` | **原图 imgFull** | `cardgroups-full.js` CGFull.put（由 stripFull 收集） |
+
+- **只读 localStorage 拿不到原图**——`CCG.list()` / `CCG.get()` 返回的是精简副本。需要原图的地方必须 `await CGFull.all(groupId)`。
+- 删除卡组时 `CCG.remove` 会同步 `CGFull.delGroup(id)`，不留孤儿原图。
 
 ## UI 形态（原型 prototype/cardgroups-proto.html r3 = 实装标准）
 
@@ -33,7 +44,12 @@
 - **视频工程 🎭 按钮**（av-ui）→ 同形态对话框：
   - 标题显示当前组名；📚 切换角色库（选库 sheet：使用中标 ✓）
   - 切换缺角色 → confirm 警告列出缺失名；全命中 → toast「切换角色库成功」
-- **导入导出**：zip 包 = `charcards.json + chars/<角色名>.jpg`（fflate 打包/解包）；无图退化纯 JSON。`.json/.zip` 双格式导入。
+- **导入导出（v61f 现状）**：
+  - ZIP 包 = `charcards.json + chars/<角色名>.jpg + chars_full/<角色名>.<ext>`（fflate 打包/解包）。
+  - `charcards.json` 里每张卡**同时内嵌** `img` 与 `imgFull`（base64，无体积上限），因此**单独拿这份 JSON 导入也能完整恢复头像和原图**；`imgFile`/`imgFullFile` 路径引用同时保留，ZIP 分支仍可走文件。
+  - 导入按魔数判 ZIP（PK 头），不看后缀；`charcards.json` 允许位于任意子目录；`.json/.zip` 都能直接选（`accept=*/*`，避免 Android SAF 过滤）。
+  - 缺图的卡会按角色名从**其他卡组借用**（同时借头像与原图，原图走 `CGFull.all`），日志 `[cg] import: borrowed avatars=N originals=M`。
+  - 明确拒绝 marks JSON（`marks`+`schema` 但没有 `cards` 数组）；进度浮层走 `window.Prog`，失败/取消都要 hide。
 
 ## 打标适配（img-ui.js）
 
@@ -47,7 +63,9 @@
 |---|---|
 | www/charcards.js | v2 数据层（卡/词库 CRUD、迁移、zip 组包计划） |
 | www/cardgroups.js | CCG 多套卡组存储 + 迁移（v58 引入，保留） |
-| www/cardgroups-ui.js | 开始页管理器（sheet 全套） |
+| www/cardgroups-full.js | 原图 IndexedDB 存储（put/get/all/delGroup/stripFull） |
+| www/cardgroups-ui.js | 开始页管理器（sheet 全套 + 导入导出 + 借图） |
+| www/progress.js | 统一进度浮层 `window.Prog`（导出/导入共用） |
 | www/av-ui.js | 视频页角色卡对话框 + 选库 + 遮罩导出（v58 链路不变） |
 | www/img-ui.js | 打标描述下拉（词库分组） |
 
@@ -57,6 +75,9 @@
 - `tests/cardgroups.test.cjs`：CCG 19 项
 - `tests/probe-v59-impl.cjs`：实装结构 33 项（UI 形态/打标适配/导入导出/版本号）
 - 原型轮 `tests/proto-v59.mjs`（32 项）只对 prototype 目录有效
+- `tests/probe-v61f.cjs`：原图内嵌无上限 + 借图读 IDB + applyImport 异步化 13 项
+- `tests/v61f-dom.mjs`：**真机链路复现** 8 项——卡组原图只在 IDB → 导入只写路径的 JSON → 再导出，断言 `idbFulls=2 / inlineFull=2 / chars_full 两文件`
+- `tests/v61b-dom.mjs`（进度浮层 10 项）、`v61c-dom`（无后缀 ZIP 5 项）、`v61d-dom`（内嵌头像 3 项）、`v61e-dom`（内嵌原图 5 项）
 
 ## 移动端 UI 规范（后续配置类 UI 按此执行）
 

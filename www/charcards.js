@@ -196,14 +196,14 @@
             var cc = { id: c.id, name: c.name, tag: c.tag || '' };
             if (c.img) {
                 cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';
-                /* v61d：同时内嵌头像，保证「单独拿 charcards.json 去导入」也能带回图片 */
+                /* 同时内嵌头像：单独拿 charcards.json 去导入也能带回图片 */
                 cc.img = c.img;
             }
             /* v60c：原图导出引用（保留原格式扩展名） */
             if (c.imgFull) {
                 cc.imgFullFile = 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull);
-                /* v61e：同时内嵌原图（体积保护：单张 >2.5MB 只保留路径引用） */
-                cc.imgFull = c.imgFull;   /* v61f: always inline originals so a bare JSON restores them */
+                /* 同时内嵌原图：只要有原图就写进 JSON（不设体积上限，ZIP 仍是首选分发格式） */
+                cc.imgFull = c.imgFull;
             }
             return cc;
         });
