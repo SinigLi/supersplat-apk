@@ -885,7 +885,7 @@
             rm.addEventListener('click', function (e) {
                 e.stopPropagation();
                 if (!window.confirm('删除遮罩层「' + lay.name + '」及其笔画？')) return;
-                var op = OPS.makeDelLayer(S.state, lay.id);
+                var op = OPS.makeDelLayer(S.state, lay.id, { allowEmpty: !!S.tagMode });   /* v60f: tagMode 可删光 */
                 if (op) applyAndPush(op);
                 renderLayersPanel();
                 tmSyncCurLayerName();

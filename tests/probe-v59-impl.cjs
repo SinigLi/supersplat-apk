@@ -51,7 +51,7 @@ check('极性黑底抠洞保留（v56b）', img.includes('drawStrokes(og, lay.st
 
 /* 开始页入口 + html */
 check('开始页入口按钮', pui.includes('🎭 角色卡') && pui.includes('__cardgroups.open'));
-check('index.html 脚本版本统一 v63', ['av-ui.js?v=64', 'charcards.js?v=64', 'cardgroups.js?v=64', 'cardgroups-full.js?v=64', 'cardgroups-ui.js?v=64', 'img-ui.js?v=64'].every(x => html.includes(x)));
+check('index.html 脚本版本统一 v63', ['av-ui.js?v=65', 'charcards.js?v=65', 'cardgroups.js?v=65', 'cardgroups-full.js?v=65', 'cardgroups-ui.js?v=65', 'img-ui.js?v=65'].every(x => html.includes(x)));
 
 /* 回归锚：不受影响的功能 */
 check('即画即存（v54）', img.includes('if (S.tagMode) saveTagStrokes();'));

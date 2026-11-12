@@ -82,11 +82,14 @@
         case 'delLayer': {
             var i = state.layers.findIndex(function (l) { return l.id === op.layerId; });
             if (i < 0) return false;
-            if (state.layers.length === 1) return false;   // 最后一层不许删
+            if (state.layers.length === 1 && !op.allowEmpty) return false;   /* v60f: tagMode may empty all */   // 最后一层不许删
             if (!op.layer) op.layer = JSON.parse(JSON.stringify(state.layers[i])); // 快照供逆 op 原样插回
             op.index = i;
             state.layers.splice(i, 1);
-            if (state.activeId === op.layerId) state.activeId = state.layers[Math.min(i, state.layers.length - 1)].id;
+            if (state.activeId === op.layerId) {
+                /* v60f：0 层时 activeId=null（打标模式删光 = 无激活层，确认即清除打标） */
+                state.activeId = state.layers.length ? state.layers[Math.min(i, state.layers.length - 1)].id : null;
+            }
             return true;
         }
 
@@ -130,10 +133,11 @@
 
     /* 构造 op 的入口：delLayer 在应用时才拿到层对象（逆 op 要原样插回），
      * 所以提供 makeDelLayer 在「应用前」快照。 */
-    function makeDelLayer(state, layerId) {
+    function makeDelLayer(state, layerId, opts) {
         var i = state.layers.findIndex(function (l) { return l.id === layerId; });
-        if (i < 0 || state.layers.length <= 1) return null;
-        return { kind: 'delLayer', layerId: layerId, index: i, layer: JSON.parse(JSON.stringify(state.layers[i])) };
+        /* v60f：opts.allowEmpty（打标模式）允许删光到 0 层；普通图片模式仍至少保留一层 */
+        if (i < 0 || (state.layers.length <= 1 && !(opts && opts.allowEmpty))) return null;
+        return { kind: 'delLayer', layerId: layerId, index: i, layer: JSON.parse(JSON.stringify(state.layers[i])), allowEmpty: !!(opts && opts.allowEmpty) };
     }
 
     function invertOp(op) {
