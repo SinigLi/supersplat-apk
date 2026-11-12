@@ -145,8 +145,8 @@
   ".img-undo-bar .img-grp.off{opacity:.4}",
   "/* v50c：拖拽把手（对齐 3D 场景 .sd-handle 手感） */",
   /* v60b：左上角确认/取消条 + 底部中间工具条 + 当前层名 + 角色卡弹层 */
-        ".img-tag-okbar{position:fixed;z-index:1601;display:flex;gap:8px;background:rgba(18,20,28,.92);border:1px solid #2c3040;border-radius:14px;padding:6px;backdrop-filter:blur(6px);top:calc(env(safe-area-inset-top, 0px) + 10px);left:calc(env(safe-area-inset-left, 0px) + 10px);}",
-        ".img-tagbar-bottom{left:50%;right:auto;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);}",
+        ".img-tag-okbar{position:fixed;z-index:1601;transform:none;display:flex;flex-direction:row;gap:8px;background:rgba(18,20,28,.92);border:1px solid #2c3040;border-radius:14px;padding:6px;backdrop-filter:blur(6px);top:calc(env(safe-area-inset-top, 0px) + 10px);left:calc(env(safe-area-inset-left, 0px) + 10px);}",
+        ".img-tagbar-bottom{position:fixed;left:50%;right:auto;top:auto;bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);transform:translateX(-50%);flex-direction:row;max-height:none;max-width:calc(100vw - 24px);overflow-x:auto;overflow-y:hidden}",
         ".img-tag-curlayer{max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#cfd3e0;padding:0 6px;}",
         ".img-cardpicker .cgm-card{max-height:72vh;}",
         ".img-cardpicker-search{width:100%;box-sizing:border-box;margin:8px 12px 4px;padding:8px 10px;border-radius:10px;border:1px solid #2c3040;background:#14161e;color:#e8eaf2;font-size:14px;}",
@@ -1712,6 +1712,7 @@
         okBar.style.position = 'fixed';
         okBar.style.top = '10px';
         okBar.style.left = '10px';   /* v60c：顶部停靠 */
+        okBar.style.transform = 'none';   /* v60e: kill .img-dock translateY(-50%), bar half off-screen */
         try {
             var sa = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MediaServer;
             /* safeArea 由 CSS env() 兜底，无需 JS 计算 */
