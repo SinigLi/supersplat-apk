@@ -612,13 +612,19 @@
         var byName = {};
         lib.forEach(function (g) {
             (g.data && g.data.cards || []).forEach(function (c) {
-                if (c.img && !byName[c.name]) byName[c.name] = c.img;
+                if (!byName[c.name]) byName[c.name] = {};
+                if (c.img && !byName[c.name].img) byName[c.name].img = c.img;
+                if (c.imgFull && !byName[c.name].imgFull) byName[c.name].imgFull = c.imgFull;
             });
         });
-        var filled = 0;
+        var filled = 0, filledFull = 0;
         (v2.cards || []).forEach(function (c) {
-            if (!c.img && byName[c.name]) { c.img = byName[c.name]; filled++; }
+            var s = byName[c.name];
+            if (!s) return;
+            if (!c.img && s.img) { c.img = s.img; filled++; }
+            if (!c.imgFull && s.imgFull) { c.imgFull = s.imgFull; filledFull++; }
         });
+        if (filledFull) dlog('import: borrowed originals=' + filledFull);
         return filled;
     }
 

@@ -14,6 +14,8 @@
 'use strict';
 (function (global) {
     var SCHEMA_V2 = 'moyutai.charcards.v2';
+    /* v61e: export JSON inline-original size cap (2.5MB dataURL) */
+    var INLINE_FULL_MAX = 2621440;
     var SCHEMA_V1 = 'moyutai.charcards.v1';
     var DEFAULT_GROUPS = function () {
         return [{ name: '原角色描述', items: [] }, { name: '替换角色描述', items: [] }];
@@ -200,7 +202,11 @@
                 cc.img = c.img;
             }
             /* v60c：原图导出引用（保留原格式扩展名） */
-            if (c.imgFull) cc.imgFullFile = 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull);
+            if (c.imgFull) {
+                cc.imgFullFile = 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull);
+                /* v61e：同时内嵌原图（体积保护：单张 >2.5MB 只保留路径引用） */
+                if (String(c.imgFull).length <= INLINE_FULL_MAX) cc.imgFull = c.imgFull;
+            }
             return cc;
         });
         var images = f.cards.filter(function (c) { return c.img; }).map(function (c) {
