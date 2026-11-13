@@ -2397,11 +2397,13 @@ function hasMerge(seg) {
             await mark('zip start', 'entries=' + Object.keys(entries).length + ' raw=' + mb(entBytes) + ' top=' + top.join(','));
             if (window.Prog) window.Prog.set(0.92, '厇包 zip…');
             var zipped = window.fflate.zipSync(entries, { level: 0 });  /* PNG 已压缩 */
+            var zipSize = zipped.length;   /* v64：zipped 后面会置空，提示文案用这个 */
             await mark('zip done', mb(zipped.length));
             if (window.Prog) window.Prog.set(0.96, '准备分享…');
             if (window.ShareOut && sp) {
-                /* v63：>30MB 自动切 25MB 分卷（飞书单文件上限），≤30MB 沿用 shareFile */
-                await mark('share dispatch', mb(zipped.length) + ' threshold=' + mb(window.ShareOut.limit()));
+                /* v64：>500MB 且环境支持多选分享才切 450MB 分卷；否则整包单发 */
+                await mark('share dispatch', mb(zipped.length) + ' threshold=' + mb(window.ShareOut.limit()) +
+                    ' canSplit=' + window.ShareOut.canSplit());
                 var resZip = await window.ShareOut.send({
                     bytes: zipped,
                     filename: name,
@@ -2414,8 +2416,10 @@ function hasMerge(seg) {
                 await mark('share ok', 'mode=' + resZip.mode + ' volumes=' + resZip.volumes);
                 if (window.Prog) window.Prog.done('已导出');
                 toast(resZip.volumes > 1
-                    ? ('已导出 ' + resZip.volumes + ' 卷（每卷 ≤25MB，需全部下载后一起解压）')
-                    : '已导出打标包');
+                    ? ('已导出 ' + resZip.volumes + ' 卷（每卷 ≤' + mb(window.ShareOut.volumeSize()) + '，需全部下载后一起解压）')
+                    : (resZip.mode === 'single-oversize'
+                        ? '已导出打标包（' + mb(zipSize) + '，超过传输端上限，可能发送失败）'
+                        : '已导出打标包'));
             } else if (sp && sp.shareFile) {
                 var zb64 = u8ToB64Chunked(zipped);
                 await mark('b64 done', mb(zb64.length));
@@ -2441,7 +2445,7 @@ function hasMerge(seg) {
         }
         if (window.Prog) window.Prog.set(0.95, '\u751f\u6210 JSON\u2026');
         if (window.ShareOut && sp) {
-            /* v63：大 JSON 也受飞书 30MB 限制，统一走 ShareOut（超限自动 25MB 分卷） */
+            /* v64：JSON 同样走 ShareOut（>500MB 且可多选分享时才分卷） */
             var textU8 = new TextEncoder().encode(text);
             await mark('share dispatch', mb(textU8.length) + ' (json) threshold=' + mb(window.ShareOut.limit()));
             var resJson = await window.ShareOut.send({
@@ -2453,8 +2457,10 @@ function hasMerge(seg) {
             await mark('share ok', 'mode=' + resJson.mode + ' volumes=' + resJson.volumes);
             if (window.Prog) window.Prog.done('已导出 JSON');
             toast(resJson.volumes > 1
-                ? ('已导出 ' + resJson.volumes + ' 卷 JSON（需全部下载后一起解压）')
-                : '已唤起分享，把 JSON 发给音视频助手');
+                ? ('已导出 ' + resJson.volumes + ' 卷 JSON（每卷 ≤' + mb(window.ShareOut.volumeSize()) + '，需全部下载后一起解压）')
+                : (resJson.mode === 'single-oversize'
+                    ? '已唤起分享（JSON 超过传输端上限，可能发送失败）'
+                    : '已唤起分享，把 JSON 发给音视频助手'));
         } else if (sp && sp.shareFile) {
             var b64 = btoa(unescape(encodeURIComponent(text)));
             sp.shareFile({ data: b64, filename: name, mime: 'application/json' })

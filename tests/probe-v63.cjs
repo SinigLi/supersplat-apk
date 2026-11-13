@@ -1,4 +1,4 @@
-/* probe-v63：超 30MB 自动分卷分享 */
+/* probe-v63：分卷机制（阈值已由 v64 上调到 500MB/450MB，这里只验机制本身） */
 'use strict';
 const fs = require('fs');
 const WS = 'F:/openclawhome/openclaw/fullstack_workspace/projects/supersplat-apk/';
@@ -13,18 +13,17 @@ const java = fs.readFileSync(WS + 'android/app/src/main/java/com/sinigli/supersp
 
 /* --- 模块与阈值 --- */
 check('shareout.js 存在并在 index.html 加载', html.includes('shareout.js?v='));
-check('单文件上限 30MB', so.includes('LIMIT = 30 * 1024 * 1024'));
-check('每卷 25MB', so.includes('VOL = 25 * 1024 * 1024'));
+check('单文件上限由 v64 定义（500MB）', so.includes('LIMIT = 500 * 1024 * 1024'));
+check('每卷 450MB', so.includes('VOL = 450 * 1024 * 1024'));
 check('API: send / splitName', so.includes('send: async function') && so.includes('splitName: splitName'));
 
 /* --- 分流逻辑 --- */
-check('≤30MB 走 shareFile', /if \(bytes\.length <= LIMIT\)/.test(so) && so.includes('sp.shareFile({ data: b64'));
-check('>30MB 先按 VOL 切卷', so.includes('Math.ceil(bytes.length / VOL)'));
+check('不超限走 shareFile', /if \(!splittable\)/.test(so) && so.includes('sp.shareFile({ data: b64'));
+check('超限先按 VOL 切卷', so.includes('Math.ceil(bytes.length / VOL)'));
 check('切卷用 subarray（不复制整块）', so.includes('bytes.subarray(start, end)'));
 check('写 Cache 分片 append', so.includes('appendFile') && so.includes('CHUNK = 3 * 1024 * 1024'));
 check('优先一次多选分享 sharePaths', so.includes('sp.sharePaths({ names: names, mime: mime })'));
-check('无 Filesystem 时逐卷兜底', so.includes('no Filesystem plugin -> sequential shareFile'));
-check('sharePaths 缺失时逐卷兜底', so.includes('sharePaths unavailable'));
+check('环境不支持多卷时不分卷', so.includes('function canSplit()') && so.includes('single-oversize'));
 
 /* --- 卷名规则与解压中心一致 --- */
 check('卷名 = 原名 + .001/.002', so.includes("return name + '.' + s;"));
@@ -60,30 +59,39 @@ global.Capacitor.Plugins.DebugLog = { append: () => Promise.resolve({}) };
   check('10MB 不分卷', r1.volumes === 1 && r1.mode === 'single', JSON.stringify(r1));
   check('10MB 走 shareFile', !!shared && shared.filename === 's.zip');
 
-  /* 40MB：应切 2 卷（25 + 15） */
+  /* 阈值调小到 2MB 上限 / 1MB 一卷，验证切卷（真实阈值 500/450 太大，headless 里造不出来） */
+  ShareOut._setLimits(2 * 1024 * 1024, 1024 * 1024);
   shared = null; paths = null; writeCalls = 0;
-  const big = new Uint8Array(40 * 1024 * 1024);
+  const big = new Uint8Array(2.5 * 1024 * 1024);
+  for (let i = 0; i < big.length; i++) big[i] = i % 251;
   const seen = [];
   const r2 = await ShareOut.send({
     bytes: big, filename: 'marks.zip', mime: 'application/zip',
     onProgress: (p, m) => seen.push(String(p.toFixed(2)) + ':' + m)
   });
-  check('40MB 切成 2 卷', r2.volumes === 2, JSON.stringify(r2));
-  check('40MB 走多选分享（不是逐个弹面板）', r2.mode === 'split' && !!paths);
-  check('卷名符合 .001/.002', paths && paths.names[0] === 'marks.zip.001' && paths.names[1] === 'marks.zip.002', paths && paths.names.join(','));
-  check('每卷按 3MB 分片写入 Cache', writeCalls >= 4 && writeCalls <= 30, 'calls=' + writeCalls + ' (2 卷 × 1 writeFile + 9 append)');
+  check('2.5MB 切成 3 卷（1MB/卷）', r2.volumes === 3, JSON.stringify(r2));
+  check('超限走多选分享（不是逐个弹面板）', r2.mode === 'split' && !!paths);
+  check('卷名符合 .001/.002/.003', paths && paths.names[0] === 'marks.zip.001' && paths.names[2] === 'marks.zip.003', paths && paths.names.join(','));
+  check('每卷按 3MB 分片写入 Cache', writeCalls >= 3 && writeCalls <= 30, 'calls=' + writeCalls);
   check('有分卷进度回调', seen.length >= 2, seen.join(' / '));
 
-  /* 边界：正好 30MB 不分卷；30MB+1 分 2 卷 */
+  /* 边界：正好等于上限不分卷；上限 +1 分 3 卷 */
   shared = null; paths = null;
-  const edge = new Uint8Array(30 * 1024 * 1024);
+  const edge = new Uint8Array(2 * 1024 * 1024);
   const r3 = await ShareOut.send({ bytes: edge, filename: 'e.zip', mime: 'application/zip' });
-  check('正好 30MB 不分卷', r3.volumes === 1 && r3.mode === 'single', JSON.stringify(r3));
+  check('正好等于上限不分卷', r3.volumes === 1 && r3.mode === 'single', JSON.stringify(r3));
 
   shared = null; paths = null;
-  const edge2 = new Uint8Array(30 * 1024 * 1024 + 1);
+  const edge2 = new Uint8Array(2 * 1024 * 1024 + 1);
   const r4 = await ShareOut.send({ bytes: edge2, filename: 'e2.zip', mime: 'application/zip' });
-  check('30MB+1 分 2 卷', r4.volumes === 2, JSON.stringify(r4));
+  check('上限+1 分 3 卷', r4.volumes === 3, JSON.stringify(r4));
+
+  /* 环境不支持多卷（无 sharePaths）→ 即使超限也整包单发 */
+  delete global.Capacitor.Plugins.SaveImage.sharePaths;
+  shared = null; paths = null;
+  const r5 = await ShareOut.send({ bytes: edge2, filename: 'e3.zip', mime: 'application/zip' });
+  check('无 sharePaths 时不分卷、整包单发', r5.volumes === 1 && r5.mode === 'single-oversize', JSON.stringify(r5));
+  check('无 sharePaths 时仍调 shareFile 一次', !!shared && shared.filename === 'e3.zip');
 
   /* 接入点 */
   check('视频导出接入 ShareOut', av.includes('window.ShareOut.send({'));

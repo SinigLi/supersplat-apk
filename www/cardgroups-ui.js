@@ -514,7 +514,8 @@
                 var sp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SaveImage;
                 var fname = 'charcards-' + nm + '.zip';
                 if (window.ShareOut && sp && window.ShareOut.send) {
-                    /* v63：卡组导出也内嵌原图，可能超飞书 30MB → 统一走 ShareOut 自动分卷 */
+                    /* v64：超过 500MB 且环境支持多选分享才切 450MB 分卷；否则整包单发 */
+                    dlog('export: share dispatch size=' + zipped.length + ' canSplit=' + window.ShareOut.canSplit());
                     window.ShareOut.send({
                         bytes: zipped,
                         filename: fname,
@@ -525,7 +526,9 @@
                         if (window.Prog) window.Prog.done('已导出 ' + res.volumes + ' 卷');
                         toast(res.volumes > 1
                             ? ('已导出 ' + fname + '（' + res.volumes + ' 卷，需全部下载后一起解压）')
-                            : ('已导出 ' + fname));
+                            : (res.mode === 'single-oversize'
+                                ? ('已导出 ' + fname + '（超过传输端上限，可能发送失败）')
+                                : ('已导出 ' + fname)));
                     }).catch(function (e) {
                         dlog('export: shareout ERR ' + (e && (e.message || e) || e));
                         if (window.Prog) window.Prog.hide();

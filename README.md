@@ -11,7 +11,7 @@ SuperSplat 3.5.2 fork 的 Capacitor 7 Android 壳 + 移动端 UI 改造层 + 内
 - 本仓库：APK 壳 + `www/` 产物覆盖层（dock UI、导演台面板、角色资产）
 - 发版：push 到 `main` → GitHub Actions 构建 debug APK → 下载 artifact → 打 zip 发飞书
 
-**当前版本 v61f**（2026-11-12）
+**当前版本 v64**（2026-11-13）
 
 ## 目录
 
@@ -29,7 +29,7 @@ www/                     Capacitor webDir（编辑器产物 + 覆盖层）
   cardgroups-full.js     角色原图 IndexedDB 存储（CGFull，localStorage 只留头像）
   cardgroups-ui.js       开始页卡组管理器（sheet 全套 + 导入导出 + 借图）
   progress.js            统一进度浮层（window.Prog）
-  shareout.js            大文件导出分发（>30MB 自动 25MB 分卷，window.ShareOut）
+  shareout.js            大文件导出分发（>500MB 且可多选分享才切 450MB 分卷，window.ShareOut）
   mobile.css / mobile.js body.mobile-mode 标记等小补充
   static/director/       woman / male / shiba / tuxedo 角色 GLB（含 43 clips）
 android/                 Capacitor Android 工程
@@ -51,7 +51,7 @@ docs/KNOWN-ISSUES.md     已知未解决问题（ISS-001 真机缩略图等证�
 docs/CARDGROUPS-UI.md    角色卡库：数据模型 / 图片存储分工 / 导入导出契约 / UI 规范
 docs/IMAGE-MODE.md       图片模式：双层画布 / 蒙版分层 / 导出
 docs/CHAR-TAG.md         角色打标：遮罩链路 / 导出格式
-docs/SHARE-SPLIT.md      导出分卷规则 / 卷名约定 / 兜底链路（v63）
+docs/SHARE-SPLIT.md      导出分卷规则 / 卷名约定 / canSplit 判据（v64）
 docs/RELEASE.md          构建与发版手册
 DOCK.md                  停靠组 UI 架构与真机事故红线
 ```
@@ -83,6 +83,9 @@ node tests/cardgroups.test.cjs      # 19 项 · CCG 存储
 node tests/export-chars.test.cjs    # 23 项 · 遮罩导出
 node tests/probe-v61f.cjs           # 13 项 · 原图内嵌 + 借图读 IDB
 node tests/v61f-dom.mjs             # 8 项 · 真机链路复现（导入只写路径的 JSON → 再导出）
+node tests/probe-v64.cjs            # 50 项 · 分卷阈值 500/450MB + canSplit 三态（v64）
+node tests/probe-v63.cjs            # 37 项 · 分卷机制与卷名规则
+node tests/v63-dom.mjs              # 13 项 · headless 真跑切卷并字节级拼回
 
 # 布局量测（截图，非断言）
 node tests/probe-layout.mjs    # 390x844 面板布局量测
