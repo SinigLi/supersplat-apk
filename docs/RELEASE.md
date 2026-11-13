@@ -155,10 +155,12 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v61e | 再把原图 `imgFull` 也内嵌（当时带 2.5MB 上限，v61f 已删） |
 | **v61f** | **「只导 JSON 原图不回来」真因**：导入借图只读 `CCG.list()`，而它返回的是 localStorage 精简副本——原图早在 `CCG.saveData()` 里被 `CGFull.stripFull()` 剥进 IndexedDB，所以永远借不到（日志 `borrowed avatars=11` 但原图 0 张，新组只有头像，再导出自然没有 chars_full）。改为逐组 `await CGFull.all(gid)` 借 img + imgFull（日志 `borrowed avatars=N originals=M`）；`applyImport` 返回 Promise，两处调用都等借用完成才落盘；删除 2.5MB 上限，`exportPlan` 一律内嵌原图；`exportGroup` 抽出 `mergeFulls` 合并 IDB 原图并打印 json 字节数 / inlineFull / images |
 | **v62** | **视频导出 92% 闪退**（debug_28：只有一行 toast，无 JS 异常）：不是代码抛错而是 **WebView 渲染进程被 OOM 杀掉**。三重内存放大：① `exportPlan` 内嵌 base64 原图，而视频 ZIP 本就带 `chars_full/` 二进制 → 同一份原图在内存里三份；② `captureTagFrame` 每条 char_ref 新建 4K `<video>`（20 条 = 20 个解码实例 + 每帧 33MB canvas）；③ canvas 不释放、轮次间不让 GC。修法：`exportPlan(f, opts)` 加 `opts.inline`（卡组库导出仍内嵌，视频导出传 `{inline:false}` 只写路径）；抽帧改单例解码器 + 串行队列，遮罩处理完立刻释放；`releaseCanvas` 逐张归零 + `yieldToGC`；b64 改分块。日志：全链路 `mark()` 带耗时与 JS 堆，zip 前打印最大 5 个条目，关键日志 `dlogAw` 等待落盘（闪退也留痕） |
+| **v63** | **导出包超 30MB 自动分卷**：视频打标包带原图后可达 40MB，飞书单文件上限 30MB。规则与发版脚本一致——>30MB 按 25MB 一卷切开（留 5MB 余量），≤30MB 沿用原 shareFile。新文件 `www/shareout.js`（`window.ShareOut.send`）：切卷用 `subarray`（不复制整块），逐卷 3MB 分片写 `CacheDirectory/shared/`，再 `SaveImage.sharePaths` 一次多选分享（`ACTION_SEND_MULTIPLE`，不逐卷弹面板）；卷名 `<原名>.001/.002`，与解压中心 `stripVolume` 规则一致，丢进「🪓 解压」即可拼回。兜底：无 Filesystem → 逐卷 shareFile；无 sharePaths → 同。坑：`putExtra(EXTRA_STREAM, ArrayList<Uri>)` 会匹配 Serializable 重载导致运行时失败，必须 `putParcelableArrayListExtra`；`String.join` 是 API 26+（minSdk 23） |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
 > v49/v49b 的设计、决策与验证口径见 `docs/IMAGE-MODE.md`。
+> v63 的分卷导出规则与兜底链路见 `docs/SHARE-SPLIT.md`。
 
 ## 6. 已知坑（血泪版）
 - **门禁脚本必须随仓库走**——v49 门禁最初是 `temp/v49-gate.cjs` 临时文件，整理代码后没人同步它，出现「代码删了函数、门禁还在找函数里的字符串」的假失败。现为 `tools/ci/verify_v49.cjs`，改代码必须同步改门禁。
@@ -172,6 +174,8 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 - WMI 启动的后台任务父进程是 WmiPrvSE，不受 exec Job Object 连坐；**不要** WMI+stdout 重定向，日志由脚本自写。
 - **门禁断言别用全文关键字匹配**——v49 事故：检查「file input 不带 `accept`」的正则 `/type \*= *['"]file['"][^>]*accept/` 把注释里解释该约束的 `accept` 字样也匹配了，导致全绿代码被判失败、白等一轮 CI。改结构性断言（`!/.accept\s*=/`），或锚定到具体元素的属性。
 - **`--registry` 救不了 lock 文件里的 resolved**——v55b 交付事故（2026-11-09）：npmmirror E500（yauzl tgz 表损坏），`npm ci --registry=官方` 照挂——package-lock.json 的 `resolved` 写死了镜像域名，registry 旗标不改变它。workflow 加 `sed` 改写 lockfile 域名兜底（`build-apk.yml`）。诊断套路：CI 挂在依赖安装时先用 jobs API 查失败步骤 + 拉日志原文，别盲目重跑（本次盲目重跑烧掉两轮 CI）。
+- **分享/上传前先看目标平台的大小上限**——v63：视频打标包 40MB，飞书拒收 >30MB，用户在分享面板里选完会话才失败，白等一轮。凡是「导出 → 分享给外部」的链路，先在本地判定体积并按目标上限切卷；切卷名必须能被接收方/解压方识别（本项目沿用 `.001/.002` + `ExtractPlugin.stripVolume`）。
+- **Capacitor 原生桥别用 `putExtra` 塞 Uri 列表**——`Intent.EXTRA_STREAM` + `ArrayList<Uri>` 会解析到 `putExtra(String, Serializable)` 重载，`Uri` 不是 Serializable，运行时抛异常。多文件分享必须 `putParcelableArrayListExtra`，且 `minSdk 23` 下不能用 `String.join`/`List.of` 这类 API 26+ 的语法糖。
 - **进度卡在某百分比、日志戛然而止 = 进程被杀，不是抛错**——v62 事故（2026-11-13）：视频导出在 92% 消失，`DebugLog` 里连 `JS-ERR`/`REJ` 都没有。判断依据：全局 error/unhandledrejection 兜底没记录任何东西 → JS 从未走到抛错分支 → 渲染进程被系统 OOM 杀了。应对：① 关键日志必须 `await` 落盘（`dlog` 是 fire-and-forget，进程一死全丢）；② 排查「同一份二进制在内存里出现几次」——本案例是 base64 字符串 + ZIP 条目 + 最终 zip 三份；③ 4K canvas 33MB/张、每条 ref 一个视频解码器，都是必爆的组合。
 - **导出的 JSON 不该重复 ZIP 里的二进制**——v62：`charcards.json` 内嵌 base64 是为了「单独拿 JSON 也能恢复」（卡组库需求），但视频打标包本身已经带 `chars/ + chars_full/`，再内嵌等于把同一份原图在内存里复制三遍。凡是「ZIP 里已有该文件」的导出路径，JSON 只写路径引用。
 - **localStorage 里的只是派生副本**——v61e→v61f 连环返工（2026-11-12）：`CGFull.stripFull` 在 saveData 时把 `imgFull` 剥进 IndexedDB，任何只读 `CCG.list()` 的逻辑都拿不到原图。凡是要「复用已有卡组里的原图」，必须 `await CGFull.all(groupId)`；只读 list 的代码能跑、日志也像成功（`borrowed avatars=11`），但原图 0 张——**日志要分别记头像数和原图数**，混在一个数字里会掩盖问题。

@@ -29,6 +29,7 @@ www/                     Capacitor webDir（编辑器产物 + 覆盖层）
   cardgroups-full.js     角色原图 IndexedDB 存储（CGFull，localStorage 只留头像）
   cardgroups-ui.js       开始页卡组管理器（sheet 全套 + 导入导出 + 借图）
   progress.js            统一进度浮层（window.Prog）
+  shareout.js            大文件导出分发（>30MB 自动 25MB 分卷，window.ShareOut）
   mobile.css / mobile.js body.mobile-mode 标记等小补充
   static/director/       woman / male / shiba / tuxedo 角色 GLB（含 43 clips）
 android/                 Capacitor Android 工程
@@ -50,6 +51,7 @@ docs/KNOWN-ISSUES.md     已知未解决问题（ISS-001 真机缩略图等证�
 docs/CARDGROUPS-UI.md    角色卡库：数据模型 / 图片存储分工 / 导入导出契约 / UI 规范
 docs/IMAGE-MODE.md       图片模式：双层画布 / 蒙版分层 / 导出
 docs/CHAR-TAG.md         角色打标：遮罩链路 / 导出格式
+docs/SHARE-SPLIT.md      导出分卷规则 / 卷名约定 / 兜底链路（v63）
 docs/RELEASE.md          构建与发版手册
 DOCK.md                  停靠组 UI 架构与真机事故红线
 ```
