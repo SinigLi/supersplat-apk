@@ -50,6 +50,7 @@
   - 导入按魔数判 ZIP（PK 头），不看后缀；`charcards.json` 允许位于任意子目录；`.json/.zip` 都能直接选（`accept=*/*`，避免 Android SAF 过滤）。
   - 缺图的卡会按角色名从**其他卡组借用**（同时借头像与原图，原图走 `CGFull.all`），日志 `[cg] import: borrowed avatars=N originals=M`。
   - 明确拒绝 marks JSON（`marks`+`schema` 但没有 `cards` 数组）；进度浮层走 `window.Prog`，失败/取消都要 hide。
+  - **两条导出路径的差别**（v62 定）：卡组库导出（开始页 🎭 → 导出）用 `CC.exportPlan(f)`，**默认内嵌** base64 头像+原图，保证单独拿 `charcards.json` 就能完整恢复；视频打标包导出用 `CC.exportPlan(f, { inline: false })`，JSON **只写路径引用**——因为那个 ZIP 本来就带 `chars/ + chars_full/` 二进制，再内嵌等于把同一份原图在内存里存三份（实测会把 WebView 进程顶爆，见 RELEASE 已知坑）。
 
 ## 打标适配（img-ui.js）
 
@@ -64,7 +65,7 @@
 | www/charcards.js | v2 数据层（卡/词库 CRUD、迁移、zip 组包计划） |
 | www/cardgroups.js | CCG 多套卡组存储 + 迁移（v58 引入，保留） |
 | www/cardgroups-full.js | 原图 IndexedDB 存储（put/get/all/delGroup/stripFull） |
-| www/cardgroups-ui.js | 开始页管理器（sheet 全套 + 导入导出 + 借图） |
+| www/cardgroups-ui.js | 开始页管理器（sheet 全套 + 导入导出 + 借图；导出走 inline 默认 true） |
 | www/progress.js | 统一进度浮层 `window.Prog`（导出/导入共用） |
 | www/av-ui.js | 视频页角色卡对话框 + 选库 + 遮罩导出（v58 链路不变） |
 | www/img-ui.js | 打标描述下拉（词库分组） |
@@ -78,6 +79,7 @@
 - `tests/probe-v61f.cjs`：原图内嵌无上限 + 借图读 IDB + applyImport 异步化 13 项
 - `tests/v61f-dom.mjs`：**真机链路复现** 8 项——卡组原图只在 IDB → 导入只写路径的 JSON → 再导出，断言 `idbFulls=2 / inlineFull=2 / chars_full 两文件`
 - `tests/v61b-dom.mjs`（进度浮层 10 项）、`v61c-dom`（无后缀 ZIP 5 项）、`v61d-dom`（内嵌头像 3 项）、`v61e-dom`（内嵌原图 5 项）
+- `tests/probe-v62.cjs`（27 项，导出内存治理与日志契约）、`tests/v62-dom.mjs`（21 项，真机导出链路：inline=0 / chars_full 只带被引用角色 / 抽帧元素已释放）
 
 ## 移动端 UI 规范（后续配置类 UI 按此执行）
 

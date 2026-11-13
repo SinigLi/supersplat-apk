@@ -154,6 +154,7 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 | v61d | 导出 charcards.json 内嵌头像 `img`，单独拿这份 JSON 导入也有图（原图当时仍只有路径引用） |
 | v61e | 再把原图 `imgFull` 也内嵌（当时带 2.5MB 上限，v61f 已删） |
 | **v61f** | **「只导 JSON 原图不回来」真因**：导入借图只读 `CCG.list()`，而它返回的是 localStorage 精简副本——原图早在 `CCG.saveData()` 里被 `CGFull.stripFull()` 剥进 IndexedDB，所以永远借不到（日志 `borrowed avatars=11` 但原图 0 张，新组只有头像，再导出自然没有 chars_full）。改为逐组 `await CGFull.all(gid)` 借 img + imgFull（日志 `borrowed avatars=N originals=M`）；`applyImport` 返回 Promise，两处调用都等借用完成才落盘；删除 2.5MB 上限，`exportPlan` 一律内嵌原图；`exportGroup` 抽出 `mergeFulls` 合并 IDB 原图并打印 json 字节数 / inlineFull / images |
+| **v62** | **视频导出 92% 闪退**（debug_28：只有一行 toast，无 JS 异常）：不是代码抛错而是 **WebView 渲染进程被 OOM 杀掉**。三重内存放大：① `exportPlan` 内嵌 base64 原图，而视频 ZIP 本就带 `chars_full/` 二进制 → 同一份原图在内存里三份；② `captureTagFrame` 每条 char_ref 新建 4K `<video>`（20 条 = 20 个解码实例 + 每帧 33MB canvas）；③ canvas 不释放、轮次间不让 GC。修法：`exportPlan(f, opts)` 加 `opts.inline`（卡组库导出仍内嵌，视频导出传 `{inline:false}` 只写路径）；抽帧改单例解码器 + 串行队列，遮罩处理完立刻释放；`releaseCanvas` 逐张归零 + `yieldToGC`；b64 改分块。日志：全链路 `mark()` 带耗时与 JS 堆，zip 前打印最大 5 个条目，关键日志 `dlogAw` 等待落盘（闪退也留痕） |
 
 > v32~v43、v45 各子版的逐条明细在 `docs/DIRECTOR.md` §8「版本记录」。
 > v48d/v48e 的完整设计与踩坑记录见 `docs/VIEWPORT-NAV.md`。
@@ -171,6 +172,8 @@ Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
 - WMI 启动的后台任务父进程是 WmiPrvSE，不受 exec Job Object 连坐；**不要** WMI+stdout 重定向，日志由脚本自写。
 - **门禁断言别用全文关键字匹配**——v49 事故：检查「file input 不带 `accept`」的正则 `/type \*= *['"]file['"][^>]*accept/` 把注释里解释该约束的 `accept` 字样也匹配了，导致全绿代码被判失败、白等一轮 CI。改结构性断言（`!/.accept\s*=/`），或锚定到具体元素的属性。
 - **`--registry` 救不了 lock 文件里的 resolved**——v55b 交付事故（2026-11-09）：npmmirror E500（yauzl tgz 表损坏），`npm ci --registry=官方` 照挂——package-lock.json 的 `resolved` 写死了镜像域名，registry 旗标不改变它。workflow 加 `sed` 改写 lockfile 域名兜底（`build-apk.yml`）。诊断套路：CI 挂在依赖安装时先用 jobs API 查失败步骤 + 拉日志原文，别盲目重跑（本次盲目重跑烧掉两轮 CI）。
+- **进度卡在某百分比、日志戛然而止 = 进程被杀，不是抛错**——v62 事故（2026-11-13）：视频导出在 92% 消失，`DebugLog` 里连 `JS-ERR`/`REJ` 都没有。判断依据：全局 error/unhandledrejection 兜底没记录任何东西 → JS 从未走到抛错分支 → 渲染进程被系统 OOM 杀了。应对：① 关键日志必须 `await` 落盘（`dlog` 是 fire-and-forget，进程一死全丢）；② 排查「同一份二进制在内存里出现几次」——本案例是 base64 字符串 + ZIP 条目 + 最终 zip 三份；③ 4K canvas 33MB/张、每条 ref 一个视频解码器，都是必爆的组合。
+- **导出的 JSON 不该重复 ZIP 里的二进制**——v62：`charcards.json` 内嵌 base64 是为了「单独拿 JSON 也能恢复」（卡组库需求），但视频打标包本身已经带 `chars/ + chars_full/`，再内嵌等于把同一份原图在内存里复制三遍。凡是「ZIP 里已有该文件」的导出路径，JSON 只写路径引用。
 - **localStorage 里的只是派生副本**——v61e→v61f 连环返工（2026-11-12）：`CGFull.stripFull` 在 saveData 时把 `imgFull` 剥进 IndexedDB，任何只读 `CCG.list()` 的逻辑都拿不到原图。凡是要「复用已有卡组里的原图」，必须 `await CGFull.all(groupId)`；只读 list 的代码能跑、日志也像成功（`borrowed avatars=11`），但原图 0 张——**日志要分别记头像数和原图数**，混在一个数字里会掩盖问题。
 - **导出的 JSON 体积随原图线性增长**——v61f 取消了 2.5MB 内嵌上限（老板要求单独导 JSON 就能完整恢复），代价是一套 11 角色 × 原图 2MB 的卡组会导出 ~30MB 的 charcards.json。日常分发仍以 ZIP 为首选（ZIP 里既有内嵌 JSON 也有 chars\_full/ 文件）；卡片数量大的库要提前提醒用户。
 - **派生视图必须从事实源回写**——v55/v55b 连环返工（2026-11-09~10）：角色下拉是 activeId 的派生视图，却在恢复段和收尾段各自写一遍，收尾「默认激活」无条件覆盖恢复结果。修法：单一事实源（activeId），任何切层路径统一经 `switchTagLayer` 回写下拉；初始化顺序里"默认值"只允许在"无既有状态"时生效。
