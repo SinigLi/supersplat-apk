@@ -1712,41 +1712,94 @@ function hasMerge(seg) {
 
     /* v53：抽帧（原分辨率 canvas）。serverPort HTTP 流 + seeked 抓帧，
      * 与缩略图同链路；失败 reject（openTagEditor 捕获 toast）。 */
+    /* v62：抽帧共享一个 <video>。
+     * 之前每条 char_ref 都新建 4K 视频元素 → 20 条 ref 就是 20 个解码实例，
+     * 叠加 33MB/张的 4K canvas，WebView 直接被系统杀掉（debug_28：92% 闪退、无日志）。
+     * 现在整轮导出只用一个解码器，抽帧之间只做 seek；串行队列防止并发 seek。 */
+    var _cfVideo = null, _cfSrc = null, _cfChain = Promise.resolve();
+
+    function _cfEnsureVideo() {
+        if (_cfVideo) return _cfVideo;
+        var v = document.createElement('video');
+        v.muted = true;
+        v.playsInline = true;
+        v.preload = 'auto';
+        v.crossOrigin = 'anonymous';
+        v.style.cssText = 'position:fixed;left:-2px;top:-2px;width:1px;height:1px;opacity:0;pointer-events:none;';
+        document.body.appendChild(v);
+        _cfVideo = v;
+        return v;
+    }
+
+    function _cfReleaseVideo() {
+        var v = _cfVideo;
+        _cfVideo = null; _cfSrc = null;
+        if (!v) return;
+        try {
+            v.pause();
+            v.removeAttribute('src');
+            v.load();
+            if (v.parentNode) v.parentNode.removeChild(v);
+        } catch (e) { }
+    }
+
+    /* 抽一帧（串行）：复用解码器，只有换片源时才重新 set src */
     function captureTagFrame(fileName, frame, fps) {
-        return new Promise(function (resolve, reject) {
-            if (S.serverPort <= 0) { reject(new Error('本地服务未启动，无法抽帧')); return; }
-            var v = document.createElement('video');
-            var done = false;
-            var timer = setTimeout(function () { finish(null, '抽帧超时'); }, 12000);
-            function finish(canvas, err) {
-                if (done) return;
-                done = true;
-                clearTimeout(timer);
-                try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e2) { }
-                if (canvas) resolve(canvas); else reject(new Error(err || '抽帧失败'));
-            }
-            try {
-                v.muted = true;
-                v.playsInline = true;
-                v.preload = 'auto';
-                v.crossOrigin = 'anonymous';
-                v.src = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(fileName);
-                v.addEventListener('loadeddata', function () {
+        var run = function () {
+            return new Promise(function (resolve, reject) {
+                if (S.serverPort <= 0) { reject(new Error('本地服务未启动，无法抽帧')); return; }
+                var url = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(fileName);
+                var v = _cfEnsureVideo();
+                var done = false;
+                var timer = setTimeout(function () { finish(null, '抽帧超时(12s) ' + fileName + ' @' + frame); }, 12000);
+                function finish(canvas, err) {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    v.removeEventListener('loadeddata', onLoaded);
+                    v.removeEventListener('seeked', onSeeked);
+                    v.removeEventListener('error', onError);
+                    if (canvas) resolve(canvas); else reject(new Error(err || '抽帧失败'));
+                }
+                function onLoaded() {
                     var tSec = L.secAtFrame(frame, fps || effFps());
-                    try { v.currentTime = Math.min(tSec, Math.max(0, (v.duration || 0) - 0.05)); } catch (e) { finish(null, 'seek err'); }
-                });
-                v.addEventListener('seeked', function () {
+                    var dur = isFinite(v.duration) ? v.duration : 0;
+                    var seekTo = Math.max(0, Math.min(tSec, dur > 0 ? dur - 0.05 : tSec));
+                    dlog('tagframe: loaded ' + fileName + ' seek=' + seekTo.toFixed(3) + 's dur=' + (dur || '?'));
+                    try { v.currentTime = seekTo; } catch (e) { finish(null, 'seek err: ' + (e && e.message || e)); }
+                }
+                function onSeeked() {
                     try {
                         var c = document.createElement('canvas');
                         c.width = v.videoWidth || 640;
                         c.height = v.videoHeight || 360;
-                        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+                        var g = c.getContext('2d');
+                        g.drawImage(v, 0, 0, c.width, c.height);
+                        dlog('tagframe: drawn ' + c.width + 'x' + c.height + ' @' + frame);
                         finish(c, null);
                     } catch (e) { finish(null, 'canvas err: ' + (e && e.message || e)); }
-                });
-                v.addEventListener('error', function () { finish(null, 'video load err'); });
-            } catch (e) { finish(null, 'setup err'); }
-        });
+                }
+                function onError() {
+                    finish(null, 'video load err ' + fileName + ' code=' + (v.error && v.error.code));
+                }
+                if (_cfSrc !== url) {
+                    _cfSrc = url;
+                    v.addEventListener('loadeddata', onLoaded);
+                    v.addEventListener('seeked', onSeeked);
+                    v.addEventListener('error', onError);
+                    v.src = url;
+                    try { v.load(); } catch (e) { }
+                } else {
+                    v.addEventListener('seeked', onSeeked);
+                    v.addEventListener('error', onError);
+                    onLoaded();
+                }
+            });
+        };
+        /* 串行：并发 seek 同一个解码器会互相打断 */
+        var p = _cfChain.then(run, run);
+        _cfChain = p.catch(function () { });
+        return p;
     }
 
     function openTagEditor() {
@@ -2064,6 +2117,9 @@ function hasMerge(seg) {
         if (!imgMod || !imgMod.renderTagMaskCanvas) throw new Error('打标渲染模块未就绪');
         var refs = S.marks.marks.filter(function (m) { return m.type === 'char_ref'; });
         var _rt = refs.length, _rd = 0;
+        var T0 = Date.now();
+        var totalPng = 0, pngN = 0;
+        dlog('tagmask: START refs=' + refs.length + ' fps=' + effFps());
         if (window.Prog) window.Prog.show('敷理打标遮罩…');
         for (var ri = 0; ri < refs.length; ri++) {
             var ref = refs[ri];
@@ -2087,8 +2143,16 @@ function hasMerge(seg) {
                 }
                 return false;
             });
-            if (!need.length) { _rd++; if (window.Prog && _rt) window.Prog.set(_rd / _rt * 0.8); continue; }
+            if (!need.length) {
+                dlog('tagmask: ref seg=' + ref.seg + ' frame=' + frame + ' skip (no layer with strokes)');
+                _rd++;
+                if (window.Prog && _rt) window.Prog.set(_rd / _rt * 0.8);
+                continue;
+            }
+            dlog('tagmask: ref seg=' + ref.seg + ' frame=' + frame + ' file=' + f.name + ' need=' + need.length);
             var frameCanvas = await captureTagFrame(f.name, frame, effFps());
+            dlog('tagmask: frame captured ' + frameCanvas.width + 'x' + frameCanvas.height +
+                ' px=' + (frameCanvas.width * frameCanvas.height));
             for (var ci = 0; ci < need.length; ci++) {
                 var ent = need[ci];
                 var entMask = String(ent.mask);
@@ -2106,6 +2170,7 @@ function hasMerge(seg) {
                     dlog('tagmask skip empty: ' + ent.name + ' @' + ref.seg);
                     continue;
                 }
+                var tm1 = Date.now();
                 var u8 = imgMod.canvasToPngU8(canvas);
                 /* v58：帧号做目录，文件名 = 纯角色名（重名不可能——同段同帧位同角色只有一层） */
                 var safeName = String(ent.name).replace(/[\\/:*?"<>|\s]+/g, '_');
@@ -2113,6 +2178,9 @@ function hasMerge(seg) {
                 PNG_BY_PATH[path] = u8;
                 ent.mask = path;
                 count++;
+                totalPng += u8.length; pngN++;
+                dlog('tagmask: png ' + path + ' ' + canvas.width + 'x' + canvas.height +
+                    ' ' + u8.length + 'B ' + (Date.now() - tm1) + 'ms total=' + (totalPng / 1048576).toFixed(2) + 'MB');
                 if (window.Prog) window.Prog.set(((_rd / (_rt || 1)) * 0.8) + (count / (count + 3)) * 0.15, '遮罩 ' + count + ' 张');
                 /* 内容寻址备份（导出 zip 之外的持久层，重导出不重写） */
                 try {
@@ -2121,9 +2189,16 @@ function hasMerge(seg) {
                         await pjMod.putContentFile(pjMod.pathsFor(S.project), 'png', u8);
                     }
                 } catch (e2) { dlog('tagmask backup skip: ' + (e2 && e2.message || e2)); }
+                releaseCanvas(canvas);
             }
+            releaseCanvas(frameCanvas);
+            _rd++;
+            if (window.Prog && _rt) window.Prog.set((_rd / _rt) * 0.8, '遮罩 ' + count + ' 张');
+            await yieldToGC();   /* 给 GC 一次机会，避免 4K canvas 堆叠 */
         }
         _rd = _rt;
+        dlog('tagmask: DONE count=' + count + ' pngBytes=' + (totalPng / 1048576).toFixed(2) + 'MB' +
+            ' ms=' + (Date.now() - T0));
         if (window.Prog) window.Prog.set(0.82, '遮罩 ' + count + ' 张');
         return { pngByPath: PNG_BY_PATH, count: count };
     }
@@ -2204,27 +2279,102 @@ function hasMerge(seg) {
                 slim.cards.forEach(function (c) { if (fulls[c.id]) c.imgFull = fulls[c.id]; });
             } catch (e) { dlog("export: cg fulls read ERR " + (e && e.message || e)); }
         }
-        var plan = window.CC.exportPlan(slim);
-        var entries = { "charcards.json": new TextEncoder().encode(JSON.stringify(plan.json, null, 2)) };
+        /* v62：ZIP 里已经带 chars/ 与 chars_full/ 二进制文件，charcards.json 只留路径引用。
+         * v61f 的内嵌（base64）会让同一份原图在内存里存在三份，11 个角色就顶爆 WebView。 */
+        var plan = window.CC.exportPlan(slim, { inline: false });
+        var jsonU8 = new TextEncoder().encode(JSON.stringify(plan.json, null, 2));
+        var entries = { "charcards.json": jsonU8 };
         plan.images.forEach(function (im) { entries[im.file] = dataUrlToU8(im.dataUrl); });
+        dlog('export: chargroup gid=' + gid + ' picked=' + picked.length +
+            ' json=' + jsonU8.length + 'B imgs=' + plan.images.length +
+            ' imgBytes=' + plan.images.reduce(function (n, x) { return n + String(x.dataUrl).length; }, 0));
         return { entries: entries, count: picked.length };
+    }
+
+    /* v62：等待原生把这条日志写进文件再继续。闪退前必须落盘，否则等于没打。 */
+    function dlogAw(msg) {
+        try {
+            var cap = window.Capacitor;
+            var p = cap && cap.Plugins && cap.Plugins.DebugLog;
+            if (!p || !p.append) return Promise.resolve();
+            var r = p.append({ text: '[av] ' + msg });
+            if (r && r.then) return r.catch(function () { });
+        } catch (e) { }
+        return Promise.resolve();
+    }
+
+    /* v62：可用内存快照（Chrome 专有，真机 WebView 有） */
+    function memInfo() {
+        try {
+            var m = performance && performance.memory;
+            if (!m) return 'mem=?';
+            return 'used=' + (m.usedJSHeapSize / 1048576).toFixed(1) + 'MB/' +
+                (m.jsHeapSizeLimit / 1048576).toFixed(1) + 'MB';
+        } catch (e) { return 'mem=?'; }
+    }
+
+    /* v62：canvas backing store 归零 = 立刻还给浏览器，比等 GC 可靠 */
+    function releaseCanvas(c) {
+        try { if (c) { c.width = 0; c.height = 0; } } catch (e) { }
+    }
+    function yieldToGC() {
+        return new Promise(function (r) { setTimeout(r, 0); });
+    }
+
+    /* v62：导出全程打点。真机闪退时进程被直接杀掉，这是唯一能留下痕迹的地方——
+     * 每阶段都记「开始 + 字节数 + 耗时」，下次再崩就能看出死在哪一步。
+     * 内存红线（WebView 单进程）：zip 字节 × 2（打包 + base64） + 条目字节，别叠第三份。 */
+    function mb(n) { return (n / 1048576).toFixed(2) + 'MB'; }
+    function u8ToB64Chunked(u8) {
+        var out = '', CH = 8192;
+        for (var i = 0; i < u8.length; i += CH) {
+            out += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+        }
+        return btoa(out);
     }
 
     async function exportJson() {
         if (!S.project) return;
+        var T0 = Date.now();
+        var mark = function (stage, extra) {
+            return dlogAw('export: ' + stage + ' +' + (Date.now() - T0) + 'ms ' + memInfo() + (extra ? ' ' + extra : ''));
+        };
+        _cfChain = Promise.resolve();
+        await dlogAw('export: START project=' + S.project + ' marks=' + S.marks.marks.length +
+            ' files=' + S.files.length + ' mode=' + (S.meta && S.meta.mode) +
+            ' charGroupRef=' + (S.meta && S.meta.charGroupRef ? 'yes' : 'no') + ' ' + memInfo() +
+            ' fflate=' + (window.fflate ? 'yes' : 'no'));
         toast('正在整理打标遮罩…');
-        var resolved = await resolveTagMasks();
+        var resolved;
+        try {
+            resolved = await resolveTagMasks();
+        } catch (e) {
+            dlog('export: resolveTagMasks ERR ' + (e && (e.stack || e.message) || e));
+            if (window.Prog) window.Prog.hide();
+            toast('遮罩整理失败：' + (e && e.message || e), true);
+            return;
+        }
+        await mark('masks ready', 'count=' + resolved.count + ' paths=' + Object.keys(resolved.pngByPath).length);
+        _cfReleaseVideo();   /* v62：遮罩抽帧结束就放掉解码器，别和后面的 zip 抢内存 */
         var json = L.buildExport(S.meta, S.marks, S.files);
         var text = JSON.stringify(json, null, 2);
+        await mark('marks.json built', mb(text.length));
         var sp = savePlug();
         if (window.Prog) window.Prog.show('导出打标包…');
         var refNames = refCharNames();
         var groupPack = null;
         if (refNames.length) {
+            await mark('char group pack start', 'names=' + refNames.length);
             try { groupPack = await buildCharGroupEntries(refNames); }
-            catch (e) { dlog("export: chargroup pack ERR " + (e && e.message || e)); }
+            catch (e) { dlog("export: chargroup pack ERR " + (e && (e.stack || e.message) || e)); }
+            if (groupPack) {
+                var ge = 0;
+                Object.keys(groupPack.entries).forEach(function (k) { ge += groupPack.entries[k].length; });
+                await mark('char group pack done', 'cards=' + groupPack.count + ' entries=' + Object.keys(groupPack.entries).length + ' bytes=' + mb(ge));
+            }
         }
-        var needZip = resolved.count > 0 || !!groupPack;
+        var maskCount = resolved.count;
+        var needZip = maskCount > 0 || !!groupPack;
         if (window.Prog) window.Prog.set(0.86, groupPack ? ('卡绋 ' + groupPack.count + ' 觇色') : '编码　');
         var name = 'marks-' + S.project.replace(/[\\/:*?"<>|]/g, '_') + '-' +
             new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) +
@@ -2239,17 +2389,29 @@ function hasMerge(seg) {
                 Object.keys(groupPack.entries).forEach(function (k) { entries[k] = groupPack.entries[k]; });
                 groupCount = groupPack.count;
             }
+            var entBytes = 0;
+            Object.keys(entries).forEach(function (k) { entBytes += entries[k].length; });
+            var top = Object.keys(entries).map(function (k) { return { k: k, n: entries[k].length }; })
+                .sort(function (x, y) { return y.n - x.n; }).slice(0, 5)
+                .map(function (x) { return x.k + '=' + mb(x.n); });
+            await mark('zip start', 'entries=' + Object.keys(entries).length + ' raw=' + mb(entBytes) + ' top=' + top.join(','));
             if (window.Prog) window.Prog.set(0.92, '厇包 zip…');
             var zipped = window.fflate.zipSync(entries, { level: 0 });  /* PNG 已压缩 */
-            var bin = ''; var CH = 8192;
-            for (var zi = 0; zi < zipped.length; zi += CH) {
-                bin += String.fromCharCode.apply(null, zipped.subarray(zi, zi + CH));
-            }
-            var zb64 = btoa(bin);
+            await mark('zip done', mb(zipped.length));
+            if (window.Prog) window.Prog.set(0.96, '编码分享…');
             if (sp && sp.shareFile) {
+                var zb64 = u8ToB64Chunked(zipped);
+                await mark('b64 done', mb(zb64.length));
+                /* 释放中间态：条目与 zip 字节在交给原生前丢掉，降峰值内存 */
+                entries = null; zipped = null; resolved = null;
+                await mark('shareFile call', name);
                 sp.shareFile({ data: zb64, filename: name, mime: 'application/zip' })
-                    .then(function () { if (window.Prog) window.Prog.done('巼导出 ' + resolved.count + ' 遮罩'); toast('已导出打标包（' + resolved.count + ' 张遮罩）'); })
-                    .catch(function (e2) { if (window.Prog) window.Prog.hide(); toast('分享失败：' + (e2 && e2.message || e2)); });
+                    .then(function () { mark('shareFile ok'); if (window.Prog) window.Prog.done('已导出'); toast('已导出打标包'); })
+                    .catch(function (e2) {
+                        dlog('export: shareFile ERR ' + (e2 && (e2.message || e2) || e2));
+                        if (window.Prog) window.Prog.hide();
+                        toast('分享失败：' + (e2 && e2.message || e2), true);
+                    });
             } else {
                 var blob = new Blob([zipped], { type: 'application/zip' });
                 var a = document.createElement('a');
@@ -2257,7 +2419,7 @@ function hasMerge(seg) {
                 a.download = name;
                 a.click();
                 setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
-                toast('打标包已下载（' + resolved.count + ' 张遮罩）');
+                toast('打标包已下载（' + maskCount + ' 张遮罩）');
             }
             return;
         }

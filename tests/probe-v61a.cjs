@@ -9,10 +9,10 @@ const av = fs.readFileSync(WS + 'www/av-ui.js', 'utf8');
 const cg = fs.readFileSync(WS + 'www/cardgroups.js', 'utf8');
 
 check('导出前收集被引用角色名', av.includes('function refCharNames()') && av.includes("m.type !== \"char_ref\""));
-check('卡组打包复用 CC.exportPlan', av.includes('window.CC.exportPlan(slim)'));
+check('卡组打包复用 CC.exportPlan（v62 起视频导出传 inline:false，ZIP 内不再重复内嵌 base64）', av.includes('window.CC.exportPlan(slim, { inline: false })'));
 check('原图从 IndexedDB 合并', av.includes('window.CGFull.all(gid)'));
-check('charcards.json 进 ZIP', av.includes('"charcards.json": new TextEncoder()'));
-check('needZip 含角色组分支', av.includes('var needZip = resolved.count > 0 || !!groupPack;'));
+check('charcards.json 进 ZIP', av.includes('"charcards.json": jsonU8') || av.includes('"charcards.json": new TextEncoder()'));
+check('needZip 含角色组分支（v62 用 maskCount 捕获避免 resolved 置空后取用）', av.includes('var needZip = maskCount > 0 || !!groupPack;'));
 check('ZIP 合并组条目', av.includes('entries[k] = groupPack.entries[k];'));
 check('validData 接受 v2', cg.includes("d.schema === 'moyutai.charcards.v2'"));
 

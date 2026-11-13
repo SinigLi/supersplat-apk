@@ -191,19 +191,23 @@
         var m = /^data:image\/([a-z0-9+.-]+)[;,]/i.exec(u || '');
         return m ? (m[1] === 'jpeg' ? 'jpg' : m[1]) : 'jpg';
     }
-    function exportPlan(f) {
+    /* opts.inline（默认 true）：
+     *   true  —— 头像/原图同时以 base64 内嵌进 charcards.json，单独拿这份 JSON 就能恢复
+     *            （卡组库导出用，老板 v61f 明确要求）
+     *   false —— 只写 chars/ 与 chars_full/ 路径引用，图片只以二进制条目进 ZIP
+     *            （视频打标包用：ZIP 里本来就有文件，内嵌等于同一份原图在内存里存三遍，
+     *             debug_28 的 92% 闪退就是这里把 WebView 进程顶爆的） */
+    function exportPlan(f, opts) {
+        var inline = !opts || opts.inline !== false;
         var cards = f.cards.map(function (c) {
             var cc = { id: c.id, name: c.name, tag: c.tag || '' };
             if (c.img) {
                 cc.imgFile = 'chars/' + safeFileName(c.name) + '.jpg';
-                /* 同时内嵌头像：单独拿 charcards.json 去导入也能带回图片 */
-                cc.img = c.img;
+                if (inline) cc.img = c.img;   /* 内嵌头像：单独拿 JSON 也能带回图片 */
             }
-            /* v60c：原图导出引用（保留原格式扩展名） */
             if (c.imgFull) {
                 cc.imgFullFile = 'chars_full/' + safeFileName(c.name) + '.' + dataUrlExt(c.imgFull);
-                /* 同时内嵌原图：只要有原图就写进 JSON（不设体积上限，ZIP 仍是首选分发格式） */
-                cc.imgFull = c.imgFull;
+                if (inline) cc.imgFull = c.imgFull;
             }
             return cc;
         });

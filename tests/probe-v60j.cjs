@@ -11,7 +11,7 @@ check('loadTagMaskLayers 先试 char_ref.id key', av.includes("'av-' + S.project
 check('loadTagMaskLayers 回退 seg_frame key', av.includes("'-tagmask-' + ref.seg + '_' + L.frameAt(ref.at, effFps())"));
 check('双 key 循环读取（命中即返回）', av.includes('for (var ki = 0; ki < keys.length; ki++)'));
 check('img-ui 首次写 seg_frame key 保持不变', fs.readFileSync(WS + 'www/img-ui.js', 'utf8').includes("'-tagmask-' + (tm.existing ? tm.existing.id : tm.seg + '_' + tm.frame)"));
-check('导出前仍先解析遮罩再 buildExport', av.includes('var resolved = await resolveTagMasks();') && av.includes('L.buildExport(S.meta, S.marks, S.files)'));
+check('导出前仍先解析遮罩再 buildExport（v62 改为 try 内赋值 + 失败提示）', /resolved = await resolveTagMasks\(\);/.test(av) && av.includes('L.buildExport(S.meta, S.marks, S.files)'));
 
 console.log('probe-v60j: ' + pass + '/' + (pass + fail) + (fail ? ' === FAIL ===' : ' === ALL PASS ==='));
 process.exit(fail ? 1 : 0);
