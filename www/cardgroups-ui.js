@@ -513,6 +513,26 @@
                 /* v60b：APK 走原生分享面板（<a download> 在 WebView 无效）；网页保留下载兜底 */
                 var sp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SaveImage;
                 var fname = 'charcards-' + nm + '.zip';
+                if (window.ShareOut && sp && window.ShareOut.send) {
+                    /* v63：卡组导出也内嵌原图，可能超飞书 30MB → 统一走 ShareOut 自动分卷 */
+                    window.ShareOut.send({
+                        bytes: zipped,
+                        filename: fname,
+                        mime: 'application/zip',
+                        onProgress: function (p, msg) { if (window.Prog) window.Prog.set(0.95 + p * 0.05, msg); }
+                    }).then(function (res) {
+                        dlog('export: shareout mode=' + res.mode + ' volumes=' + res.volumes + ' size=' + zipped.length);
+                        if (window.Prog) window.Prog.done('已导出 ' + res.volumes + ' 卷');
+                        toast(res.volumes > 1
+                            ? ('已导出 ' + fname + '（' + res.volumes + ' 卷，需全部下载后一起解压）')
+                            : ('已导出 ' + fname));
+                    }).catch(function (e) {
+                        dlog('export: shareout ERR ' + (e && (e.message || e) || e));
+                        if (window.Prog) window.Prog.hide();
+                        toast('分享失败：' + (e && e.message || e), true);
+                    });
+                    return;
+                }
                 if (sp && sp.shareFile) {
                     var b64 = u8ToB64(zipped);
                     sp.shareFile({ data: b64, filename: fname, mime: 'application/zip' }).then(function () {

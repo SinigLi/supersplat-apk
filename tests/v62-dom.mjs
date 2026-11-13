@@ -120,7 +120,9 @@ try {
       log.filter(l => l.includes('skip')).slice(0, 2).join(' / '));
     check('卡组打包阶段有日志', has('char group pack start') && has('char group pack done'));
     check('zip 有体积日志', has('zip start') && has('zip done'), log.filter(l => l.includes('zip')).join(' / ').slice(0, 200));
-    check('shareFile 前后都有日志', has('shareFile call') && has('shareFile ok'));
+    /* v63：分享统一走 ShareOut，日志改为 share dispatch / share ok + [share] 模块行 */
+    check('分享前后都有日志', (has('share dispatch') && has('share ok')) || (has('shareFile call') && has('shareFile ok')));
+    check('ShareOut 模块有日志', has('[share]'), log.filter(l => l.includes('[share]')).slice(0, 2).join(' / '));
     check('文件名 .zip', /\.zip$/.test(E.filename || ''), E.filename);
 
     const zi = await q(`(function(){

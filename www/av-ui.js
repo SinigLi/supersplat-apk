@@ -2398,11 +2398,27 @@ function hasMerge(seg) {
             if (window.Prog) window.Prog.set(0.92, '厇包 zip…');
             var zipped = window.fflate.zipSync(entries, { level: 0 });  /* PNG 已压缩 */
             await mark('zip done', mb(zipped.length));
-            if (window.Prog) window.Prog.set(0.96, '编码分享…');
-            if (sp && sp.shareFile) {
+            if (window.Prog) window.Prog.set(0.96, '准备分享…');
+            if (window.ShareOut && sp) {
+                /* v63：>30MB 自动切 25MB 分卷（飞书单文件上限），≤30MB 沿用 shareFile */
+                await mark('share dispatch', mb(zipped.length) + ' threshold=' + mb(window.ShareOut.limit()));
+                var resZip = await window.ShareOut.send({
+                    bytes: zipped,
+                    filename: name,
+                    mime: 'application/zip',
+                    onProgress: function (p, msg) {
+                        if (window.Prog) window.Prog.set(0.96 + p * 0.04, msg);
+                    }
+                });
+                entries = null; zipped = null; resolved = null;
+                await mark('share ok', 'mode=' + resZip.mode + ' volumes=' + resZip.volumes);
+                if (window.Prog) window.Prog.done('已导出');
+                toast(resZip.volumes > 1
+                    ? ('已导出 ' + resZip.volumes + ' 卷（每卷 ≤25MB，需全部下载后一起解压）')
+                    : '已导出打标包');
+            } else if (sp && sp.shareFile) {
                 var zb64 = u8ToB64Chunked(zipped);
                 await mark('b64 done', mb(zb64.length));
-                /* 释放中间态：条目与 zip 字节在交给原生前丢掉，降峰值内存 */
                 entries = null; zipped = null; resolved = null;
                 await mark('shareFile call', name);
                 sp.shareFile({ data: zb64, filename: name, mime: 'application/zip' })
@@ -2424,10 +2440,25 @@ function hasMerge(seg) {
             return;
         }
         if (window.Prog) window.Prog.set(0.95, '\u751f\u6210 JSON\u2026');
-        if (sp && sp.shareFile) {
+        if (window.ShareOut && sp) {
+            /* v63：大 JSON 也受飞书 30MB 限制，统一走 ShareOut（超限自动 25MB 分卷） */
+            var textU8 = new TextEncoder().encode(text);
+            await mark('share dispatch', mb(textU8.length) + ' (json) threshold=' + mb(window.ShareOut.limit()));
+            var resJson = await window.ShareOut.send({
+                bytes: textU8,
+                filename: name,
+                mime: 'application/json',
+                onProgress: function (p, msg) { if (window.Prog) window.Prog.set(0.95 + p * 0.05, msg); }
+            });
+            await mark('share ok', 'mode=' + resJson.mode + ' volumes=' + resJson.volumes);
+            if (window.Prog) window.Prog.done('已导出 JSON');
+            toast(resJson.volumes > 1
+                ? ('已导出 ' + resJson.volumes + ' 卷 JSON（需全部下载后一起解压）')
+                : '已唤起分享，把 JSON 发给音视频助手');
+        } else if (sp && sp.shareFile) {
             var b64 = btoa(unescape(encodeURIComponent(text)));
             sp.shareFile({ data: b64, filename: name, mime: 'application/json' })
-                .then(function () { if (window.Prog) window.Prog.done('\u5df2\u5bfc\u51fa JSON'); toast('已唤起分享，把 JSON 发给音视频助手'); })
+                .then(function () { if (window.Prog) window.Prog.done('已导出 JSON'); toast('已唤起分享，把 JSON 发给音视频助手'); })
                 .catch(function (e) { if (window.Prog) window.Prog.hide(); toast('分享失败：' + (e && e.message || e)); });
         } else {
             var blob = new Blob([text], { type: 'application/json' });
@@ -2436,7 +2467,7 @@ function hasMerge(seg) {
             a.download = name;
             a.click();
             setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
-            if (window.Prog) window.Prog.done('\u5df2\u4e0b\u8f7d JSON');
+            if (window.Prog) window.Prog.done('已下载 JSON');
             toast('JSON 已下载（APK 内走分享）');
         }
     }

@@ -13,6 +13,7 @@ import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -24,6 +25,7 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -300,7 +302,67 @@ public class SaveImagePlugin extends Plugin {
         }
     }
 
+    // ----- v63 sharePaths: 一次分享多个文件（分卷导出用） -----
+    // 参数 names: 提交前已写进 CacheDirectory/shared/ 的文件名列表（纯文件名，不带路径）
+    // 走 ACTION_SEND_MULTIPLE，收件方在同一条消息里拿到全部卷；
+    // 卷名保持 <原名>.001/.002…，解压中心的 stripVolume 能直接拼回原文件。
+
+    @PluginMethod
+    public void sharePaths(PluginCall call) {
+        JSArray arr = call.getArray("names");
+        if (arr == null || arr.length() == 0) { call.reject("missing names"); return; }
+        try {
+            File dir = new File(getContext().getCacheDir(), "shared");
+            if (!dir.exists() && !dir.mkdirs()) { call.reject("could not create the share cache"); return; }
+
+            ArrayList<Uri> uris = new ArrayList<>();
+            ArrayList<String> missing = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String name = sanitizeName(arr.getString(i));
+                File f = new File(dir, name);
+                if (!f.exists() || f.length() == 0) { missing.add(name); continue; }
+                uris.add(FileProvider.getUriForFile(getContext(),
+                        getContext().getPackageName() + ".fileprovider", f));
+            }
+            if (uris.isEmpty()) { call.reject("files not found: " + joinComma(missing)); return; }
+
+            String mime = shareMime(call.getString("mime"), "application/octet-stream");
+            Intent send = new Intent(uris.size() == 1 ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
+            send.setType(mime);
+            if (uris.size() == 1) {
+                send.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+            } else {
+                send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+            }
+            send.putExtra(Intent.EXTRA_SUBJECT, uris.size() + " files");
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            Intent chooser = Intent.createChooser(send, "分享文件");
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getActivity().startActivity(chooser);
+
+            JSObject res = new JSObject();
+            res.put("ok", true);
+            res.put("count", uris.size());
+            res.put("missing", joinComma(missing));
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("sharePaths failed: " + e.getMessage(), e);
+        }
+    }
+
     // ----- helpers -----
+
+    /** v63：String.join 是 API 26+，minSdk 23 用不了；手写逗号拼接 */
+    private String joinComma(ArrayList<String> list) {
+        if (list == null || list.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String s : list) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(s);
+        }
+        return sb.toString();
+    }
 
     /** 分享文件名消毒：保留调用方给的扩展名，只去文件系统非法字符 */
     private String sanitizeName(String filename) {
