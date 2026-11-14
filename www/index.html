@@ -8,7 +8,7 @@
         <link rel="stylesheet" href="./index.css?v=45x">
         <link rel="stylesheet" href="./mobile.css?v=45x">
         <link rel="stylesheet" href="./dock.css?v=45x">
-        <link rel="stylesheet" href="./projects.css?v=45x">
+        <link rel="stylesheet" href="./projects.css?v=79">
         <link rel="stylesheet" href="./av.css?v=45x">
         <link rel="icon" href="./static/icons/logo-192.png" type="image/png">
         <meta name="description" content="摸鱼台 — 3D 高斯泼溅的移动端导演台（基于 SuperSplat 深度改造）。" />
@@ -30,6 +30,9 @@
              并在启动失败时弹出可「复制全部」的面板（老设备没有 USB 也能取日志）。
              纯 ES5，零依赖，正常启动时不会显示任何 UI。 -->
         <script src="./boot-diag.js?v=65"></script>
+        <!-- v66 引擎能力闸门：探测 WebGPU 适配器，拿不到就不加载 3D 引擎，
+             让首页 / 图片 / 视频 / 音频 在只有 WebGL2 的机器上照常可用。 -->
+        <script src="./engine-gate.js?v=66"></script>
         <script src="./fflate.js?v=45x"></script>
         <script src="./projects.js?v=45x"></script>
         <script src="./groups.js?v=52"></script>
@@ -47,9 +50,10 @@
         <script src="./img-ops.js?v=50"></script>
         <script src="./img-store.js?v=50"></script>
         <script src="./img-ui.js?v=78"></script>
-        <script src="./projects-ui.js?v=78"></script>
+        <script src="./projects-ui.js?v=79"></script>
         <script src="./mobile.js?v=45x"></script>
         <script src="./dock.js?v=45x"></script>
-        <script type="module" src="./index.js?v=45x"></script>
+        <!-- v66: index.js 不再静态引入，改由 engine-gate.js 探测 WebGPU 后动态 import，
+             否则 WebGPU 缺失的机器上引擎会抛错并把 body.replaceChildren 掉。 -->
     </body>
 </html>

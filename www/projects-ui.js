@@ -21,9 +21,22 @@
     var lastSavedSnapshot = null;   // 最近一次保存的快照（脏检查用）
     var busy = false;
 
+    /* v66：三维能力闸门。engine-gate.js 探测 WebGPU 适配器，拿不到就不加载引擎；
+     * 此时图片 / 视频 / 音频照常可用，只有 3D 工程要给出明确拒绝而不是白屏。 */
+    function no3d() {
+        var g = window.__engineGate;
+        if (window.__NO_3D) return true;
+        return !!(g && g.probed && !g.supported);
+    }
+    function no3dReason() {
+        var g = window.__engineGate;
+        if (g && g.reason) return g.reason;
+        return '本机不支持 WebGPU，三维导演台无法运行';
+    }
+
     /* ===================== DOM ===================== */
 
-    var page, listEl, emptyEl, barEl, toastEl, crumbEl, gbarEl, cancelBtn;
+    var page, listEl, emptyEl, barEl, toastEl, crumbEl, gbarEl, cancelBtn, gateBadge;
 
     function el(tag, cls, text) {
         var e = document.createElement(tag);
@@ -82,6 +95,13 @@
         newBtn.addEventListener('click', function () { openNewDialog(); });
         head.appendChild(newBtn);
         page.appendChild(head);
+
+        /* v66：三维不可用时的顶栏徒标（不影响图片 / 视频 / 音频工作） */
+        gateBadge = el('div', 'pj-gate-badge', '');
+        gateBadge.style.cssText = 'display:none;align-items:center;gap:6px;margin:0 12px 8px;' +
+            'padding:7px 10px;border-radius:9px;font-size:0.78rem;line-height:1.45;' +
+            'color:#ffcd85;background:rgba(255,180,84,0.09);border:1px solid rgba(255,180,84,0.28)';
+        page.appendChild(gateBadge);
 
         listEl = el('div', 'pj-list');
         page.appendChild(listEl);
@@ -183,6 +203,13 @@
             modeRow.appendChild(b);
         });
         box.appendChild(modeRow);
+        /* v66：3D 不可用时的提示条（内容在 openNewDialog / 创建时动态刷新） */
+        var gateHint = el('div', 'pj-gate-hint', '');
+        gateHint.style.cssText = 'display:none;font-size:0.78rem;line-height:1.5;color:#ffb454;' +
+            'background:rgba(255,180,84,0.08);border:1px solid rgba(255,180,84,0.3);' +
+            'border-radius:8px;padding:7px 9px;margin-bottom:0.6rem';
+        box.appendChild(gateHint);
+
         newInput = el('input', 'pj-input');
         newInput.type = 'text';
         newInput.placeholder = '工程名称';
@@ -211,6 +238,11 @@
             var v = L.validateProjectName(newInput.value);
             if (!v.ok) {
                 hint.textContent = v.reason;
+                return;
+            }
+            /* v66：3D 工程在没 WebGPU 的机器上建了也打不开，直接拦在门口说清楚 */
+            if (newMode === 'model' && no3d()) {
+                hint.textContent = no3dReason() + '；请选图片 / 视频 / 音频模式。';
                 return;
             }
             var reg = L.loadRegistry();
@@ -245,8 +277,28 @@
         newMode = 'model';
         newDlg.querySelectorAll('.pj-mode').forEach(function (x, i) { x.classList.toggle('on', i === 0); });
         newDlg.querySelector('.pj-dlg-hint').textContent = '';
+        syncGateHint();
         newDlg.classList.add('open');
         setTimeout(function () { newInput.focus(); }, 60);
+    }
+
+    /* v66：把“本机没有 WebGPU”的提醒同步到新建对话框；探测未完成时先不吓人 */
+    function syncGateHint() {
+        var g = newDlg && newDlg.querySelector('.pj-gate-hint');
+        if (!g) return;
+        if (no3d()) {
+            g.textContent = '⚠ ' + no3dReason() + '。图片 / 视频 / 音频工程不受影响。';
+            g.style.display = 'block';
+            // 3D 模式按钮置灰，但保留可点（点了给提示，而不是静默无效）
+            newDlg.querySelectorAll('.pj-mode').forEach(function (x, i) {
+                x.classList.toggle('pj-mode-off', i === 0);
+            });
+        } else {
+            g.style.display = 'none';
+            newDlg.querySelectorAll('.pj-mode').forEach(function (x) {
+                x.classList.remove('pj-mode-off');
+            });
+        }
     }
 
     /* ---------- 退出对话框 ---------- */
@@ -607,6 +659,9 @@
         items.forEach(function (item) {
             var key = 'p:' + item.name;
             var card = el('div', 'pj-card' + (multiMode ? ' selectable' : '') + (multiMode && selSet[key] ? ' sel' : ''));
+            /* v66：卡片记住工程名与模式，顶栏徒标/置灰不用再查注册表 */
+            card.setAttribute('data-name', item.name);
+            card.setAttribute('data-mode', item.mode || 'model');
 
             var check = el('div', 'pj-check', multiMode && selSet[key] ? '✓' : '');
             card.appendChild(check);
@@ -658,6 +713,7 @@
             listEl.appendChild(card);
         });
         if (!total && !groups.length) emptyEl.style.display = 'flex';
+        syncGateBadge();
     }
 
     /* ===================== 场景 ===================== */
@@ -676,12 +732,45 @@
         return res;
     }
 
+    /* v66：首页顶栏“三维不可用”徒标 —— 只提示，不挡任何图片/视频/音频操作 */
+    function syncGateBadge() {
+        if (!gateBadge) return;
+        if (no3d()) {
+            gateBadge.innerHTML = '';
+            var ico = el('span', '', '⚠');
+            ico.style.fontSize = '0.95rem';
+            gateBadge.appendChild(ico);
+            gateBadge.appendChild(el('span', '', no3dReason() + '（图片 / 视频 / 音频照常可用）'));
+            gateBadge.style.display = 'flex';
+        } else {
+            gateBadge.style.display = 'none';
+        }
+        /* 3D 工程卡片置灰（保留可点，点了给明白话） */
+        var cards = listEl ? listEl.querySelectorAll('.pj-card') : [];
+        var off = no3d();
+        for (var i = 0; i < cards.length; i++) {
+            var md = cards[i].getAttribute('data-mode');
+            if (md && md !== 'model') {
+                cards[i].classList.remove('pj-card-off');
+            } else if (off) {
+                cards[i].classList.add('pj-card-off');
+            } else {
+                cards[i].classList.remove('pj-card-off');
+            }
+        }
+    }
+
     /* ===================== 新建 / 打开 ===================== */
 
     async function createProject(name, mode) {
         if (busy) return;
-        busy = true;
         var m = mode || 'model';
+        /* v66：编程调用也要拦一道（UI 已在对话框里提示过） */
+        if (m === 'model' && no3d()) {
+            toast(no3dReason() + '；请选图片 / 视频 / 音频模式');
+            return;
+        }
+        busy = true;
         try {
             var p = L.pathsFor(name);
             if (m === 'model') {
@@ -798,8 +887,20 @@
         return Promise.race([Promise.resolve(pr), t]);
     }
 
+    /* 工程是不是 3D 工程：优先读 registry.mode，读不到当作 3D（旧工程都是 3D） */
+    function projectModeOf(name) {
+        var reg = L.loadRegistry();
+        var hit = (reg.projects || []).filter(function (p) { return p.name === name; })[0];
+        return (hit && hit.mode) || 'model';
+    }
+
     async function openProject(name) {
         if (busy) return;
+        /* v66：3D 工程在没 WebGPU 的机器上打不开——快速失败，不转圈也不让引擎再炸一次 */
+        if (no3d() && projectModeOf(name) === 'model') {
+            toast(no3dReason() + '；这个 3D 工程无法在本机打开');
+            return;
+        }
         busy = true;
         try {
             pjDlog('openProject(' + name + ') start');
@@ -1049,6 +1150,16 @@
         // 先盖住编辑器，等用户选工程（避免空场景闪一下）
         page.classList.add('open');
         refreshList();
+        syncGateBadge();
+
+        // v66：闸门探测是异步的，结果可能晚于 init。监听事件再用轮询兜底一次
+        document.addEventListener('engine-capability', function () { syncGateBadge(); });
+        var tries = 0;
+        var t = setInterval(function () {
+            syncGateBadge();
+            var g = window.__engineGate;
+            if ((g && g.probed) || ++tries > 80) clearInterval(t);
+        }, 250);
 
         // 硬件返回键：AV 工作台开着→工作台自己处理；编辑器里退回工程列表，而不是退出 App
         document.addEventListener('backbutton', function (e) {

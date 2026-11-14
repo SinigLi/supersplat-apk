@@ -65,6 +65,31 @@
 
     /* ---------- 1) 抢日志 ---------- */
 
+    /* v66 救援：引擎启动失败时会执行 body.replaceChildren(#startup-error)，
+     * 把整个 App 界面一次性抹掉。但 3D 引擎只是 App 的一部分——图片 / 视频 /
+     * 音频工作台完全不依赖它（av-viz 只用 2D canvas）。所以这里把这次调用拦下：
+     * 保留既有 DOM，只登记“三维不可用”，让首页继续能用。 */
+    function installRescue() {
+        var body = document.body;
+        if (!body || body.__diagRescue) return;
+        body.__diagRescue = true;
+        var orig = body.replaceChildren;
+        body.replaceChildren = function () {
+            var first = arguments[0];
+            if (arguments.length === 1 && first && first.id === 'startup-error') {
+                rec('[rescue]', '引擎调用了 body.replaceChildren(#startup-error)，已拦下以保住 App 界面');
+                window.__NO_3D = true;
+                try { document.dispatchEvent(new Event('engine-failed')); } catch (e) { }
+                return;
+            }
+            return orig.apply(body, arguments);
+        };
+    }
+
+    // boot-diag 是 <body> 里的第一个脚本，此时 document.body 已存在；
+    // 立刻上钩子，不给引擎任何先行抹掉界面的窗口
+    try { installRescue(); } catch (e) { }
+
     var methods = ['log', 'info', 'warn', 'error', 'debug'];
     for (var mi = 0; mi < methods.length; mi++) {
         (function (name) {
@@ -481,6 +506,12 @@
     rec('[diag]', 'boot-diag 已就绪 (UA Chrome/' + uaChrome(navigator.userAgent) + ')');
 
     if (/[?&]diag=1/.test(location.search)) show();
+
+    // 引擎被闸门拦下 / 启动后崩掉：自动亮面板，方便一眼看到原因
+    document.addEventListener('engine-failed', function () {
+        rec('[gate]', '引擎启动失败，三维功能已禁用');
+        show();
+    });
 
     // body 可能还没解析出来，等 DOM 就位再挂观察器
     if (document.readyState === 'loading') {

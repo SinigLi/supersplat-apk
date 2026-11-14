@@ -84,12 +84,13 @@ const server = http.createServer((req, res) => {
 
 /* 只加载 boot-diag 的测试页：不引引擎，避免 WebGPU 干扰 */
 const HARNESS = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+<div id="harness-keep">HARNESS-KEPT</div>
 <script src="/boot-diag.js"></script>
 <script>
   window.__h = { ready: true };
   console.error('MARKER-ENGINE-BOOM', new Error('模拟引擎崩溃'));
   setTimeout(function(){
-    // 复刻 index.js 的兜底：replaceChildren 掉 body
+    // 复刻 index.js 的兜底：replaceChildren 掉 body（v66 后应被 boot-diag 拦下）
     var d = document.createElement('div');
     d.id = 'startup-error';
     d.textContent = 'SuperSplat 启动失败。详情请查看浏览器控制台。';
@@ -172,7 +173,12 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
     const visible = await evalJson(
       "var p=document.documentElement.querySelector('#diag-panel'); !!p && p.style.display!=='none'");
-    check('#startup-error 出现后面板自动弹出', visible === true);
+    check('引擎抹 body 后面板自动弹出', visible === true);
+
+    // v66：boot-diag 会拦下 body.replaceChildren(#startup-error)，保住 App 界面
+    const rescued = await evalJson(
+      "(function(){ var t=document.body.textContent||''; return { startupDiv: !!document.getElementById('startup-error'), bodyKept: t.indexOf('HARNESS-KEPT') > -1 }; })()");
+    check('body.replaceChildren(#startup-error) 被拦下', rescued && rescued.startupDiv === false);
 
     const hasJson = await evalJson('!!window.__diag && typeof window.__diag.text==="function"');
     check('window.__diag.text() 可用', hasJson === true);
@@ -183,7 +189,7 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
     check('诊断文本含 structuredClone 体检', typeof txt === 'string' && txt.indexOf('structuredClone:') > -1);
     check('诊断文本含 WebGPU 探测结果', typeof txt === 'string' && txt.indexOf('WebGPU requestAdapter:') > -1);
     check('诊断文本捕获到 console.error 内容', typeof txt === 'string' && txt.indexOf('MARKER-ENGINE-BOOM') > -1);
-    check('诊断文本记录了引擎兜底文案', typeof txt === 'string' && txt.indexOf('SuperSplat 启动失败') > -1);
+    check('诊断文本记录了救援拦截', typeof txt === 'string' && txt.indexOf('[rescue]') > -1);
     check('诊断文本带日志条数', typeof txt === 'string' && /--- 日志 \(\d+ 条\) ---/.test(txt));
 
     // 「复制全部」按钮：无头环境无剪贴板权限，应走降级 textarea 而不是静默失败
