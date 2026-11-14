@@ -3,6 +3,7 @@
   "appName": "摸鱼台",
   "webDir": "www",
   "android": {
-    "allowMixedContent": true
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": true
   }
 }
