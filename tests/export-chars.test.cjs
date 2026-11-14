@@ -62,7 +62,8 @@ check('基线: 幂等（两次构建一致）', JSON.stringify(L.buildExport(met
     const out = L.buildExport(meta, m, files);
     const n1 = out.marks.find(n => n.target === '001');
     check('段级: chars 挂 target', Array.isArray(n1.chars) && n1.chars.length === 1);
-    check('段级: 字段齐', n1.chars[0].name === '女主角' && n1.chars[0].orig_char_desc === '红衣女子' && n1.chars[0].dest_char_desc === '穿和服的女人');
+    /* v69：导出字段改名 global_desc / prompt_extend（老板 2026-11-15） */
+    check('段级: 字段齐', n1.chars[0].name === '女主角' && n1.chars[0].global_desc === '红衣女子' && n1.chars[0].prompt_extend === '穿和服的女人');
     check('段级: mask 输出', n1.chars[0].mask === 'masks/001/0_c-a1.png');
 
     const m2 = baseMarks();

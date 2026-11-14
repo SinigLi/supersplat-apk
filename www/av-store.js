@@ -173,8 +173,21 @@
 
     /* ---------- 角色打标（v53）：chars 存取 + char_ref ---------- */
     /* char_ref = { id, type:'char_ref', seg:<段label>, at:<段内秒>,
-     *              chars:[{ cardId, name, orig_char_desc, dest_char_desc, mask }] }
-     * 同段同帧唯一：upsertCharRef 命中即整体替换（Q6 续编）。 */
+     *              chars:[{ cardId, name, global_desc, prompt_extend, mask }] }
+     * v69（老板 2026-11-15 定）：orig_char_desc → global_desc、
+     * dest_char_desc → prompt_extend。读老数据时兼容两个旧名。 */
+
+    /* 老字段名兼容层：只读时用，写出去永远是 v69 新名 */
+    function cGlobalDesc(c) {
+        if (!c) return '';
+        if (typeof c.global_desc === 'string') return c.global_desc;
+        return typeof c.orig_char_desc === 'string' ? c.orig_char_desc : '';
+    }
+    function cPromptExtend(c) {
+        if (!c) return '';
+        if (typeof c.prompt_extend === 'string') return c.prompt_extend;
+        return typeof c.dest_char_desc === 'string' ? c.dest_char_desc : '';
+    }
 
     function charsKey(name) { return 'av-' + name + '-chars'; }
 
@@ -381,7 +394,8 @@
             refs.forEach(function (ref) {
                 var fr = frameAt(ref.at, fps);
                 var entries = (ref.chars || []).map(function (c) {
-                    var e = { name: c.name, orig_char_desc: c.orig_char_desc || '', dest_char_desc: c.dest_char_desc || '' };
+                    /* v69：导出字段名换成 global_desc / prompt_extend */
+                    var e = { name: c.name, global_desc: cGlobalDesc(c), prompt_extend: cPromptExtend(c) };
                     if (c.mask) e.mask = c.mask;
                     return e;
                 });

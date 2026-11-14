@@ -280,7 +280,13 @@
     function openWords(id) {
         var data = window.CCG.get(id);
         if (!data) return;
-        window.CC.normalize(data); /* 确保 descGroups 存在 */
+        /* v69 修复（老板 2026-11-15：「默认词组不显示，只有新建分组才突然冒出两组」）：
+         * 旧代码 CC.normalize(data) 丢了返回值，而 normalize 以前返回新对象，
+         * data 本身没被补 descGroups，所以 v1 素材一打开就是「暂无分组」；
+         * 点「新建分组」走 addGroup → ensureGroups 才真的补上两组。
+         * 现在两道保险：① 用返回值 ② normalize 也会就地写回入参。 */
+        data = window.CC.normalize(data) || data;
+        window.CCG.saveData(id, data);
         var sh = el('div', 'cgm-sheet open');
         sh.innerHTML =
             '<div class="cgm-mask"></div>' +

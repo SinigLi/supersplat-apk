@@ -1126,12 +1126,13 @@ function hasMerge(seg) {
         dlog('sb: ' + msg);
     }
 
-    /* ---- v51：分镜清单自动关联 ----
-     * 老板的分镜工程目录：clips/ 与 分镜清单.csv 同级。SAF 授权的是 clips，
-     * 读不到上级 CSV，所以 CSV 走一次性单文件授权（pickCsv，持久化 uri）。
-     * csvUri 已记住 → 每次打开工程全自动读取比对；首次自动弹一次选择器，
-     * 取消则本次会话不再打扰。比对失败（镜号数≠视频数/不连续/重复）只
-     * toast 一次原因，绝不部分应用。 */
+    /* ---- v51/v69：分镜清单自动关联 ----
+     * 老板的分镜工程目录：clips/ 与 分镜清单.csv 同级。
+     * v69 起三级递进：
+     *   ① csvUri 已记住 → 直接读（打开工程零操作）
+     *   ② 原生 findSiblingCsv 按 tree 的 rootId 反推上一级 → 找到就读并打点
+     *   ③ 探不到（provider 不给父目录）→ 自动弹一次 pickCsv，选完记进 meta
+     * 比对失败（镜号数≠视频数/不连续/重复）只 toast 一次原因，绝不部分应用。 */
     var csvGuideShown = false;
     function applyStoryboard(csvText) {
         var parsed = window.__storyboard.parseStoryboardCsv(csvText);
@@ -1171,12 +1172,58 @@ function hasMerge(seg) {
             });
             return;
         }
-        /* v51c：不再自动弹系统选择器（日志显示多次被当作误触取消）。
-         * 改为一次性 toast 引导 + 顶栏 📋 手动关联。 */
-        if (!csvGuideShown) {
+        /* v69（老板 2026-11-15 要求）：授权目录就绪后先去「所选目录的上一级」
+         * 找 分镜清单.csv，找到就直接读并打点，不用再点顶栏 📋。
+         * SAF 的 tree 授权不覆盖父目录，所以交给原生按 tree 的 rootId 反推父目录；
+         * 推不出来（比如某些 provider 不给）才走原来的单文件选择器兜底。 */
+        if (p.findSiblingCsv) {
+            sbDiag('tryAuto: findSiblingCsv on ' + String(S.meta.folderUri || '').slice(0, 60));
+            p.findSiblingCsv({ uri: S.meta.folderUri, name: '分镜清单.csv' }).then(function (r) {
+                if (r && r.found && r.uri) {
+                    sbDiag('sibling csv FOUND ' + (r.name || '') + ' -> ' + String(r.uri).slice(0, 60));
+                    S.meta.csvUri = r.uri;
+                    S.meta.csvName = r.name || '分镜清单.csv';
+                    saveAll(false);
+                    toast('已自动关联上一级「' + (r.name || '分镜清单.csv') + '」，正在比对…');
+                    return p.readText({ uri: r.uri }).then(function (t) {
+                        sbDiag('sibling readText ok bytes=' + (t && t.bytes || 0) + ' charset=' + (t && t.charset || '?'));
+                        applyStoryboard(t && t.text || '');
+                    }).catch(function (e) {
+                        sbDiag('sibling readText ERR ' + (e && (e.message || e) || e));
+                        toast('上一级分镜清单读取失败：' + (e && e.message || e));
+                        S.meta.csvUri = null; saveAll(false);
+                    });
+                }
+                badSibling(r);
+            }).catch(function (e) { badSibling({ reason: e && (e.message || e) }); });
+            return;
+        }
+        badSibling({ reason: '插件缺 findSiblingCsv' });
+
+        function badSibling(r) {
+            sbDiag('sibling csv NOT found (' + ((r && r.reason) || '父目录无同名文件') + ')');
+            /* v69 方案 C 兜底（老板 2026-11-15 同意）：上一级探不到，就自动弹
+             * 一次「选分镜清单.csv」的系统选择器。SAF 的 tree 授权天生不含父目录，
+             * 这一步必须由用户点一次——但只点这一次，选完记进工程 meta，
+             * 以后打开这个工程就直接读，不用再点任何导入按钮。 */
+            if (csvGuideShown) return;
             csvGuideShown = true;
-            sbDiag('guide toast shown (no csvUri)');
-            toast('提示：点顶栏 📋 关联「分镜清单.csv」可自动打多参点');
+            if (!p.pickCsv) { toast('提示：点顶栏 📋 关联「分镜清单.csv」可自动打多参点'); return; }
+            toast('未在上一级找到分镜清单.csv，请选中它（只需选这一次）');
+            setTimeout(function () {
+                p.pickCsv().then(function (res) {
+                    if (!res || !res.uri) { sbDiag('auto pickCsv cancelled'); return; }
+                    S.meta.csvUri = res.uri;
+                    S.meta.csvName = res.name || '分镜清单.csv';
+                    saveAll(false);
+                    sbDiag('auto pickCsv ok name=' + (res.name || '') + ' uri=' + String(res.uri).slice(0, 50));
+                    return p.readText({ uri: res.uri }).then(function (t) {
+                        applyStoryboard(t && t.text || '');
+                    });
+                }).catch(function (e) {
+                    sbDiag('auto pickCsv ERR ' + (e && (e.message || e) || e));
+                });
+            }, 600);   // 让 toast 先出来，别让选择器把提示遮住
         }
     }
 
@@ -2458,7 +2505,9 @@ function hasMerge(seg) {
         names.forEach(function (n) { want[n] = true; });
         var picked = data.cards.filter(function (c) { return want[c.name]; });
         if (!picked.length) return null;
-        var slim = { schema: data.schema, orig_char_descs: data.orig_char_descs || [], dest_char_descs: data.dest_char_descs || [],
+        /* v69：v1 遗留的两个数组不再写（词已经在 descGroups 里），
+         * 只带 schema / descGroups / cards，避免同一批词出现两份。 */
+        var slim = { schema: data.schema,
             descGroups: data.descGroups || [], cards: picked };
         if (window.CGFull && window.CGFull.all) {
             try {

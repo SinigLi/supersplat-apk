@@ -37,8 +37,10 @@ check('loadTagStrokes 校验 v2', img.includes(`o.schema === 'moyutai.imgmask.v2
 check('顶部确认打标按钮', img.includes(`'✅ 确认打标'`) && img.includes('finishTag(true)'));
 check('顶部取消按钮 + 脏确认', img.includes(`'✖ 取消'`) && img.includes('有未确认的笔画改动'));
 check('back() tagMode 守卫', img.includes("if (S.tagMode) { toast('打标模式请用顶部 ✅确认 / ✖取消'); return; }"));
-check('底部打标组：角色下拉（v53e grp 内）', img.includes("tagSelEl = el('select', 'img-tagbar-select')") && img.includes('img-grp-tag'));
-check('描述面板下拉读词库分组（v59）', img.includes("wordsOf(tm.cards, '原角色描述')") && img.includes("wordsOf(tm.cards, '替换角色描述')"));
+    /* v60b 起打标条改成层列表，不再有 select 下拉；v69 同步到当前不变量 */
+    check('底部打标组：层列表（v60b 起取代下拉）', img.includes('img-grp-tag') && img.includes('img-layer-row'));
+    /* v69：默认组改名为 全局描述 / 提示词扩写（老板 2026-11-15） */
+    check('描述面板下拉读词库分组（v59）', img.includes('window.CC.GROUP_GLOBAL') && img.includes('window.CC.GROUP_PROMPT'));
 check('描述绑定活动角色', img.includes('function setCurDesc(') && img.includes('S.tagMode[kind][c.id] = val'));
 check('层=角色 switchTagLayer', img.includes('function switchTagLayer(') && img.includes(`layers.push({ id:`));
 check('finishTag 清运行态 + 关页', img.includes('function finishTag(') && img.includes('S.tagMode = null'));
@@ -55,7 +57,8 @@ check('抽帧先行 toast', av.includes(`'正在抽帧…'`));
 check('onDone → upsertCharRef', av.includes('L.upsertCharRef(S.marks, tgt.seg, tgt.at, entries)'));
 check('onDone 后 refresh 展示', av.includes('renderTicks(); renderList(); renderPos()'));
 check('existing.chars 回填 enabled', img.includes(`(ctx.existing && ctx.existing.chars || []).map(function (c) { return c.cardId; })`));
-check('existing 描述回填 orig/dest', img.includes(`S.tagMode.orig[c.cardId] = c.orig_char_desc || ''`));
+    /* v69：回填读新字段 global_desc / prompt_extend，老字段兜底 */
+    check('existing 描述回填 orig/dest', img.includes('typeof c.global_desc') && img.includes('typeof c.prompt_extend'));
 check('重开读 tagmask 草稿', img.includes('var draft = loadTagStrokes()'));
 
 /* 6 隔离红线：tagMode 下不得触碰 img-meta / img-strokes */

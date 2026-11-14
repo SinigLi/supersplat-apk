@@ -309,6 +309,9 @@ public class MediaTranscodePlugin extends Plugin {
                     final long totalMs = call.getLong("totalMs") != null ? call.getLong("totalMs") : 0L;
                     String lastErr = null;
                     boolean produced = false;
+                    /* 总超时：15 分钟是整次转码（含重试）的上限，不是每轮各 15 分钟，
+                     * 否则最坏会跑到 30 分钟把人耗死。 */
+                    final long hardDeadline = android.os.SystemClock.elapsedRealtime() + 15 * 60 * 1000L;
 
                     for (int ai = 0; ai < attempts.length && !produced; ai++) {
                         if (ai > 0) {
@@ -349,13 +352,12 @@ public class MediaTranscodePlugin extends Plugin {
 
                         /* 5) 等完成：SessionState 只是普通 enum（没有 isCompleted 便捷方法），
                          * 直接比枚举值最稳。 */
-                        long deadline = android.os.SystemClock.elapsedRealtime() + 15 * 60 * 1000L;
                         boolean timedOut = false;
                         while (true) {
                             com.arthenica.ffmpegkit.SessionState st = session.getState();
                             if (st == com.arthenica.ffmpegkit.SessionState.COMPLETED
                                     || st == com.arthenica.ffmpegkit.SessionState.FAILED) break;
-                            if (android.os.SystemClock.elapsedRealtime() > deadline) {
+                            if (android.os.SystemClock.elapsedRealtime() > hardDeadline) {
                                 try { FFmpegKit.cancel(session.getSessionId()); } catch (Exception ignore) { }
                                 timedOut = true;
                                 break;
@@ -372,7 +374,8 @@ public class MediaTranscodePlugin extends Plugin {
                             Thread.sleep(300);
                         }
 
-                        if (timedOut) { lastErr = "超时（15 分钟）"; continue; }
+                        /* 总超时到了就不再换参数重试 —— 继续第二轮等于把总时长翻倍。 */
+                        if (timedOut) { lastErr = "超时（总 15 分钟）"; break; }
 
                         ReturnCode rc = session.getReturnCode();
                         if (rc != null && ReturnCode.isSuccess(rc)

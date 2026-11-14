@@ -32,7 +32,9 @@ check('新建空组入口', cui.includes('cgmNew'));
 /* M4 开始页入口 */
 check('projects-ui 角色卡按钮', pui.includes('🎭 角色卡') && pui.includes('__cardgroups.open'));
 check('cardgroups-ui 管理对话框（v59k：图片文件夹导入）', cui.includes('cgm-sheet') && cui.includes('importImageFolder') && cui.includes('fflate.zip'));
-check('index.html 加载新文件（v64）', html.includes('cardgroups.js?v=78') && html.includes('cardgroups-ui.js?v=78'));
+    /* 不钉死缓存号：只要两个脚本都带版本参数加载即可（v69 把它们提到 v=69） */
+    check('index.html 加载新文件（v64）',
+        /cardgroups\.js\?v=\d+/.test(html) && /cardgroups-ui\.js\?v=\d+/.test(html));
 
 /* M5 导出结构 */
 check('帧号目录 + 纯角色名文件', av.includes("'masks/' + ref.seg + '/' + frame + '/' + safeName + '.png'"));

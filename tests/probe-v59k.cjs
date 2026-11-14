@@ -42,11 +42,16 @@ check('submit 目录感知自愈（stat→ghost clean）', pui2.includes('dup gh
 check('stat 用 meta.json 判目录在否', /pathsFor\(v\.name\)[\s\S]{0,120}stat\(pdir\.meta\)/.test(pui2));
 
 /* 缓存 */
-/* v68 把 av-ui 升到 v=81（10bit 闸门 + 转码入口），其余脚本保持原版本号。
- * 断言改成「按需升级」而不是钉死单一数字，免得每次改缓存号都要改测试。 */
+/* 断言「按需升级」而不是钉死单一数字，免得每次改缓存号都要改测试。
+ * v69 把 charcards/cardgroups-ui/av-store/img-ui 从 v=78 提到 v=69
+ * （默认词组改名 + global_desc/prompt_extend），av-ui 仍是 v=81。 */
 check('index.html cache 版本号已随改动升级',
   /av-ui\.js\?v=\d+/.test(html) && !html.includes('av-ui.js?v=78')
-  && html.includes('cardgroups-ui.js?v=78') && html.includes('cardgroups-full.js?v=78'));
+  && /charcards\.js\?v=\d+/.test(html) && !html.includes('charcards.js?v=78')
+  && /cardgroups-ui\.js\?v=\d+/.test(html) && !html.includes('cardgroups-ui.js?v=78')
+  && /av-store\.js\?v=\d+/.test(html) && !html.includes('av-store.js?v=46')
+  && /img-ui\.js\?v=\d+/.test(html) && !html.includes('img-ui.js?v=78')
+  && html.includes('cardgroups-full.js?v=78'));
 
 console.log('probe-v59k: ' + pass + '/' + (pass + fail) + (fail ? ' === FAIL ===' : ' === ALL PASS ==='));
 process.exit(fail ? 1 : 0);

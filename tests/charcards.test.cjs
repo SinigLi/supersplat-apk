@@ -13,7 +13,9 @@ const threw = fn => { try { fn(); return false; } catch (e) { return true; } };
 /* 结构 */
 const f = C.emptyCards();
 check('empty: schema v2', f.schema === 'moyutai.charcards.v2');
-check('empty: descGroups 默认两组', f.descGroups.length === 2 && f.descGroups[0].name === '原角色描述' && f.descGroups[1].name === '替换角色描述');
+/* v69：默认两组改名为 全局描述 / 提示词扩写，且全局描述自带默认词「启用思考」 */
+check('empty: descGroups 默认两组', f.descGroups.length === 2 && f.descGroups[0].name === '全局描述' && f.descGroups[1].name === '提示词扩写');
+check('empty: 全局描述自带启用思考', JSON.stringify(f.descGroups[0].items) === '["启用思考"]');
 check('empty: cards 空', f.cards.length === 0);
 check('normalize(null) 空', C.normalize(null).cards.length === 0);
 
@@ -42,17 +44,18 @@ check('findByName', C.findByName(f, '丘比').name === '丘比');
 check('removeCard', C.removeCard(f, C.findByName(f, '丘比').id) === true);
 
 /* 词库 */
-C.addWord(f, '原角色描述', '粉发');
-C.addWord(f, '原角色描述', '校服');
+C.addWord(f, '全局描述', '粉发');
+C.addWord(f, '全局描述', '校服');
 C.addGroup(f, '发型');
 C.addWord(f, '发型', '黑长直');
 check('addGroup + addWord', C.wordsOf(f, '发型')[0] === '黑长直');
 check('addWord: 组不存在抛错', threw(() => C.addWord(f, '没有的组', 'x')));
 check('addWord: 重复抛错', threw(() => C.addWord(f, '发型', '黑长直')));
 check('wordsOf: 缺组返回 []', JSON.stringify(C.wordsOf(f, '没有的组')) === '[]');
-C.removeWord(f, '原角色描述', '校服');
-check('removeWord', JSON.stringify(C.wordsOf(f, '原角色描述')) === '["粉发"]');
-check('renameGroup 重名拒', threw(() => C.renameGroup(f, '原角色描述', '发型')));
+C.removeWord(f, '全局描述', '校服');
+/* v69：组里还有默认词「启用思考」，所以断言「粉发还在、校服已删」 */
+check('removeWord', C.wordsOf(f, '全局描述').indexOf('粉发') >= 0 && C.wordsOf(f, '全局描述').indexOf('校服') < 0);
+check('renameGroup 重名拒', threw(() => C.renameGroup(f, '全局描述', '发型')));
 C.renameGroup(f, '发型', '服装');
 check('renameGroup', C.wordsOf(f, '服装')[0] === '黑长直');
 C.removeGroup(f, '服装');
@@ -67,7 +70,7 @@ check('exportPlan: images 数与带图卡一致', plan.images.length === f.cards
 const back = C.importJson(C.exportJson(f));
 check('importJson 往返 v2', back.schema === 'moyutai.charcards.v2' && back.cards[0].name === f.cards[0].name && back.cards[0].img === f.cards[0].img);
 check('importJson: 格式不符拒', threw(() => C.importJson('{"schema":"bad"}')));
-const parts = C.importFromParts({ schema: 'moyutai.charcards.v2', descGroups: [{ name: '原角色描述', items: ['甲'] }], cards: [{ id: 'c-9', name: '林凡', tag: '', imgFile: 'chars/林凡.jpg' }] }, { 'chars/林凡.jpg': 'data:image/jpeg;base64,ZZZ' });
+const parts = C.importFromParts({ schema: 'moyutai.charcards.v2', descGroups: [{ name: '全局描述', items: ['甲'] }], cards: [{ id: 'c-9', name: '林凡', tag: '', imgFile: 'chars/林凡.jpg' }] }, { 'chars/林凡.jpg': 'data:image/jpeg;base64,ZZZ' });
 check('importFromParts: imgFile 回填', parts.cards[0].img === 'data:image/jpeg;base64,ZZZ');
 check('importFromParts: imgFile 已删', !('imgFile' in parts.cards[0]));
 

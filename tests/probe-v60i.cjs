@@ -14,7 +14,8 @@ check('tagEntries 逐层生成（不再 filter(Boolean) 丢卡片）', img.inclu
 check('层名不匹配角色卡时用层名兜底', img.includes('layerOnly: true') && img.includes('cardId: l.id'));
 check('无笔画 mask 为 null（不写 mask 字段）', img.includes("mask: hasStrokes ? ('pending:' + card.id) : null"));
 check('buildExport 无 mask 条目不写 mask 字段', store.includes('if (c.mask) e.mask = c.mask;'));
-check('buildExport 保留 name/desc（不因无 mask 跳过）', store.includes('var e = { name: c.name, orig_char_desc: c.orig_char_desc || \'\', dest_char_desc: c.dest_char_desc || \'\' };'));
+  /* v69：导出字段改名 global_desc / prompt_extend */
+  check('buildExport 保留 name/desc（不因无 mask 跳过）', store.includes("var e = { name: c.name, global_desc: cGlobalDesc(c), prompt_extend: cPromptExtend(c) };"));
 
 /* 行为验证（Node stub） */
 global.localStorage = { _m: {}, getItem(k) { return this._m[k] !== undefined ? this._m[k] : null; }, setItem(k, v) { this._m[k] = String(v); }, removeItem(k) { delete this._m[k]; } };
@@ -33,23 +34,23 @@ function exp(seg, at, chars, extraMarks) {
 
 /* 1) 首帧无遮罩 */
 {
-  const out = exp('001', 0, [{ cardId: 'c1', name: 'GPT', orig_char_desc: 'A', dest_char_desc: 'B', mask: null }]);
+  const out = exp('001', 0, [{ cardId: 'c1', name: 'GPT', global_desc: 'A', prompt_extend: 'B', mask: null }]);
   const n = out.marks[0];
   check('首帧无遮罩：target.chars 有 name', !!(n.chars && n.chars[0].name === 'GPT'));
-  check('首帧无遮罩：两个描述都在', !!(n.chars[0].orig_char_desc === 'A' && n.chars[0].dest_char_desc === 'B'));
+  check('首帧无遮罩：两个描述都在', !!(n.chars[0].global_desc === 'A' && n.chars[0].prompt_extend === 'B'));
   check('首帧无遮罩：无 mask 字段', !('mask' in n.chars[0]));
 }
 /* 2) multiframe 帧位无遮罩 */
 {
-  const out = exp('001', 10 / 25, [{ cardId: 'c1', name: 'GPT', orig_char_desc: 'A', dest_char_desc: 'B' }],
+  const out = exp('001', 10 / 25, [{ cardId: 'c1', name: 'GPT', global_desc: 'A', prompt_extend: 'B' }],
     [{ id: 'p', type: 'multiframe_ref', seg: '001', frames: [10, 40] }]);
   const pt = out.marks[0].points.filter(p => p.at_frame === 10)[0];
-  check('多帧点无遮罩：point.chars 有 name+desc', !!(pt && pt.chars && pt.chars[0].name === 'GPT' && pt.chars[0].orig_char_desc === 'A'));
+  check('多帧点无遮罩：point.chars 有 name+desc', !!(pt && pt.chars && pt.chars[0].name === 'GPT' && pt.chars[0].global_desc === 'A'));
   check('多帧点无遮罩：无 mask', !!(pt && pt.chars && !('mask' in pt.chars[0])));
 }
 /* 3) 有遮罩对照 */
 {
-  const out = exp('001', 0, [{ cardId: 'c1', name: 'GPT', orig_char_desc: 'A', dest_char_desc: 'B', mask: 'pending:c1' }]);
+  const out = exp('001', 0, [{ cardId: 'c1', name: 'GPT', global_desc: 'A', prompt_extend: 'B', mask: 'pending:c1' }]);
   check('有遮罩：mask 输出', out.marks[0].chars[0].mask === 'pending:c1');
 }
 /* 4) 旧工程无 char_ref 输出不变 */

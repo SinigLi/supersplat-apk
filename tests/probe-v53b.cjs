@@ -26,7 +26,8 @@ check('chip 紫色样式', av.includes(`'.av-char-chip { background: rgba(120, 8
 /* 2 打标页顶栏切换 */
 check('进入打标隐藏返回键', img.includes(`if (backBtnEl) backBtnEl.style.display = 'none';`));
 check('隐藏保存/分享/换图', img.includes(`if (saveBtnEl) saveBtnEl.style.display = 'none';`) && img.includes(`if (shareBtnEl) shareBtnEl.style.display = 'none';`) && img.includes(`if (reloadBtnEl) reloadBtnEl.style.display = 'none';`));
-check('隐藏撤销条', img.includes(`if (undoBarEl) undoBarEl.style.display = 'none';`));
+    /* 断言的是「进打标模式时撤销条被清掉」这个行为，不是某一行字面写法 */
+    check('隐藏撤销条', /undoBarEl[\s\S]{0,40}display\s*=\s*'none'/.test(img));
 check('显示确认/取消', img.includes(`if (btnTagConfirm) btnTagConfirm.style.display = '';`) && img.includes(`if (btnTagCancel) btnTagCancel.style.display = '';`));
 check('finishTag 恢复图片模式按钮', img.includes(`if (backBtnEl) backBtnEl.style.display = '';`) && img.includes(`if (saveBtnEl) saveBtnEl.style.display = '';`));
 
@@ -50,7 +51,8 @@ check('帧 canvas 尺寸日志', img.includes(`dlog('tagmode frameCanvas `));
 
 /* 回归红线：既有断言抽查 */
 check('确认按钮仍存在', img.includes(`'✅ 确认打标'`) && img.includes('finishTag(true)'));
-check('双描述仍在', img.includes('原角色描述') && img.includes('替换角色描述'));
+    /* v69：两段描述改名 全局描述 / 提示词扩写 */
+    check('双描述仍在', img.includes('全局描述') && img.includes('提示词扩写'));
 check('M5 zip 导出未破坏', av.includes('resolveTagMasks') && av.includes(`mime: 'application/zip'`));
 
 console.log('========================');

@@ -1620,16 +1620,18 @@
                 out.push({
                     cardId: card.id,
                     name: card.name,
-                    orig_char_desc: tm.orig[card.id] || '',
-                    dest_char_desc: tm.dest[card.id] || '',
+                    /* v69：字段改名 global_desc / prompt_extend（老板 2026-11-15） */
+                    global_desc: tm.orig[card.id] || '',
+                    prompt_extend: tm.dest[card.id] || '',
                     mask: hasStrokes ? ('pending:' + card.id) : null
                 });
             } else {
                 out.push({
                     cardId: l.id,
                     name: l.name,
-                    orig_char_desc: tm.orig[l.id] || '',
-                    dest_char_desc: tm.dest[l.id] || '',
+                    /* v69：无卡兜底分支也要用新字段名，否则这条角色的描述导出即丢 */
+                    global_desc: tm.orig[l.id] || '',
+                    prompt_extend: tm.dest[l.id] || '',
                     mask: hasStrokes ? ('pending:' + l.id) : null,
                     layerOnly: true
                 });
@@ -1862,12 +1864,12 @@
         panel.id = 'imgTagDescPanel';
         var tm = S.tagMode;
 
-        panel.appendChild(el('div', 'img-tag-desc-title', '原角色描述（' + card.name + '）'));
+        panel.appendChild(el('div', 'img-tag-desc-title', '全局描述（' + card.name + '）'));
         var origSel = el('select', 'img-tagbar-select');
         var o0 = el('option'); o0.value = ''; o0.textContent = '（不填）';
         origSel.appendChild(o0);
         /* v59：词库分组取词（descGroups），原/替描述不再绑卡 */
-        window.CC.wordsOf(tm.cards, '原角色描述').forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; origSel.appendChild(o); });
+        window.CC.wordsOf(tm.cards, window.CC.GROUP_GLOBAL || '全局描述').forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; origSel.appendChild(o); });
         origSel.value = tm.orig[card.id] || '';
         panel.appendChild(origSel);
         var origIn = el('input', 'img-tag-in');
@@ -1877,11 +1879,11 @@
         origSel.addEventListener('change', function () { origIn.value = origSel.value; tm.orig[card.id] = origSel.value; saveTagStrokes(); });
         origIn.addEventListener('input', function () { tm.orig[card.id] = origIn.value; });
 
-        panel.appendChild(el('div', 'img-tag-desc-title', '替换角色描述（' + card.name + '）'));
+        panel.appendChild(el('div', 'img-tag-desc-title', '提示词扩写（' + card.name + '）'));
         var destSel = el('select', 'img-tagbar-select');
         var d0 = el('option'); d0.value = ''; d0.textContent = '（不填）';
         destSel.appendChild(d0);
-        window.CC.wordsOf(tm.cards, '替换角色描述').forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; destSel.appendChild(o); });
+        window.CC.wordsOf(tm.cards, window.CC.GROUP_PROMPT || '提示词扩写').forEach(function (d) { var o = el('option'); o.value = d; o.textContent = d; destSel.appendChild(o); });
         destSel.value = tm.dest[card.id] || '';
         panel.appendChild(destSel);
         var destIn = el('input', 'img-tag-in');
@@ -1955,8 +1957,9 @@
             };
             /* 既有描述快照回填 */
             (ctx.existing && ctx.existing.chars || []).forEach(function (c) {
-                S.tagMode.orig[c.cardId] = c.orig_char_desc || '';
-                S.tagMode.dest[c.cardId] = c.dest_char_desc || '';
+                /* v69：新字段名优先，老工程 legacy 名兜底 */
+                S.tagMode.orig[c.cardId] = (typeof c.global_desc === 'string' ? c.global_desc : (c.orig_char_desc || ''));
+                S.tagMode.dest[c.cardId] = (typeof c.prompt_extend === 'string' ? c.prompt_extend : (c.dest_char_desc || ''));
             });
             /* 底图 = 帧截图 canvas */
             S.img = ctx.frameCanvas;
@@ -2001,6 +2004,9 @@
             if (saveBtnEl) saveBtnEl.style.display = 'none';
             if (shareBtnEl) shareBtnEl.style.display = 'none';
             if (reloadBtnEl) reloadBtnEl.style.display = 'none';
+            /* v69：撤销条在打标模式下也该收起——v53b 定的行为，v60b 重排工具栏
+             * 时这一行掉了（退出时第 1676 行还在恢复，所以只剩「进不藏、出不藏」的不对称）。 */
+            if (undoBarEl) undoBarEl.style.display = 'none';
             if (btnTagConfirm) btnTagConfirm.style.display = '';
             if (btnTagCancel) btnTagCancel.style.display = '';
             page.classList.add('open');

@@ -6,18 +6,35 @@
  *  - 移动端交互/UI 按原型 r3
  * v2 结构：
  *   { schema:'moyutai.charcards.v2',
- *     descGroups:[{name, items:[]}],   // 默认两组：原角色描述/替换角色描述
+ *     descGroups:[{name, items:[]}],   // 默认两组：全局描述/提示词扩写
  *     cards:[{id,name,tag,img?}] }     // img: dataURL（jpeg 256px 内）
  * 兼容读：v1 的 orig_char_descs/dest_char_descs → 迁入默认两组；卡多余字段丢弃
+ *
+ * v69（老板 2026-11-15 定改名）：默认两组改叫「全局描述」/「提示词扩写」，
+ * 对应 marks.json 的 global_desc / prompt_extend。老数据里的「原角色描述」
+ * 「替换角色描述」连同词条一起迁过来（不丢词），v1 的两个数组也照旧读。
+ * 全局描述组常驻一条「启用思考」默认词。
  * 本文件只改数据层；DOM/UI 在 av-ui/cardgroups-ui。
  * ============================================================ */
 'use strict';
 (function (global) {
     var SCHEMA_V2 = 'moyutai.charcards.v2';
     var SCHEMA_V1 = 'moyutai.charcards.v1';
+    /* v69：默认两组改名 —— 原角色描述→全局描述、替换角色描述→提示词扩写。
+     * 「全局描述」常驻一条默认词「启用思考」：老板要求默认词库必须有它，
+     * 否则打标页第一次打开只有空组，看不到能用的默认词。 */
+    var GROUP_GLOBAL = '全局描述';
+    var GROUP_PROMPT = '提示词扩写';
+    var GROUP_LEGACY = { '原角色描述': GROUP_GLOBAL, '替换角色描述': GROUP_PROMPT };
+    var WORD_ENABLE_THINK = '启用思考';
     var DEFAULT_GROUPS = function () {
-        return [{ name: '原角色描述', items: [] }, { name: '替换角色描述', items: [] }];
+        return [
+            { name: GROUP_GLOBAL, items: [WORD_ENABLE_THINK] },
+            { name: GROUP_PROMPT, items: [] }
+        ];
     };
+    /* 老词组名 → 新词组名（幂等；已经是新名原样返回） */
+    function migrateGroupName(n) { return GROUP_LEGACY[n] || n; }
 
     function newId() {
         var s = '';
@@ -43,12 +60,14 @@
             f.descGroups = raw.descGroups
                 .filter(function (g) { return g && typeof g.name === 'string' && g.name.length > 0; })
                 .map(function (g) {
-                    return { name: g.name, items: (Array.isArray(g.items) ? g.items : []).filter(function (x) { return typeof x === 'string' && x.length > 0; }) };
+                    /* v69：老词组名就地改名；同名新组已存在时后面 normalize 会合并 */
+                    return { name: migrateGroupName(g.name), items: (Array.isArray(g.items) ? g.items : []).filter(function (x) { return typeof x === 'string' && x.length > 0; }) };
                 });
             if (!f.descGroups.length) f.descGroups = DEFAULT_GROUPS();
         } else {
-            /* v1 迁移 */
+            /* v1 迁移（v69：两个数组进新名分组） */
             f.descGroups = DEFAULT_GROUPS();
+            f.descGroups[0].items = [];   // 先清掉默认词，v1 有词时按 v1 的来
             (Array.isArray(raw.orig_char_descs) ? raw.orig_char_descs : []).forEach(function (w) {
                 if (typeof w === 'string' && w.length > 0 && f.descGroups[0].items.indexOf(w) < 0) f.descGroups[0].items.push(w);
             });
@@ -69,12 +88,41 @@
 
     function normalize(raw) {
         var f = toV2(raw);
+
+        /* v69：老组名迁移后可能与新组名撞车（比如已有「全局描述」又存在
+         * 「原角色描述」），先按名字合并，词条取并集不丢词。 */
+        var merged = [];
+        f.descGroups.forEach(function (g) {
+            var hit = null;
+            for (var i = 0; i < merged.length; i++) {
+                if (merged[i].name === g.name) { hit = merged[i]; break; }
+            }
+            if (!hit) { merged.push({ name: g.name, items: g.items.slice() }); return; }
+            g.items.forEach(function (w) { if (hit.items.indexOf(w) < 0) hit.items.push(w); });
+        });
+        f.descGroups = merged;
+
         /* v60b：默认两组常驻——有词保词、没词补空组、顺序固定最前（打开词库必见） */
         DEFAULT_GROUPS().forEach(function (dg, di) {
             var idx = f.descGroups.indexOf(f.descGroups.filter(function (g) { return g.name === dg.name; })[0]);
             var g = idx >= 0 ? f.descGroups.splice(idx, 1)[0] : { name: dg.name, items: [] };
             f.descGroups.splice(di, 0, g);
         });
+
+        /* v69：全局描述组不能是空组——空的就补回默认词「启用思考」。
+         * 只在「空」时补，故意删光也会回填一条默认词，但用户自己加的词不会被覆盖。 */
+        var gg = f.descGroups[0];
+        if (gg.items.length === 0) gg.items.push(WORD_ENABLE_THINK);
+
+        /* 根因修复（老板 2026-11-15 报「默认词组不显示、只有新建分组才冒出来」）：
+         * normalize 以前返回新对象、调用方 CC.normalize(data) 把返回值丢了，
+         * 于是 v1 素材永远没有 descGroups。这里把结果就地写回入参，
+         * 让「丢弃返回值」的调用方式也能生效。 */
+        if (raw && typeof raw === 'object') {
+            raw.schema = f.schema;
+            raw.descGroups = f.descGroups;
+            raw.cards = f.cards;
+        }
         return f;
     }
 
@@ -264,6 +312,12 @@
 
     var CC = {
         SCHEMA: SCHEMA_V2,
+        /* v69：默认组名/默认词集中在这里，UI 与导出都从这里取，
+         * 免得再出现「改了一处、另一处还写着中文常量」的漏改。 */
+        GROUP_GLOBAL: GROUP_GLOBAL,
+        GROUP_PROMPT: GROUP_PROMPT,
+        WORD_ENABLE_THINK: WORD_ENABLE_THINK,
+        defaultGroups: DEFAULT_GROUPS,
         emptyCards: emptyCards,
         isCardsFile: isCardsFile,
         normalize: normalize,

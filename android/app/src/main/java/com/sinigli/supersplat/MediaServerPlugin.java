@@ -394,6 +394,81 @@ public class MediaServerPlugin extends Plugin {
         }
     }
 
+    /* ---------- v69：所选目录「同级」找分镜清单.csv ----------
+     * 老板报的 bug：选 clips/ 时，上一级目录里的 分镜清单.csv 应该自动导入。
+     * SAF 的 tree 授权不含父目录，所以不能直接读 ../分镜清单.csv。
+     * 这里换个思路：授权树里同样拿得到 rootId（比如 primary:Movies/项目），
+     * 父目录就是 rootId 去掉最后一段。绝大多数外置存储 Shared storage
+     * 下的目录都能这么反推；推不出来就返回 found=false，JS 层再弹单文件选择器兜底。 */
+    @PluginMethod
+    public void findSiblingCsv(PluginCall call) {
+        String uriStr = call.getString("uri");
+        if (uriStr == null || uriStr.isEmpty()) { call.reject("缺 uri"); return; }
+        JSObject res = new JSObject();
+        res.put("found", false);
+        try {
+            Uri treeUri = Uri.parse(uriStr);
+            String rootId = DocumentsContract.getTreeDocumentId(treeUri);
+            String authority = treeUri.getAuthority();
+            if (authority == null || rootId == null) { call.resolve(res); return; }
+
+            int slash = rootId.lastIndexOf('/');
+            if (slash <= 0) { call.resolve(res); return; }   // 已在根目录，没有上一级
+            String parentId = rootId.substring(0, slash);
+
+            Uri parentDoc = DocumentsContract.buildDocumentUri(authority, parentId);
+            java.util.List<JSObject> kids;
+            try {
+                kids = listChildrenRaw(parentDoc);
+            } catch (Exception e) {
+                res.put("reason", "父目录不可读: " + e.getMessage());
+                call.resolve(res);
+                return;
+            }
+            String want = call.getString("name");
+            if (want == null || want.isEmpty()) want = "分镜清单.csv";
+            for (JSObject o : kids) {
+                if (o.optBoolean("dir")) continue;
+                String nm = o.optString("name", "");
+                if (!nm.equalsIgnoreCase(want)) continue;
+                res.put("found", true);
+                res.put("name", nm);
+                res.put("uri", o.optString("uri"));
+                break;
+            }
+            if (!res.optBoolean("found")) res.put("parentId", parentId);
+        } catch (Exception e) {
+            res.put("reason", String.valueOf(e.getMessage()));
+        }
+        call.resolve(res);
+    }
+
+    /** 列任意 document 的直接子项（不要求 tree 授权，用于父目录探测） */
+    private java.util.List<JSObject> listChildrenRaw(Uri docUri) throws Exception {
+        java.util.List<JSObject> out = new java.util.ArrayList<>();
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(docUri,
+                DocumentsContract.getDocumentId(docUri));
+        Cursor c = cr().query(childrenUri, new String[]{
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+        }, null, null, null);
+        if (c == null) throw new Exception("父目录查询为空（授权不覆盖上一级）");
+        try {
+            while (c.moveToNext()) {
+                JSObject o = new JSObject();
+                o.put("docId", c.getString(0));
+                o.put("name", c.getString(1));
+                o.put("dir", DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2)));
+                try {
+                    o.put("uri", DocumentsContract.buildDocumentUriUsingTree(docUri, c.getString(0)).toString());
+                } catch (Exception ignore) { }
+                out.add(o);
+            }
+        } finally { c.close(); }
+        return out;
+    }
+
     @PluginMethod
     public void start(PluginCall call) {
         String uriStr = call.getString("uri");
