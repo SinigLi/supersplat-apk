@@ -41,7 +41,11 @@ check('闸门设置 window.__NO_3D', gateSrc.includes('window.__NO_3D'));
 check('boot-diag 拦下 body.replaceChildren(#startup-error)', diagSrc.includes("first.id === 'startup-error'"));
 check('boot-diag 监听 engine-failed', diagSrc.includes("'engine-failed'"));
 check('projects-ui 有 no3d() 判定', pjSrc.includes('function no3d()'));
-check('新建 3D 工程被拦', pjSrc.includes("newMode === 'model' && no3d()"));
+/* v68 变更意图：3D 工程在无 WebGPU 机器上从「禁止创建」改为「创建后进场景工作台」
+ * （编辑器要 WebGPU，但建工程+摆放人偶/道具+存盘只需 WebGL2）。
+ * 这一条改成断言新行为，别让旧断言挡住真需求。 */
+check('v68 新建 3D 改为进场景工作台', pjSrc.includes('openSceneWorkbench(name)'));
+check('v68 不再以无 WebGPU 拒绝建 3D', !pjSrc.includes("newMode === 'model' && no3d()"));
 check('打开 3D 工程被拦', pjSrc.includes('projectModeOf(name)'));
 check('首页有三维不可用徒标', pjSrc.includes('function syncGateBadge'));
 check('卡片带 data-mode', pjSrc.includes("card.setAttribute('data-mode'"));
@@ -168,8 +172,11 @@ async function scenario(label, patch, expectEngine) {
       check(label + ': body 未被清空', s.bodyKids > 3, 'kids=' + s.bodyKids);
     }
 
-    // 无 3D 场景再验行为：新建 3D 被拦、图片模式放行、打开 3D 工程被拒
+    /* v68：无 3D 场景的行为变了 —— 新建 3D 不再被拒，而是建好后导航到场景工作台。
+     * 用 window.__NAV_HOOK 拦下真实跳转，才能在不丢页面的情况下断言路由目标，
+     * 后面的图片/视频工作台断言也才跑得下去（之前 location.href 一跳就全丢）。 */
     if (!expectEngine) {
+      await q(`window.__NAV_HOOK = function (u) { window.__NAV = u; };`);
       const n1 = await q(`(function(){
         window.__projects && window.__projects.create('闸门测试3D', 'model');
         return 'called';
@@ -178,12 +185,15 @@ async function scenario(label, patch, expectEngine) {
       const after3d = await q(`(function(){
         var t = document.querySelector('.pj-toast');
         return JSON.stringify({ toast: t ? t.textContent.slice(0,90) : null,
-                                cur: window.__projects ? window.__projects.current() : 'x' });
+                                cur: window.__projects ? window.__projects.current() : 'x',
+                                nav: window.__NAV || null });
       })()`);
       let a3 = null; try { a3 = JSON.parse(after3d); } catch (err) { }
-      check(label + ': 新建 3D 被拒且无当前工程', a3 && a3.cur === null,
-        a3 ? (a3.toast || '') : '');
-      check(label + ': 拒绝提示提到 WebGPU', a3 && (a3.toast || '').indexOf('WebGPU') > -1);
+      check(label + ': 新建 3D 成功并进入工作台', a3 && a3.cur === '闸门测试3D', after3d);
+      check(label + ': 路由到场景工作台（viewer.html）',
+        a3 && typeof a3.nav === 'string' && a3.nav.indexOf('viewer.html') > -1
+        && a3.nav.indexOf(encodeURIComponent('闸门测试3D')) > -1, a3 ? (a3.nav || '') : '');
+      await q(`window.__NAV_HOOK = null; window.__NAV = null;`);
 
       const imgRun = await q(`(function(){
         if (!window.__img) return 'no-img-ui';

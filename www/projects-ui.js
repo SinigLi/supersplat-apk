@@ -28,6 +28,12 @@
         if (window.__NO_3D) return true;
         return !!(g && g.probed && !g.supported);
     }
+    /* v68：3D 工程在无 WebGPU 机器上不该「建不了」。
+     * 编辑器初始化路径（ProjectedSplatRenderer → StorageBuffer）确实要 WebGPU，
+     * 但建工程、往场景里摆人偶/道具、存回 project.json 全是纯实体变换 + 字节写盘，
+     * WebGL2 下跑得动（v68 的 viewer.html 就是这套）。
+     * 所以：没有 WebGPU 也允许建 3D 工程，建完直接进场景工作台。 */
+    function canCreate3D() { return true; }
     function no3dReason() {
         var g = window.__engineGate;
         if (g && g.reason) return g.reason;
@@ -241,10 +247,8 @@
                 return;
             }
             /* v66：3D 工程在没 WebGPU 的机器上建了也打不开，直接拦在门口说清楚 */
-            if (newMode === 'model' && no3d()) {
-                hint.textContent = no3dReason() + '；请选图片 / 视频 / 音频模式。';
-                return;
-            }
+            /* v68：改成放行——建完进只读/摆放工作台（WebGL2 就够了），
+             * 不再以「没有编辑器」为由禁止创建。 */
             var reg = L.loadRegistry();
             var dup = (reg.projects || []).filter(function (p) { return p.name === v.name; })[0];
             if (dup) {
@@ -287,11 +291,12 @@
         var g = newDlg && newDlg.querySelector('.pj-gate-hint');
         if (!g) return;
         if (no3d()) {
-            g.textContent = '⚠ ' + no3dReason() + '。图片 / 视频 / 音频工程不受影响。';
+            /* v68：不再说「不能建 3D」，改成说清「建完进哪个工作台」 */
+            g.textContent = 'ℹ ' + no3dReason() + '；3D 工程仍可新建，会进入场景工作台（只读查看 + 摆放人偶/道具）。';
             g.style.display = 'block';
-            // 3D 模式按钮置灰，但保留可点（点了给提示，而不是静默无效）
+            /* v68：3D 模式不再置灰 —— 能建、能摆、能存盘 */
             newDlg.querySelectorAll('.pj-mode').forEach(function (x, i) {
-                x.classList.toggle('pj-mode-off', i === 0);
+                x.classList.remove('pj-mode-off');
             });
         } else {
             g.style.display = 'none';
@@ -754,7 +759,7 @@
                 cards[i].classList.remove('pj-card-off');
             } else if (off) {
                 cards[i].classList.add('pj-card-off');
-                cards[i].setAttribute('title', '本机 3D 引擎不可用，点击以只读方式查看');
+                cards[i].setAttribute('title', '本机无 WebGPU：进场景工作台（可查看、摆放人偶/道具并存盘）');
             } else {
                 cards[i].removeAttribute('title');
                 cards[i].classList.remove('pj-card-off');
@@ -767,11 +772,6 @@
     async function createProject(name, mode) {
         if (busy) return;
         var m = mode || 'model';
-        /* v66：编程调用也要拦一道（UI 已在对话框里提示过） */
-        if (m === 'model' && no3d()) {
-            toast(no3dReason() + '；请选图片 / 视频 / 音频模式');
-            return;
-        }
         busy = true;
         try {
             var p = L.pathsFor(name);
@@ -823,6 +823,15 @@
 
             hideWait();
             if (m === 'model') {
+                if (no3d()) {
+                    /* v68：无 WebGPU 时进场景工作台（WebGL2），可以摆人偶/道具并存盘。
+                     * 不加载编辑器引擎，避免又一次启动崩溃。 */
+                    hideWait();
+                    busy = false;
+                    toast('已创建「' + name + '」，进入场景工作台');
+                    openSceneWorkbench(name);
+                    return;
+                }
                 showEditorPage();
                 // 空工程落盘后就是“已保存”状态，返回时不该弹未保存确认
                 lastSavedSnapshot = snapshotNow();
@@ -896,19 +905,36 @@
         return (hit && hit.mode) || 'model';
     }
 
-    /* v67：3D 工程在无 WebGPU 设备上不再直接拦死，改为跳只读查看器（方案 B）。
-     * 查看器用 PlayCanvas legacy gsplat 组件跑 WebGL2，能看泼溅+GLB 摆位，
-     * 但不能编辑、不写回工程——编辑仍需 WebGPU 设备。 */
+    /* v68：页面跳转统一走这里。
+     * 好处：探针可以把 window.__NAV_HOOK 挂上去拦下跳转，从而在不真正离开
+     * 首页的前提下断言「路由到了哪个页面」——之前直接写 location.href，
+     * 一导航后面的断言全丢。 */
+    function go(url) {
+        if (typeof window.__NAV_HOOK === 'function') { window.__NAV_HOOK(url); return; }
+        location.href = url;
+    }
+
+    /* v67：3D 工程在无 WebGPU 设备上不再直接拦死，改为跳工作台（方案 B）。
+     * 工作台用 PlayCanvas legacy gsplat 组件跑 WebGL2，能看泼溅+GLB 摆位；
+     * v68 起还能摆放人偶/道具并存回工程（纯实体变换，不需要 WebGPU）。 */
     function openReadonlyViewer(name) {
         var url = './viewer.html?project=' + encodeURIComponent(name);
         pjDlog('route READONLY viewer ' + name);
-        location.href = url;
+        go(url);
+    }
+
+    /* v68：场景工作台 = 可摆放版本（能放人偶/道具并存回工程）。
+     * 和只读查看器的区别只有 edit 权限，页面是同一个。 */
+    function openSceneWorkbench(name) {
+        var url = './viewer.html?project=' + encodeURIComponent(name);
+        pjDlog('route WORKBENCH ' + name);
+        go(url);
     }
 
     async function openProject(name) {
         if (busy) return;
         if (no3d() && projectModeOf(name) === 'model') {
-            openReadonlyViewer(name);
+            openSceneWorkbench(name);
             return;
         }
         busy = true;

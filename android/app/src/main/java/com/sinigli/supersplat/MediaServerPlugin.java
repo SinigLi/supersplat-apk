@@ -781,6 +781,26 @@ public class MediaServerPlugin extends Plugin {
                 res.put("ok", true);
                 res.put("width", f.containsKey(android.media.MediaFormat.KEY_WIDTH) ? f.getInteger(android.media.MediaFormat.KEY_WIDTH) : 0);
                 res.put("height", f.containsKey(android.media.MediaFormat.KEY_HEIGHT) ? f.getInteger(android.media.MediaFormat.KEY_HEIGHT) : 0);
+                /* v68：把 profile / 位深报给 JS。老板那批素材是 H.264 High 10 (10bit)，
+                 * Android 硬件 AVC 解码器只保证 Baseline/Main/High(8bit)，MediaCodec 直接拒，
+                 * WebView 报 MEDIA_ERR_SRC_NOT_SUPPORTED(4)。提前探测就能给明白话，
+                 * 不再让 <video> 反复撞、也不再把 94 个文件的缩略图任务全排一遍。
+                 * 注意 canPlayType 对 avc1.6E0033 也返回 "probably"，JS 侧骗不了，只能靠原生。 */
+                int profile = -1;
+                try {
+                    if (f.containsKey(android.media.MediaFormat.KEY_PROFILE)) {
+                        profile = f.getInteger(android.media.MediaFormat.KEY_PROFILE);
+                    }
+                } catch (Exception ignore) { }
+                int bitDepth = 8;
+                try {
+                    if (f.containsKey("bit-depth")) bitDepth = f.getInteger("bit-depth");
+                } catch (Exception ignore) { }
+                /* MediaCodecInfo.CodecProfileLevel：0x10=High10, 0x20=High422, 0x40=High444 */
+                if (profile == 0x10 || profile == 0x20 || profile == 0x40) bitDepth = Math.max(bitDepth, 10);
+                res.put("profile", profile);
+                res.put("bitDepth", bitDepth);
+                res.put("decodable", !(profile == 0x10 || profile == 0x20 || profile == 0x40) && bitDepth <= 8);
                 if (f.containsKey("rotation-degrees")) res.put("rotation", f.getInteger("rotation-degrees"));
                 if (f.containsKey(android.media.MediaFormat.KEY_DURATION)) {
                     res.put("durationMs", f.getLong(android.media.MediaFormat.KEY_DURATION) / 1000);

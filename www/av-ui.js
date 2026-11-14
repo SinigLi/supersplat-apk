@@ -84,7 +84,15 @@
         fpsSampling: false,
         vfcSamples: [],
         vfcT0: 0,
-        built: false
+        built: false,
+        /* v68：10bit 素材闸门。
+         * 老板那批 94 个片段全部 H.264 High 10 / yuv420p10le，Android 硬件 AVC
+         * 解码器只保证 8bit 的 Baseline/Main/High，MediaCodec 直接拒 →
+         * <video> 报 MEDIA_ERR_SRC_NOT_SUPPORTED(4)，42KB / 1 秒的片段也放不出来。
+         * 探测到就立刻停手：不再反复加载、不再给 94 个文件排缩略图。 */
+        codec: {},                // name -> { decodable, profileName, bitDepth, w, h }
+        codecBlocked: false,      // 当前片段不可解
+        transcodeBusy: false
     };
 
     function effFps() { return S.fps || 25; }
@@ -427,6 +435,39 @@ var AV_CSS_V53 = [
         }).catch(function () { return null; });
     }
 
+    /* ===== v68：10bit 素材探测 =====
+     * 为什么不能只靠 canPlayType：实测它对 avc1.6E0033（High 10）也返回
+     * "probably"，骗得过后端判断。真正靠得住的是原生 MediaFormat 的
+     * KEY_PROFILE（0x10=High10 / 0x20=High422 / 0x40=High444）。
+     * 探测到不可解就直接给明白话，不再让 <video> 反复撞 code=4。 */
+    function probeCodec(f) {
+        if (!f) return Promise.resolve(null);
+        if (S.codec[f.name]) return Promise.resolve(S.codec[f.name]);
+        var cap = window.Capacitor;
+        var p = (cap && cap.Plugins && cap.Plugins.MediaServer) || null;
+        if (!p || !p.probeCodec || !S.meta || !S.meta.folderUri) return Promise.resolve(null);
+        return p.probeCodec({ uri: S.meta.folderUri, name: f.name }).then(function (r) {
+            if (!r || !r.ok) return null;
+            S.codec[f.name] = r;
+            return r;
+        }).catch(function () { return null; });
+    }
+
+    function codecBlockedText(info) {
+        var prof = (info && info.profileName) || '非 8bit';
+        var bits = info && info.bitDepth ? (info.bitDepth + 'bit') : '';
+        var dim = info && info.width ? (info.width + '×' + info.height) : '';
+        return '这段素材是 H.264 ' + prof + (bits ? ' / ' + bits : '') +
+            (dim ? ' / ' + dim : '') + '，本机硬件解码器不支持（只支持 8bit）。' +
+            '点右侧「转 8bit」可以把整个文件夹批量转成可播放的副本。';
+    }
+
+    /* 转码插件（v68 新增） */
+    function txPlug() {
+        var cap = window.Capacitor;
+        return (cap && cap.Plugins && cap.Plugins.MediaTranscode) || null;
+    }
+
     function requestNativeMeta() {
         if (S.meta.mode !== 'video') return;
         mediaMeta().then(function (m) {
@@ -486,6 +527,14 @@ function build() {
         /* v51c：📋 关联/更换分镜清单（SAF 单文件授权，持久化后全自动） */
         var sbBtn = el('button', 'av-top-btn', '📋');
         sbBtn.title = '关联分镜清单.csv';
+        /* v68：10bit → 8bit 批量转码入口。平时不显示，只有探测到不可解素材才亮，
+         * 免得把「转码」这个概念塞给用不到的人。 */
+        var txBtn = el('button', 'av-top-btn', '🔧');
+        txBtn.title = '本机解不了 10bit 素材，批量转 8bit';
+        txBtn.style.display = 'none';
+        txBtn.id = 'avTxBtn';
+        txBtn.addEventListener('click', function () { startTranscode(); });
+        topEl.appendChild(txBtn);
         sbBtn.addEventListener('click', function () {
             var p = ms();
             if (!p || !p.pickCsv) { toast('当前环境不支持分镜清单关联'); return; }
@@ -1486,6 +1535,9 @@ function hasMerge(seg) {
     function playCurrent(keepPaused) {
         var f = S.files[S.cur];
         if (!f) return;
+        /* v68：切换片段时清掉上一段的 10bit 判定；已知不可解的靠 S.codec 缓存再判一次，
+         * 不重新装源（见下面的 skip blocked 分支）。 */
+        S.codecBlocked = !!(S.codec[f.name] && S.codec[f.name].decodable === false);
         emptyHint.style.display = 'none';
         var isA = S.meta.mode === 'audio';
         if (isA) {
@@ -1498,6 +1550,13 @@ function hasMerge(seg) {
             /* v48c：同一片段不重复装源。旧逻辑每次 playCurrent 都重设 src + load()，
              * 4K 文件重载要重新起流、重新解 GOP，是「越用越卡」的放大器。
              * 列表重建/重绘也会走到这里，所以必须挡住。 */
+            /* v68：已知不可解（10bit）的片段不再装源。<video> 撞一次 code=4 会
+             * 触发错误 toast，还会拖住解码器；探测结果缓存着，第二次直接跳过。 */
+            if (S.codecBlocked && S._loadedName === f.name) {
+                dlog('playCurrent skip blocked ' + f.name);
+                if (!keepPaused) showCodecBlocked(f);
+                return;
+            }
             var wantSrc = 'http://127.0.0.1:' + S.serverPort + '/' + encodeURIComponent(f.name);
             if (S._loadedSrc === wantSrc && S._loadedName === f.name) {
                 dlog('playCurrent skip reload ' + f.name);
@@ -1523,7 +1582,125 @@ function hasMerge(seg) {
             }
         }
         if (!keepPaused) togglePlay();
-        if (!isA) requestNativeMeta();
+        if (!isA) {
+            requestNativeMeta();
+            /* v68：探测放在装源之后异步做，不阻塞首帧；命中 10bit 立刻停手 */
+            probeCodec(f).then(function (info) {
+                if (!info || info.decodable !== false) return;
+                if (S._loadedName !== f.name) return;   // 已经切走了
+                S.codecBlocked = true;
+                try { videoEl.pause(); } catch (e) { }
+                dlog('CODEC-BLOCK ' + f.name + ' profile=' + info.profile +
+                    ' ' + (info.profileName || '') + ' ' + (info.bitDepth || '') + 'bit');
+                showCodecBlocked(f, info);
+            });
+        }
+    }
+
+    /* v68：给出明白话 + 直达转码入口，而不是让老板看 code=4 */
+    function showCodecBlocked(f, info) {
+        var i = info || S.codec[f.name] || null;
+        var b = document.getElementById('avTxBtn');
+        if (b) b.style.display = '';
+        if (emptyHint) {
+            emptyHint.style.display = 'flex';
+            if (emptyTitle) emptyTitle.textContent = '这段素材本机解不了（10bit）';
+            var s = emptyHint.querySelector('.av-empty-s');
+            if (s) s.textContent = codecBlockedText(i);
+        }
+        toast('10bit 素材：本机硬件解码不支持，需转 8bit');
+    }
+
+    /* ===== v68：批量转码 10bit → 8bit =====
+     * 数据流：SAF 原文件 → 原生缓存临时文件 → ffmpeg 软件解码 10bit
+     *        → MediaCodec 硬件编码 8bit → <tree>/8bit/<原名>_8bit.mp4
+     * 不动原素材（原地覆盖等于毁素材，SAF 覆盖写还要看 provider 脸色）。
+     *
+     * 需要写权限：v45 的 pickFolder 只申请了读权限，这里如果拿不到写权限，
+     * 让老板重新选一次同一个目录（pickWriteFolder 带 WRITE flag）。
+     */
+    function ensureWriteAccess() {
+        var p = txPlug();
+        if (!p || !p.pickWriteFolder) return Promise.resolve(false);
+        return p.pickWriteFolder().then(function (r) {
+            if (!r || !r.uri) return false;
+            if (r.uri !== S.meta.folderUri) {
+                /* 换了目录：不能悄悄换掉工程关联，让用户自己决定 */
+                dlog('tx write folder differs: ' + String(r.uri).slice(0, 60));
+            }
+            S.meta.folderUri = r.uri;
+            saveAll(false);
+            return true;
+        }).catch(function () { return false; });
+    }
+
+    function startTranscode() {
+        if (S.transcodeBusy) { toast('已经有一个转码任务在跑'); return; }
+        var p = txPlug();
+        if (!p || !p.transcode) {
+            toast('当前版本不含转码能力（请更新 APK）');
+            return;
+        }
+        var targets = S.files.filter(function (f) {
+            var c = S.codec[f.name];
+            return !c || c.decodable !== false;   // 未探测的先当可转（转码本身能解 10bit）
+        });
+        if (!targets.length) { toast('没有可转的文件'); return; }
+
+        var est = '共 ' + S.files.length + ' 个文件，逐个转码会花较长时间';
+        toast(est);
+        ensureWriteAccess().then(function (ok) {
+            if (!ok) { toast('需要写权限：请重新选择同一个素材文件夹'); return; }
+            runTranscodeQueue(S.files);
+        });
+    }
+
+    function runTranscodeQueue(files) {
+        S.transcodeBusy = true;
+        var i = 0, done = 0, failed = 0, skipped = 0;
+        var total = files.length;
+
+        function next() {
+            if (i >= total) {
+                S.transcodeBusy = false;
+                toast('转码完成：成功 ' + done + ' / 失败 ' + failed + ' / 跳过 ' + skipped +
+                    '。输出在素材目录下的 8bit 子文件夹');
+                dlog('TX done ok=' + done + ' fail=' + failed + ' skip=' + skipped);
+                return;
+            }
+            var f = files[i++];
+            var label = '转码 ' + i + '/' + total + '：' + f.name;
+            if (window.Prog) window.Prog.show(label + ' 0%');
+            else toast(label);
+
+            var p = txPlug();
+            var est2 = (S.codec[f.name] && S.codec[f.name].durationMs) || 0;
+            p.transcode({ treeUri: S.meta.folderUri, name: f.name, totalMs: est2 })
+                .then(function (r) {
+                    if (r && r.ok) {
+                        done++;
+                        dlog('TX ok ' + f.name + ' -> ' + r.path + ' ' + r.outBytes + 'B ' + r.ms + 'ms');
+                    } else if (r && r.cancelled) {
+                        skipped++;
+                    } else if (r && r.needWrite) {
+                        skipped++;
+                        toast('写权限不足，已停止');
+                        i = total;
+                    } else {
+                        failed++;
+                        dlog('TX fail ' + f.name + ' ' + (r && r.error || ''));
+                    }
+                })
+                .catch(function (e) {
+                    failed++;
+                    dlog('TX ERR ' + f.name + ' ' + (e && (e.message || e) || e));
+                })
+                .then(function () {
+                    if (window.Prog) window.Prog.hide();
+                    setTimeout(next, 60);
+                });
+        }
+        next();
     }
 
     /* ---------- 位置显示 + 按钮状态 ---------- */
@@ -2092,6 +2269,16 @@ function hasMerge(seg) {
         saveAll(false);
         thumbFlush();   // 退出回收已断开的容器引用；解码队列不再清空（否则残留任务白跑）
         videoThumbQueue.length = 0;   // v45w：退出同步清视频捕获队列
+        /* v68：还要把「在途 + 排队 + 去重表」一起清掉。
+         * 真机日志实证：返回后 94 个缩略图任务继续跑，媒体服务已停 →
+         * 每个任务都刷「服务已停」「缺少 name 或媒体服务未启动」，
+         * 既耗电又把日志冲爆。thumbFlush 只回收 DOM，不动任务队列。 */
+        thumbJobs.length = 0;
+        Object.keys(thumbPending).forEach(function (k) { delete thumbPending[k]; });
+        thumbLive = 0;
+        videoThumbQueue.length = 0;
+        videoThumbTried = {};
+        dlog('back: thumb queue cleared');
         stopServer();
         unlockOrientation();
         page.classList.remove('open');
@@ -2559,6 +2746,11 @@ function hasMerge(seg) {
     window.__av = {
 
         _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy, nativeOff: nativeThumbDisabled, nativeFails: consecutiveNativeFails }; },
+        _codecState: function () { return { blocked: S.codecBlocked, cache: Object.keys(S.codec), probe: S.codec }; },
+        /* v68：转码与 10bit 探测的测试入口 */
+        _startTranscode: startTranscode,
+        _runTranscodeQueue: runTranscodeQueue,
+        _ensureWriteAccess: ensureWriteAccess,
         _refreshFolder: refreshFolder,
         open: open,
         back: back,

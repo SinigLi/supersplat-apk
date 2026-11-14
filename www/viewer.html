@@ -2,23 +2,36 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>摸鱼台 3D 查看器</title>
+    <title>摸鱼台 3D 场景工作台</title>
     <base href="">
-    <link rel="stylesheet" href="./viewer3d.css?v=67">
+    <link rel="stylesheet" href="./viewer3d.css?v=68">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
 </head>
 <body>
     <div id="v3-stage"></div>
+
     <div id="v3-hud">
         <button id="v3-back" type="button" aria-label="返回">←</button>
-        <div id="v3-title">查看器</div>
+        <div id="v3-title">场景工作台</div>
         <button id="v3-fit" type="button">复位视角</button>
     </div>
+
+    <!-- v68：摆放工具栏（只读模式下整条隐藏） -->
+    <div id="v3-tools" hidden>
+        <div id="v3-add"></div>
+        <div class="v3-actions">
+            <button id="v3-rot" type="button" disabled>旋转 90°</button>
+            <button id="v3-del" type="button" disabled>删除</button>
+            <button id="v3-save" type="button">保存</button>
+        </div>
+    </div>
+
+    <div id="v3-hint" hidden></div>
     <div id="v3-status">载入中…</div>
     <div id="v3-error" hidden></div>
 
     <script src="./fflate.js?v=45x"></script>
     <script src="./projects.js?v=45x"></script>
-    <script type="module" src="./viewer3d.js?v=67"></script>
+    <script type="module" src="./viewer3d.js?v=68"></script>
 </body>
 </html>

@@ -25,6 +25,12 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // v68: ffmpeg-kit 每个 ABI 都内嵌一整套 ffmpeg。只留 arm64-v8a
+        // （M6 = Kirin 980 = arm64，老板所有设备都是 arm64），
+        // 否则 4 个 ABI 全打进来 APK 直接涨 100MB+。
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -66,6 +72,12 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    // v68: 10bit H.264 -> 8bit 本机转码。用 LGPL 变体（不含 GPL 的 libx264），
+    // 编码走 Android 硬件 MediaCodec。AAR 直接进仓库：mavenCentral 已下架该坐标，
+    // 只剩镜像站有，CI 不该靠镜像站的长期可用性。
+    implementation files('libs/ffmpeg-kit-video-6.0.LTS.aar')
+    // ffmpeg-kit 的编译期依赖（静态异常包装），一并进仓库
+    implementation files('libs/smart-exception-java-0.2.1.jar')
     // v44 解压中心：7z/zip 流式解压
     implementation 'org.apache.commons:commons-compress:1.26.2'
     // v44f：7z LZMA/LZMA2 解码必需（commons-compress 可选依赖，缺了=NoClassDefFoundError）

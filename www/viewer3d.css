@@ -1,5 +1,5 @@
-/* 摸鱼台 3D 只读查看器样式（v67）
- * 与编辑器/工作台的 UI 完全隔离：这个页面不加载 index.css，手机端也不加 dock。 */
+/* 摸鱼台 3D 场景工作台样式（v68）
+ * 与编辑器/工作台 UI 完全隔离：这个页面不加载 index.css，手机端也不加 dock。 */
 
 html, body {
     margin: 0;
@@ -82,7 +82,82 @@ html, body {
     cursor: pointer;
 }
 
-/* 载入提示 */
+/* 底部工具栏：添加 / 旋转 / 删除 / 保存 */
+#v3-tools {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 12;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px calc(10px + env(safe-area-inset-right))
+             calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+    background: linear-gradient(0deg, rgba(8, 10, 12, .94), rgba(8, 10, 12, .55) 70%, rgba(8, 10, 12, 0));
+}
+
+#v3-tools[hidden] { display: none; }
+
+#v3-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.v3-chip {
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 11px;
+    border: 1px solid rgba(120, 160, 200, .28);
+    border-radius: 16px;
+    background: rgba(32, 40, 48, .92);
+    color: #d7e3ee;
+    font-size: 12.5px;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.v3-chip:active { background: rgba(48, 60, 72, .96); }
+
+.v3-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.v3-actions button {
+    flex: 1 1 0;
+    height: 40px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(38, 46, 54, .95);
+    color: #dbe4ec;
+    font-size: 13.5px;
+    cursor: pointer;
+}
+
+.v3-actions button:disabled {
+    opacity: .38;
+    cursor: default;
+}
+
+#v3-save {
+    background: linear-gradient(180deg, #2f6fb3, #245a92);
+    color: #fff;
+    font-weight: 600;
+}
+
+#v3-save.v3-dirty {
+    background: linear-gradient(180deg, #d08a2a, #b0701a);
+}
+
+#v3-del:not(:disabled) {
+    color: #ffc9be;
+    background: rgba(74, 36, 32, .95);
+}
+
+/* 载入提示 / 操作提示 */
 #v3-status {
     position: fixed;
     left: 50%;
@@ -97,13 +172,30 @@ html, body {
     pointer-events: none;
 }
 
+#v3-hint {
+    position: fixed;
+    left: 50%;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 13;
+    max-width: 82vw;
+    padding: 8px 14px;
+    border-radius: 16px;
+    background: rgba(20, 26, 32, .94);
+    border: 1px solid rgba(120, 160, 200, .22);
+    color: #cfdbe6;
+    font-size: 12.5px;
+    text-align: center;
+    pointer-events: none;
+}
+
 /* 错误提示：给明白话，不给栈 */
 #v3-error {
     position: fixed;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    z-index: 12;
+    z-index: 14;
     max-width: 78vw;
     padding: 14px 18px;
     border-radius: 12px;
@@ -117,4 +209,5 @@ html, body {
 }
 
 #v3-error[hidden],
-#v3-status[hidden] { display: none; }
+#v3-status[hidden],
+#v3-hint[hidden] { display: none; }

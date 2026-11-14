@@ -37,7 +37,12 @@ try {
 
 /* ③ 回归锚 */
 check('即画即存保留（v54）', img.includes(`if (S.tagMode) saveTagStrokes();`));
-check('切层回写下拉（v55c）', img.includes(`if (tagSelEl) tagSelEl.value = card.id;`));
+/* v55c 的「切层回写下拉」在 v60b 被主动去掉了：tag 模式改成层列表，
+ * 激活态由 .img-layer-row.active 表达（lay.id === S.state.activeId），
+ * 不再有 select 控件。所以这里改为断言当前的不变量——切换层必须重画层列表
+ * 并让 activeId 单点生效，而不是钉一个已经不存在的字符串。 */
+check('切层高亮由 activeId 驱动（v60b 起取代下拉）',
+  img.includes(`'img-layer-row' + (lay.id === S.state.activeId ? ' active' : '')`));
 check('骨架日志保留（v53y/z）', img.includes(`dlog('tag: redraw layers=`));
 check('图片模式导出链不受影响（buildLayerCanvas 独立）', img.includes('function buildLayerCanvas'));
 
