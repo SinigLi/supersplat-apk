@@ -6,8 +6,8 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.Build;
 import android.provider.DocumentsContract;
 
 import androidx.activity.result.ActivityResult;
@@ -23,13 +23,11 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -324,7 +322,10 @@ public class MediaTranscodePlugin extends Plugin {
 
                         final long[] lastTick = {0L};
                         final int[] lastPct = {-1};
-                        FFmpegSession session = FFmpegKit.executeAsync(attempts[ai], null, null,
+                        /* 参数必须以数组传：executeAsync(String, ...) 收的是整条命令行，
+                         * 传 String[] 编译期就报 "String[] cannot be converted to String"
+                         * （CI 实测）。带数组的重载叫 executeWithArgumentsAsync。 */
+                        FFmpegSession session = FFmpegKit.executeWithArgumentsAsync(attempts[ai], null, null,
                                 new com.arthenica.ffmpegkit.StatisticsCallback() {
                                     @Override
                                     public void apply(Statistics st) {
@@ -468,7 +469,17 @@ public class MediaTranscodePlugin extends Plugin {
         if (name == null || name.isEmpty()) {
             return u;
         }
-        if (DocumentsContract.isTreeUri(u)) return resolveDocInTree(u, name);
+        /* DocumentsContract.isTreeUri 是 API 24+；minSdk 23 上直接调用会
+         * NoSuchMethodError。低版本按 URI 形态自己判（tree 一定带 tree 段且
+         * documentId 里有 ':'）。 */
+        boolean isTree;
+        if (Build.VERSION.SDK_INT >= 24) {
+            try { isTree = DocumentsContract.isTreeUri(u); } catch (Exception e) { isTree = false; }
+        } else {
+            String s = u.toString();
+            isTree = s.contains("/tree/") && s.contains(":");
+        }
+        if (isTree) return resolveDocInTree(u, name);
         // 已经是文件 URI 但有 name：仍然按 document 用
         return u;
     }
