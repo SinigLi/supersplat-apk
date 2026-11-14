@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>摸鱼台 3D 查看器</title>
+    <base href="">
+    <link rel="stylesheet" href="./viewer3d.css?v=67">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+</head>
+<body>
+    <div id="v3-stage"></div>
+    <div id="v3-hud">
+        <button id="v3-back" type="button" aria-label="返回">←</button>
+        <div id="v3-title">查看器</div>
+        <button id="v3-fit" type="button">复位视角</button>
+    </div>
+    <div id="v3-status">载入中…</div>
+    <div id="v3-error" hidden></div>
+
+    <script src="./fflate.js?v=45x"></script>
+    <script src="./projects.js?v=45x"></script>
+    <script type="module" src="./viewer3d.js?v=67"></script>
+</body>
+</html>

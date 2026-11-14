@@ -1,0 +1,120 @@
+/* 摸鱼台 3D 只读查看器样式（v67）
+ * 与编辑器/工作台的 UI 完全隔离：这个页面不加载 index.css，手机端也不加 dock。 */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0f1113;
+    color: #e8ecef;
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+#v3-stage {
+    position: fixed;
+    inset: 0;
+    touch-action: none;
+}
+
+#v3-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    outline: none;
+    touch-action: none;
+}
+
+/* 顶栏：返回 / 标题 / 复位 */
+#v3-hud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+             8px calc(12px + env(safe-area-inset-left));
+    background: linear-gradient(180deg, rgba(8, 10, 12, .86), rgba(8, 10, 12, 0));
+    pointer-events: none;
+}
+
+#v3-hud > * { pointer-events: auto; }
+
+#v3-back {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(38, 44, 50, .92);
+    color: #e8ecef;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#v3-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    opacity: .9;
+}
+
+#v3-fit {
+    flex: 0 0 auto;
+    height: 34px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9px;
+    background: rgba(38, 44, 50, .92);
+    color: #cfe6ff;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+/* 载入提示 */
+#v3-status {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 11;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: rgba(20, 24, 28, .92);
+    color: #cfd6dc;
+    font-size: 13px;
+    pointer-events: none;
+}
+
+/* 错误提示：给明白话，不给栈 */
+#v3-error {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 12;
+    max-width: 78vw;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: rgba(46, 22, 22, .95);
+    border: 1px solid rgba(255, 120, 100, .38);
+    color: #ffd8cf;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#v3-error[hidden],
+#v3-status[hidden] { display: none; }

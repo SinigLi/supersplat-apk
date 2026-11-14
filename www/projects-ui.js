@@ -740,12 +740,12 @@
             var ico = el('span', '', '⚠');
             ico.style.fontSize = '0.95rem';
             gateBadge.appendChild(ico);
-            gateBadge.appendChild(el('span', '', no3dReason() + '（图片 / 视频 / 音频照常可用）'));
+            gateBadge.appendChild(el('span', '', no3dReason() + '（可打开 3D 工程做只读查看；图片 / 视频 / 音频照常可用）'));
             gateBadge.style.display = 'flex';
         } else {
             gateBadge.style.display = 'none';
         }
-        /* 3D 工程卡片置灰（保留可点，点了给明白话） */
+        /* 3D 工程卡片置灰（v67：仍可点，点开转只读查看器） */
         var cards = listEl ? listEl.querySelectorAll('.pj-card') : [];
         var off = no3d();
         for (var i = 0; i < cards.length; i++) {
@@ -754,7 +754,9 @@
                 cards[i].classList.remove('pj-card-off');
             } else if (off) {
                 cards[i].classList.add('pj-card-off');
+                cards[i].setAttribute('title', '本机 3D 引擎不可用，点击以只读方式查看');
             } else {
+                cards[i].removeAttribute('title');
                 cards[i].classList.remove('pj-card-off');
             }
         }
@@ -894,11 +896,19 @@
         return (hit && hit.mode) || 'model';
     }
 
+    /* v67：3D 工程在无 WebGPU 设备上不再直接拦死，改为跳只读查看器（方案 B）。
+     * 查看器用 PlayCanvas legacy gsplat 组件跑 WebGL2，能看泼溅+GLB 摆位，
+     * 但不能编辑、不写回工程——编辑仍需 WebGPU 设备。 */
+    function openReadonlyViewer(name) {
+        var url = './viewer.html?project=' + encodeURIComponent(name);
+        pjDlog('route READONLY viewer ' + name);
+        location.href = url;
+    }
+
     async function openProject(name) {
         if (busy) return;
-        /* v66：3D 工程在没 WebGPU 的机器上打不开——快速失败，不转圈也不让引擎再炸一次 */
         if (no3d() && projectModeOf(name) === 'model') {
-            toast(no3dReason() + '；这个 3D 工程无法在本机打开');
+            openReadonlyViewer(name);
             return;
         }
         busy = true;
