@@ -176,4 +176,57 @@ preparePick / finishPick / reduceDepth / reportStochasticFrame / footprintInters
    `DataProcessor` 的 5 个 compute 算子在无 WebGPU 时改成 no-op / CPU 实现，**绝不在 WebGL2 上 new 它们**。
 2. **把 per-gaussian palette 注入 GLSL**：拿引擎 `gsplatUncompressedVS` 打底加三张纹理（~900–1300 行）。
 
-下一步 = Spike 2（palette/flags 纹理接进去，证明「整层拖动 + 选中高亮」在 WebGL2 成立）。
+---
+
+## 9. Spike 2 结果（2026-11-15 已跑，**通过**）
+
+> 老板批准「直接开 spike2」。验证脚本 `temp/spike2/`（独立目录，未动正式代码）。
+> Spike 2 测的是桥的**真正难点**：per-gaussian 的 transform palette / color palette / flags
+> 在没有 SSBO、没有 compute 的 WebGL2 上能不能实现。
+
+### 实现方式（= 将来 `WebGLSplatRenderer` 的内核）
+
+| 数据 | WebGPU 版（编辑器现用） | WebGL2 版（spike 已验证） |
+|---|---|---|
+| 逐 splat 位置/缩放/旋转/颜色 | StorageBuffer | **RGBA32U / RGBA32F 索引纹理**（texelFetch） |
+| transform palette（每 gaussian 独立变换） | StorageBuffer | **RGBA32F 纹理，一行 = 一个 mat4** |
+| color palette | StorageBuffer | 同上（纹理） |
+| selection / locked / deleted | StorageBuffer（flags 位） | **meta 纹理的一个 float，按位取** |
+| 排序 | compute projector + indirect draw | **Worker CPU 排序 → R32U orderTexture**（引擎 legacy 路径自带） |
+
+### 三个客观断言（全部读页面自报的像素统计，不在 driver 里复刻公式）
+
+| 断言 | 期望 | 实测 | 结果 |
+|---|---|---|---|
+| A 基线渲染 | lit > 5,000 且 colorful > 2,000 | **lit 66,478 / colorful 64,689** | ✅ |
+| B 右半边（x>0.05 的 1,440 个 splat）套 `+X 0.55` 平移矩阵 | 亮度质心右移 > 4px | **质心 438.6 → 488.3，右移 49.7px** | ✅ |
+| C 左半边标 selected（flags bit0） | 左半边平均红色分量上升 > 6 | **左 avgR 104.0 → 198.8（+94.8）** | ✅ |
+| 页面异常 | 0 | **0** | ✅ |
+
+截图三张（`temp/spike2-shots/shotA/B/C.png`）肉眼可核：
+
+- **A**：完整彩色高斯球
+- **B**：球从中间裂开——右半边整体右移，左半边纹丝不动 → **per-gaussian palette 生效**
+- **C**：左半边变红橙色、右半边保持原彩色 → **per-gaussian flags 生效**
+
+### 结论
+
+**编辑语义可以在 WebGL2 上完整成立。** palette 走纹理这层不是理论推演，是跑出来的：
+质心位移 49.7px、着色 ΔR +94.8，两个独立指标同时变化，且互不串扰（左半边在 B 里没动）。
+
+至此桥的可行性判定完成：
+
+| 项 | 状态 |
+|---|---|
+| 泼溅在 WebGL2 上显示 | ✅ Spike 1 |
+| per-gaussian 变换 / 选中标志 | ✅ Spike 2 |
+| 引擎自带 CPU 排序 | ✅ 引擎 legacy 路径 |
+| 起不来的阻塞点（`calcBound` compute） | ⚠ 需 CPU 版（~60 行，AABB 遍历） |
+| 彻底拿不到的（colorMatch/直方图/按值筛选） | ❌ 全是 compute，无等价物 |
+
+### 下一步（Spike 3，需老板确认）
+
+把 spike 里的这套内核**搬进 fork**，`scene.ts` 里按 `device.isWebGPU` 选
+`ProjectedSplatRenderer` 或 `WebGLSplatRenderer`，`main.ts` 的 `deviceTypes` 改成
+`['webgpu', 'webgl2']`。目标：首页 → 打开 3D 工程 → **原导演台**摆人偶/拖动/保存 全链跑通，
+用 `probe-v70` 断言。通过了 `viewer3d.js` 就能删。
