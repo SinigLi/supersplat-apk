@@ -1,16 +1,18 @@
-/* v66 引擎能力闸门（classic script，必须在所有业务脚本之前加载）
+/* v69 引擎能力闸门（classic script，必须在所有业务脚本之前加载）
  *
  * 背景：华为 M6（Android 10 / Chrome 114 / Mali-G76）的 WebGL2 完全正常，
  * 但 WebGPU 只有 API 没有可用 adapter（requestAdapter() → null）。
- * 而编辑器引擎（index.js）硬编码 deviceTypes:['webgpu']，adapter 缺失时
- * 会退到 WebGL2 设备，随后在 StorageBuffer 上撞 `createBufferImpl is not a
- * function`（WebGL 设备没实现该方法），异常冒到 bundle 末尾的 catch：
+ * v66 时引擎硬编码 deviceTypes:['webgpu']，adapter 缺失就会在 StorageBuffer 上
+ * 撞 `createBufferImpl is not a function`，异常冒到 bundle 末尾的 catch：
  *     document.body.replaceChildren(#startup-error)
  * 于是整个 App 被一行提示替换——图片/视频/音频工作台明明不依赖引擎，也一起没了。
  *
  * 本文件做两件事：
- *   1) 启动前探测 WebGPU 适配器；拿不到就【不加载引擎】，body 保持完整，
- *      首页 / 图片 / 视频 / 音频全部照常可用，只把 3D 标记为不可用。
+ *   1) 启动前探测 WebGPU 适配器。
+ *      v69 起引擎已支持 WebGL2 兜底（deviceTypes:['webgpu','webgl2']），
+ *      所以**没有 WebGPU 但有 WebGL2 时仍然加载引擎**，3D 走 WebGL2 桥。
+ *      只有连 WebGL2 都没有时，才【不加载引擎】，body 保持完整，
+ *      首页 / 图片 / 视频 / 音频照常可用，只把 3D 标记为不可用。
  *   2) 探测拿不准（超时）时乐观加载，由 projects-ui 的救援观察器兜底。
  *
  * 注意：这里刻意用 ES5 语法 + try/catch，能力探测脚本自己不能因为语法崩掉。
@@ -26,9 +28,36 @@
         reason: '',            // 人话原因，UI 直接展示
         detail: '',            // 技术细节，写日志/诊断
         adapterInfo: null,
+        backend: 'unknown',    // webgpu | webgl2 | none
         engineState: 'pending' // pending | loading | loaded | failed | skipped
     };
     window.__engineGate = state;
+
+    /* ---------- WebGL2 可用性（v69：WebGL2 兜底的前提） ---------- */
+
+    function hasWebGL2() {
+        try {
+            var cv = document.createElement('canvas');
+            var gl = cv.getContext('webgl2');
+            if (!gl) return false;
+            var lose = gl.getExtension('WEBGL_lose_context');
+            if (lose) lose.loseContext();
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /* WebGPU 拿不到时统一走这里：有 WebGL2 就放行（走桥），没有才判定不可用 */
+    function finishNoWebGPU(reason, detail) {
+        if (hasWebGL2()) {
+            state.backend = 'webgl2';
+            log('无 WebGPU，改走 WebGL2 渲染桥');
+            finish(true, '', detail + '；已切换 WebGL2 渲染桥');
+            return;
+        }
+        finish(false, reason, detail + '；且 WebGL2 也不可用');
+    }
 
     function finish(supported, reason, detail) {
         if (state.probed) return;
@@ -104,8 +133,8 @@
 
     function probe() {
         if (!navigator.gpu) {
-            finish(false,
-                '本机不支持 WebGPU，三维导演台无法运行',
+            finishNoWebGPU(
+                '本机不支持 WebGPU，也没有可用的 WebGL2，三维导演台无法运行',
                 'navigator.gpu 不存在');
             return;
         }
@@ -127,7 +156,7 @@
             clearTimeout(timer);
             if (settled) return;
             settled = true;
-            finish(false,
+            finishNoWebGPU(
                 '本机 WebGPU 不可用，三维导演台无法运行',
                 'requestAdapter 抛错: ' + String((e && e.message) || e));
             return;
@@ -146,8 +175,8 @@
             if (settled) return;
             settled = true;
             if (!adapter) {
-                finish(false,
-                    '本机显卡未提供 WebGPU 适配器，三维导演台无法运行',
+                finishNoWebGPU(
+                    '本机显卡未提供 WebGPU 适配器，且 WebGL2 也不可用，三维导演台无法运行',
                     'requestAdapter() 返回 null');
                 return;
             }
@@ -168,16 +197,16 @@
             }
             rd.then(function (dev) {
                 if (dev) finish(true, '', 'adapter + device 均可用');
-                else finish(false, '本机 WebGPU 无法创建设备，三维导演台无法运行', 'requestDevice() 返回 null');
+                else finishNoWebGPU('本机 WebGPU 无法创建设备，三维导演台无法运行', 'requestDevice() 返回 null');
             }, function (e) {
-                finish(false, '本机 WebGPU 无法创建设备，三维导演台无法运行',
+                finishNoWebGPU('本机 WebGPU 无法创建设备，三维导演台无法运行',
                     'requestDevice 失败: ' + String((e && e.message) || e));
             });
         }, function (e) {
             clearTimeout(timer);
             if (settled) return;
             settled = true;
-            finish(false,
+            finishNoWebGPU(
                 '本机 WebGPU 不可用，三维导演台无法运行',
                 'requestAdapter 失败: ' + String((e && e.message) || e));
         });
