@@ -136,3 +136,44 @@ preparePick / finishPick / reduceDepth / reportStochasticFrame / footprintInters
 4. 通过后再决定是否删 `viewer3d.js`、是否保留画笔刷选。
 
 风险点已列全：起不来的只有 `calcBound`，编辑能力缺失的只有 compute 那 5 个算子。
+
+---
+
+## 8. Spike 1 结果（2026-11-15 已跑，**通过**）
+
+> 老板批准「试试 spike1，保留原本 3D 导演台，只把渲染适配层按机器适配」。
+> 验证脚本：`temp/spike1/`（`index.html` + `spike1.mjs` + `run.cjs`，独立于 app 工程，未改任何正式代码）。
+> 环境：headless Edge + `--use-angle=swiftshader`，**强制 `deviceTypes: ['webgl2']`**。
+
+### 断言与结果
+
+| 断言 | 结果 |
+|---|---|
+| 拿到的是 WebGL2 设备、不是 WebGPU | ✅ `deviceType=webgl2 isWebGL2=true isWebGPU=false`，`maxTextureSize=8192` |
+| 引擎自带 PLY 解析器能加载真实二进制 PLY | ✅ `asset loaded resource=GSplatResource` |
+| **legacy gsplat 在 WebGL2 上走纹理排序路径** | ✅ `unified=false` → `orderTexture=true`、`orderBuffer=false`、`sorter=true` |
+| 真的渲染出泼溅（不是空跑） | ✅ 39 帧、876×608、**colorful 像素 70,682** |
+| 页面零异常 | ✅ `page exceptions: 0` |
+| 截图肉眼确认 | ✅ 彩色高斯球清晰可见（`temp/spike1-shot.png`） |
+
+### 顺带确认的三个能力事实（决定了桥怎么写）
+
+| 探测 | 结果 | 含义 |
+|---|---|---|
+| `new StorageBuffer(device, 64)` | ❌ **THROW `graphicsDevice.createBufferImpl is not a function`** | 这就是 v66 崩机的真因，WebGL2 上无解 |
+| `device.createBufferImpl` / `getCommandEncoder` | ❌ **MISSING** | WebGL2 设备根本没这两个方法，纯 shim 无从下手 |
+| `new Shader({ cshader: WGSL compute })` | ⚠ **ok（不报错）** | **危险**：compute 着色器对象创建是惰性的，要到 dispatch 才炸。所以桥不能靠「创建时抛错」来兜底，必须**根本不构造** compute pass |
+| `new Shader({ vshader/fshader: GLSL })` | ✅ ok | 桥的 GLSL 着色器有着落 |
+
+### 结论
+
+**桥梁内核成立**：WebGL2 上显示泼溅不需要我们重写渲染器——引擎的 legacy `GSplatInstance`
+（R32U orderTexture + Worker CPU 排序）本身就在 WebGL2 上工作，实测 39 帧 7 万彩色像素。
+
+桥的工作因此收敛为两件明确的事：
+
+1. **绕开 StorageBuffer**：`GaussianInstances` 三个镜像改 CPU 数组 + flush 上传纹理（~80 行）；
+   `DataProcessor` 的 5 个 compute 算子在无 WebGPU 时改成 no-op / CPU 实现，**绝不在 WebGL2 上 new 它们**。
+2. **把 per-gaussian palette 注入 GLSL**：拿引擎 `gsplatUncompressedVS` 打底加三张纹理（~900–1300 行）。
+
+下一步 = Spike 2（palette/flags 纹理接进去，证明「整层拖动 + 选中高亮」在 WebGL2 成立）。
