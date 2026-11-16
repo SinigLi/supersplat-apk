@@ -444,9 +444,16 @@ var AV_CSS_V53 = [
         if (!f) return Promise.resolve(null);
         if (S.codec[f.name]) return Promise.resolve(S.codec[f.name]);
         var cap = window.Capacitor;
-        var p = (cap && cap.Plugins && cap.Plugins.MediaServer) || null;
-        if (!p || !p.probeCodec || !S.meta || !S.meta.folderUri) return Promise.resolve(null);
-        return p.probeCodec({ uri: S.meta.folderUri, name: f.name }).then(function (r) {
+        /* v72：probeCodec 在 MediaTranscode 插件上，不在 MediaServer 上。
+         * v68 起这里写的是 MediaServer.probeCodec —— 那个方法从来不存在，
+         * 于是 `!p.probeCodec` 恒真、直接返回 null，10bit 闸门一次都没触发过，
+         * 真机只能看到 <video> 自己的 code=4（2026-11-16 真机日志实证）。
+         * 现在两个插件都试：优先 MediaTranscode，回退 MediaServer（兼容旧包）。 */
+        var p = (cap && cap.Plugins && cap.Plugins.MediaTranscode) || null;
+        if (!p || !p.probeCodec) p = (cap && cap.Plugins && cap.Plugins.MediaServer) || null;
+        var baseUri = S.meta.clipsUri || S.meta.folderUri;
+        if (!p || !p.probeCodec || !S.meta || !baseUri) return Promise.resolve(null);
+        return p.probeCodec({ uri: baseUri, name: f.name }).then(function (r) {
             if (!r || !r.ok) return null;
             S.codec[f.name] = r;
             return r;

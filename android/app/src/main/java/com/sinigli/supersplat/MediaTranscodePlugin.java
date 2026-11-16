@@ -596,7 +596,9 @@ public class MediaTranscodePlugin extends Plugin {
     private Uri resolveDocInTree(Uri tree, String name) {
         Uri cached = index.get(name);
         if (cached != null) return cached;
-        String docId = DocumentsContract.getTreeDocumentId(tree);
+        /* v72：clipsUri 可能是 document URI 也可能是 tree URI，getDocumentId
+         * 对两种形态都能正确取 ID，不需要判断类型。 */
+        String docId = DocumentsContract.getDocumentId(tree);
         Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId);
         Cursor c = null;
         try {
