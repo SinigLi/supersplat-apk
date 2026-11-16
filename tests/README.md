@@ -35,7 +35,40 @@ node tests/storyboard.test.cjs       # 分镜 CSV
 node tests/director.mjs              # 16 项
 node tests/v13.mjs                   # 15 项
 node tests/project.mjs               # 27 项
+
+# 3D / WebGL2（改引擎或导演台必跑）
+node tests/probe-v69-webgl2.mjs      # 11 项 · WebGL2 桥：启动/泼溅/排序/导演台
+node tests/probe-v71.mjs             # 20 项 · v71：pickSplat/网格坐标轴/转码诊断/clips
 ```
+
+> ⚠️ **浏览器类脚本不要并行跑**：端口/CDP 端口写死在脚本里，会撞。
+> 它们自己起 `tools/dev/staticsrv.cjs` + headless Edge，需要 Edge 已安装。
+> `probe-vXX.mjs`（ESM）走 `tests/lib/net-reclaim.mjs` 抢占端口后启动；`probe-vXX.cjs` 端口写死。
+
+## 版本探针索引（按版本倒序）
+
+| 探针 | 项数 | 覆盖 |
+|---|---|---|
+| `probe-v69-webgl2.mjs` | 11 | **WebGL2 桥**：无 adapter 下启动、泼溅建 GSplatInstance、worldLayer 归属、CPU 排序、样本数据 nan=0、人偶/整层变换 |
+| `probe-v71.mjs` | 20 | **v71 四项**：桥层 pickSplat 命中点、drawLine 计数、转码诊断方法、clips/ 布局 hasClips |
+| `probe-v69.cjs` | 47 | marks 字段改名双向、旧组名迁移与并集、normalize 丢返回值、原生父目录探测、上一级自动打点 |
+| `probe-v68.cjs` | 55 | 场景工作台（摆放+写回）、10bit 探测/转码接线、返回页队列清理、viewer3d 工具 |
+| `probe-v67.cjs` | 41 | 3D 只读查看器（方案 B）：viewer.html 接线、spz wasm 转 PLY、projects-ui 路由到查看器 |
+| `probe-v66.cjs` | 42 | 三维能力闸门三场景：WebGPU 正常 / adapter null / 无 navigator.gpu |
+| `probe-v65.cjs` | 34 | 启动诊断层：boot-diag 首位加载、纯 ES5、startup-error 面板、复制全部 |
+| `probe-v64.cjs` | 50 | 分卷阈值 500/450MB + canSplit 三态 |
+| `probe-v63.cjs` | 37 | 分卷机制与卷名规则 |
+| `probe-v62.cjs` / `v62-dom.mjs` | 27 + 22 | — |
+| `probe-v61a..f.cjs` | 各 3–13 | 卡组导入/内嵌头像/内嵌原图/借图读 IDB |
+| `probe-v60b..j` / `v60e..j-dom` | 各 5–12 | 打标工作台排布、删除按钮、okbar 定位 |
+| `probe-v53b..v53y` | 各 1–5 | 角色打标 M1–M5：卡片 CRUD、char_ref、目标帧、抽帧、遮罩导出 |
+| `probe-v49.cjs` | — | 整车回归（禁止全文关键字匹配的由来，见「写新探针的约定」第 1 条） |
+| `probe-vXX.mjs`（v22a–v28b） | 各 4–16 | 导演台历代：机位模型、黄点、密度中心、停靠区避让 |
+| `probe-navmode.cjs` | — | 视口导航模式（游戏/模型） |
+| `probe-empty-project.mjs` | — | 空工程「新建→返回→再打开」闭环 |
+| `probe-v30..v45` | 各 8–16 | 各版本 UI/交互验收 |
+
+> 完整清单以 `tests/` 目录为准；上表只列有明确定位意义的部分。
 
 ## 卡组 / 导入导出相关（改动这些必跑）
 
@@ -68,6 +101,20 @@ node tests/v61f-dom.mjs          # 真机链路复现 8 项         ← 现行
 | `window.__cardgroupsTest.importForTest(data, imgMap)` | cardgroups-ui.js | 绕过 file input 直接走 `applyImport`（v61f 起返回 Promise） |
 | `window.__cardgroupsTest.mergeFulls(data, fulls)` | cardgroups-ui.js | 导出前合并 IDB 原图 |
 | `window.CC` / `window.CCG` / `window.CGFull` | charcards.js / cardgroups.js / cardgroups-full.js | 数据层与存储层 |
+| `window.__MOYUTAI_DEBUG_LOGS` | cardgroups-ui.js | 卡组导入诊断日志环形缓冲（v61c 起） |
+| `window.__projectLogic` | projects.js | 工程存储纯逻辑（新建/保存/读取） |
+| `window.__projects` / `window.__projectsToast` | projects-ui.js | 工程列表页入口 / toast 探针 |
+| `window.__groups` | groups.js | 工程分组逻辑 |
+| `window.__extract` | extract.js | 解压中心 |
+| `window.__img` / `window.__imgLogic` / `window.__imgOps` | img-ui.js / img-ops.js | 图片模式 UI / 逻辑 / 图层算子 |
+| `window.__av` / `window.__avLogic` | av-ui.js | 视频工作台 UI / 逻辑 |
+| `window.__charcards` / `window.__storyboard` | av-ui.js | 卡组与分镜 CSV 的挂载点 |
+| `window.__director` | dock.js / projects-ui.js | 导演台主对象（摆人偶/加道具/相机/快照） |
+| `window.__renderPuppetList` | dock.js | 强制重绘人偶列表 |
+| `window.__engineGate` / `window.__NO_3D` | engine-gate.js / projects-ui.js | 引擎闸门状态 / 无 3D 标记 |
+| `window.__NAV_HOOK` | projects-ui.js | 视口导航模式钩子（navmode 探针） |
+| `window.__MOYUTAI_RELEASE` | projects-ui.js | 版本号标记（探针核对当前版本） |
+| `window.__v3` | viewer3d.js | 独立 3D 查看器入口（v67 方案 B） |
 
 新增钩子请在对应文件的注释里写一句用途，并在本表补一行。
 

@@ -214,3 +214,45 @@ v29b 修复：所有 appendFile 带 `recursive:true`；迁移首块 flush 先 wr
 3. 机位下拉右侧改名/重定位按钮缩小一半（7.5rem → 3.75rem，实测 67px）
 4. 底栏组名「游标相关」改回「游标」（三钮与 act=cursorgrp 不变）
 5. 附带修复：条子隐藏后左右停靠区仍避让幽灵条的旧账（零矩形时清 --sd-bar-bottom）
+
+---
+
+## 2026-11-15 真机反馈（M6，v70 实测）· v71 处理
+
+老板原话（拆成四条）：
+
+> 可以，强无敌啊，导入浏览放置模型啥的都没问题了，就是泼溅选点放置游标选不了，然后网格和坐标轴没有显示出来。然后之前那个视频解码10bit转码8bit的问题还没有解决？我现在还是打不开视频工程，然后现在加载视频的时候其实你如果检测到文件夹下面有分镜清单.csv和clips文件夹，你可以自动把这个clips文件夹的视频和分镜清单加载了。你现在是把分镜清单.csv同目录下的第八集片段_无字幕.mp4加载了，这个要修改一下。
+
+### B-2026-11-15-1 ｜ 泼溅选点 / 放置游标点不动 —— **已修复待验（v71）**
+
+- **现象**：选点模式下点击泼溅表面没有任何反应，游标放不下去；导入、浏览、放置模型都正常。
+- **根因**：放置坐标来自 `camera.intersectMany`，它靠 `picker.prepareDepth` 渲染一个深度 MRT pass 再读回 normalized depth。那条 pass 是编辑器 WebGPU 的 projected-splat 管线（storage buffer + compute 投影），**WebGL2 下整条不执行**，读回全空 → 拿不到命中点。
+- **修法**：新增 `WebGLSplatRenderer.pickSplat()`，CPU 光线 × 泼溅椭球求交；`camera.intersectMany` 在 `scene.webglFallback` 时路由过去，返回形状与原来一致（`{splat, position, distance, depth}`），上层 `director.snapPosition` 无需改动。
+- **踩的坑**：椭球求交的二次方程里把 `(射线起点 - 球心)` 写成了 `(球心 - 起点)`，解出负根 → **静默失效**（不报错，全 miss）。修正后 81 点采样命中率 18 → 45，命中点表面误差 0.012。
+- **验证**：`tests/probe-v71.mjs` 撒 9×9 采样，断言命中数 > 0 且命中点归一化椭球距离 ≈ 1。
+
+### B-2026-11-15-2 ｜ 网格和坐标轴没显示 —— **已修复待验（v71）**
+
+- **根因**：不是回归，是 v69 的**主动跳过**。`infinite-grid` 是全 WGSL 写的（12KB，数组常量 + `texture_2d` + `dpdx`），WebGL2 下编译直接报 `'undefined' : syntax error`；为了先让 App 能启动，v69 在 `!device.isWebGPU` 时把 `visible=false` 并 return。
+- **修法**：老板确认「做一版简单的即可」。WebGL2 下改用引擎的 `app.drawLine` 批次画固定跨度线框网格（20×20 单位、1 单位一格、每 5 格加粗）+ R/G/B 三色坐标轴，不依赖任何 shader。
+- **代价**：没有「无限延伸」和屏幕空间抗锯齿，格子随相机远近自然变密/变疏。
+- **验证**：探针拦截 `app.drawLine` 计一帧提交量（实测 138 条），并断言红/绿/蓝三种轴色都出现。
+
+### B-2026-11-15-3 ｜ 10bit 视频打不开 / 转码没解决 —— **诊断已加，方案待定（v71）**
+
+- **现状**：素材是 H.264 High 10 / yuv420p10le，Android 硬件 AVC 解码器只保证 8bit → MediaCodec 拒绝，`<video>` 报 `MEDIA_ERR_SRC_NOT_SUPPORTED(4)`。v68 已加探测与转码入口，但转码在 M6 上没成功，且此前只有一句 toast，看不到底层原因。
+- **v71 做的**：`MediaTranscode.diagnostics()` —— ffmpeg-kit 版本、`-encoders`/`-decoders` 过滤后的清单、`hasLibx264`/`hasMediaCodecH264` 布尔、上一条执行的完整命令、上一条失败输出尾部。长按视频工作台顶栏 🔧 弹出，同时写 `DebugLog`。
+- **已确认的硬事实**：AAR 内 `libavcodec.so` 里有 `h264_mediacodec` 与 `hevc_mediacodec`，**没有 libx264**（ffmpeg-kit-video 是 LGPL 变体，软件 H.264 编码器属 GPL，未编入）。所以**软件编码这条路不存在**，转码只能靠设备硬件编码器。
+- **待定**：等老板发回诊断结果。若 `hasMediaCodecH264=false` 或硬件编码器拒收 10bit 输入，则转码这条路在该机型不可行，需换方案（全量 GPL 包 / 换播放内核 / 跑批预处理）。
+
+### B-2026-11-15-4 ｜ 加载了错误的 mp4（未识别 clips/ 子目录）—— **已修复待验（v71）**
+
+- **现象**：工程目录里有 `分镜清单.csv` 和 `clips/`，App 却把 `分镜清单.csv` 同目录下的 `第八集片段_无字幕.mp4` 当成工程片段加载了。
+- **根因**：两处都只看「所选目录的直接子文件」。① `MediaServerPlugin.listFiles` 跳过所有 `dir`，媒体全在 `clips/` 里就一个都列不到，反而捞到父目录里的旁支 mp4；② `findSiblingCsv` 只会往**上一级**找，而老板的 CSV 就在所选目录里。
+- **修法**：
+  - 原生 `listFiles` 识别 `clips/`，回传 `hasClips` / `clipsUri` / `clipsName` / `clipsCount`；
+  - 新增 `listFilesIn({uri})` 列任意 document 子目录的媒体；
+  - `MediaServer.start` 接受 `subUri`，索引子目录（否则页面按文件名请求会 404）；
+  - `findSiblingCsv` 改为**先找所选目录自己**（返回 `where:'self'`），没有再按 rootId 反推父目录（`where:'parent'`）；
+  - JS `refreshFolder`：`hasClips && clipsCount>0` 就改列 `clips/`，并 toast「已自动加载 clips/ 里的 N 个片段」；`startServer` 带上 `subUri`。
+- **验证**：无头环境没有 Capacitor 桥，改为静态校验源码标记（`listFilesIn`/`hasClips`/`subUri`/JS 侧 `hasClips` 优先逻辑），真机需再验一轮。

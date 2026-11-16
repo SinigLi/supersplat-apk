@@ -227,3 +227,82 @@ function thumbApply(box, jpeg) {
   4. **可见优先**：只给视口内的条目排解码，滚动时再补（需 IntersectionObserver）。
 - **不建议**：预生成缩略图到媒体目录（会污染用户的素材文件夹）。
 
+
+---
+
+## ISS-003：10bit H.264 素材本机打不开 / 转码未成功 —— **诊断已就绪，方案待定（v71）**
+
+- **状态**：未解决。v71 只加了诊断能力，转码本身还没跑通。
+- **设备**：HUAWEI SCM-AL09（M6，Android 10，Kirin 980）
+
+### 现象
+
+视频工程里任何片段都播不出来，`<video>` 报 `MEDIA_ERR_SRC_NOT_SUPPORTED`（code=4）。
+42KB / 1 秒的短片段同样失败，与文件大小、码率无关。
+
+### 根因（已确认）
+
+素材经 ffprobe 全部为 **H.264 High 10 / yuv420p10le / 3840×2160**。
+Android 硬件 AVC 解码器只保证 8bit 的 Baseline / Main / High profile，
+10bit 的 High10 没有硬件支持，MediaCodec 直接拒绝。
+
+注意：`canPlayType('video/mp4; codecs="avc1.6E0033"') `对 High10 返回 `"probably"`，
+**这个 API 完全不可信**。可靠判据是原生 `MediaFormat.KEY_PROFILE`
+（0x10 = High10 / 0x20 = High422 / 0x40 = High444），v68 已接入 `probeCodec`。
+
+### 转码链路（v68 建立，v71 加诊断）
+
+```
+SAF 原文件 → 缓存临时文件 → ffmpeg 软件解码 10bit
+  → MediaCodec 硬件编码 8bit → <tree>/8bit/<原名>_8bit.mp4
+```
+
+不动原素材（原地覆盖等于毁素材，SAF 覆盖写还要看 provider 脸色）。
+
+### 已确认的硬约束：**软件编码这条路不存在**
+
+解包 `libs/ffmpeg-kit-video-6.0.LTS.aar` 里的 `jni/arm64-v8a/libavcodec.so` 逐字符串扫描：
+
+| 编码器 | 是否存在 |
+|---|---|
+| `h264_mediacodec`（硬件） | ✅ 有 |
+| `hevc_mediacodec`（硬件） | ✅ 有 |
+| `libx264`（软件） | ❌ **没有** |
+| `libx265`（软件） | ❌ 没有 |
+| `libopenh264` | ❌ 没有 |
+
+原因：`ffmpeg-kit-video` 是 **LGPL** 变体，libx264 / libx265 属 GPL，没有编进去。
+所以转码只能依赖设备的硬件编码器，没有软件兜底。
+
+### v71 新增：`MediaTranscode.diagnostics()`
+
+长按视频工作台顶栏的 🔧 触发，同时写入 `DebugLog`（🐞 按钮可发回）。返回：
+
+| 字段 | 内容 |
+|---|---|
+| `ffmpegKitVersion` | ffmpeg-kit 版本 |
+| `device` / `sdkInt` / `abis` | 机型信息 |
+| `encoders` / `decoders` | `-encoders`/`-decoders` 里筛出含 h264/hevc/mediacodec 的行 |
+| `hasLibx264` / `hasMediaCodecH264` / `hasHevcMediaCodec` | 布尔快判 |
+| `lastCommand` | 上一条实际执行的 ffmpeg 命令 |
+| `lastError` / `lastOutput` | 上一条失败原因与输出尾部 |
+
+### 下一步（等诊断结果）
+
+| 诊断结果 | 结论 | 可选方案 |
+|---|---|---|
+| `hasMediaCodecH264=true` 但转码仍失败 | 硬件编码器拒收某些参数（4K / 码率 / profile） | 调参数重试；降分辨率；换 `hevc_mediacodec` |
+| `hasMediaCodecH264=false` | 该机型没有可用硬件 AVC 编码器 | 转码不可行，只能换路 |
+| 解码阶段就失败 | ffmpeg 侧解不开 10bit | 检查解码器注册；或换全量 GPL 包 |
+
+**换路备选（都不便宜，需老板拍板）**：
+
+1. **全量 GPL 版 ffmpeg-kit**：带 libx264，软件编码 8bit。代价：APK 再涨 30MB+，且 GPL 传染（整个 App 需按 GPL 分发）。
+2. **PC 端预处理**：素材在电脑上先批量转 8bit 再拷进手机。零 App 改动，但每次换素材都要多一步。
+3. **换播放内核**：不走 `<video>`，改用 WebCodecs 或第三方软解库。工作量大，且 4K 软解在 Kirin 980 上大概率跑不动。
+
+### 相关文档
+
+- `docs/RELEASE.md` v68 / v71 行
+- `docs/BACKLOG.md` B-2026-11-15-3
+- 源码：`android/app/src/main/java/com/sinigli/supersplat/MediaTranscodePlugin.java`
