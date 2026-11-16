@@ -368,21 +368,101 @@ public class MediaServerPlugin extends Plugin {
             List<JSObject> children = listChildren(treeUri);
             JSArray arr = new JSArray();
             int n = 0;
+            String clipsUri = null;
+            String clipsName = null;
+            int clipsCount = 0;
+
+            for (JSObject o : children) {
+                if (o.optBoolean("dir")) {
+                    /* v71：老板的分镜工程布局 = <父目录>/clips/*.mp4 + <父目录>/分镜清单.csv。
+                     * 选中父目录时，媒体全在 clips/ 里，直接列父目录只能捞到别的 mp4
+                     * （实测捞到了「第八集片段_无字幕.mp4」，那不是工程片段）。
+                     * 这里顺手把 clips/ 也列出来，让 JS 层自己决定用哪一份。 */
+                    String dname = o.optString("name", "");
+                    if (dname.equalsIgnoreCase("clips") && o.has("uri")) {
+                        clipsUri = o.optString("uri");
+                        clipsName = dname;
+                        clipsCount = countMediaIn(treeUri, dname);
+                    }
+                    continue;
+                }
+                String name = o.optString("name", "");
+                if (!isMediaName(name)) continue;
+                arr.put(mediaEntry(o, name));
+                n++;
+            }
+
+            JSObject res = new JSObject();
+            res.put("files", arr);
+            res.put("count", n);
+            /* 有 clips/ 时一并返回：JS 层据此优先用子目录里的媒体 */
+            if (clipsUri != null) {
+                res.put("hasClips", true);
+                res.put("clipsUri", clipsUri);
+                res.put("clipsName", clipsName);
+                res.put("clipsCount", clipsCount);
+            }
+            call.resolve(res);
+        } catch (Exception e) {
+            call.reject("列目录失败: " + e.getMessage());
+        }
+    }
+
+    /** 媒体扩展名判定（与 MIME 白名单一致） */
+    private boolean isMediaName(String name) {
+        String lower = name.toLowerCase();
+        int dot = lower.lastIndexOf('.');
+        if (dot < 0) return false;
+        return MIME.containsKey(lower.substring(dot + 1));
+    }
+
+    private JSObject mediaEntry(JSObject src, String name) {
+        JSObject f = new JSObject();
+        f.put("name", name);
+        f.put("size", src.optLong("size"));
+        f.put("docId", src.optString("docId"));
+        /* v59k：带上 document uri（readBytes 需要） */
+        if (src.has("uri")) f.put("uri", src.optString("uri"));
+        return f;
+    }
+
+    /** 数一数某个子目录里有多少媒体文件（只用于 UI 提示，不读内容） */
+    private int countMediaIn(Uri treeUri, String dirName) {
+        try {
+            List<JSObject> kids = listChildren(treeUri);
+            for (JSObject o : kids) {
+                if (!o.optBoolean("dir")) continue;
+                if (!dirName.equalsIgnoreCase(o.optString("name", ""))) continue;
+                Uri sub = Uri.parse(o.optString("uri"));
+                List<JSObject> subKids = listChildrenRaw(sub);
+                int c = 0;
+                for (JSObject k : subKids) {
+                    if (k.optBoolean("dir")) continue;
+                    if (isMediaName(k.optString("name", ""))) c++;
+                }
+                return c;
+            }
+        } catch (Exception ignore) { }
+        return 0;
+    }
+
+    /* ---------- v71：列任意 document 目录的媒体（clips/ 用） ----------
+     * listFiles 只认 tree root（docUriForTree 取的是树根），没法列子目录。
+     * 这里直接用 document uri 的 docId 列它自己的子项。 */
+    @PluginMethod
+    public void listFilesIn(PluginCall call) {
+        String uriStr = call.getString("uri");
+        if (uriStr == null || uriStr.isEmpty()) { call.reject("缺 uri"); return; }
+        try {
+            Uri docUri = Uri.parse(uriStr);
+            List<JSObject> children = listChildrenRaw(docUri);
+            JSArray arr = new JSArray();
+            int n = 0;
             for (JSObject o : children) {
                 if (o.optBoolean("dir")) continue;
                 String name = o.optString("name", "");
-                String lower = name.toLowerCase();
-                int dot = lower.lastIndexOf('.');
-                if (dot < 0) continue;
-                String ext = lower.substring(dot + 1);
-                if (!MIME.containsKey(ext)) continue;
-                JSObject f = new JSObject();
-                f.put("name", name);
-                f.put("size", o.optLong("size"));
-                f.put("docId", o.optString("docId"));
-                /* v59k：带上 document uri（readBytes 需要）；listChildren 已填 */
-                if (o.has("uri")) f.put("uri", o.optString("uri"));
-                arr.put(f);
+                if (!isMediaName(name)) continue;
+                arr.put(mediaEntry(o, name));
                 n++;
             }
             JSObject res = new JSObject();
@@ -390,16 +470,19 @@ public class MediaServerPlugin extends Plugin {
             res.put("count", n);
             call.resolve(res);
         } catch (Exception e) {
-            call.reject("列目录失败: " + e.getMessage());
+            call.reject("列子目录失败: " + e.getMessage());
         }
     }
 
-    /* ---------- v69：所选目录「同级」找分镜清单.csv ----------
-     * 老板报的 bug：选 clips/ 时，上一级目录里的 分镜清单.csv 应该自动导入。
-     * SAF 的 tree 授权不含父目录，所以不能直接读 ../分镜清单.csv。
-     * 这里换个思路：授权树里同样拿得到 rootId（比如 primary:Movies/项目），
-     * 父目录就是 rootId 去掉最后一段。绝大多数外置存储 Shared storage
-     * 下的目录都能这么反推；推不出来就返回 found=false，JS 层再弹单文件选择器兜底。 */
+    /* ---------- v69/v71：找分镜清单.csv ----------
+     * 老板报的 bug（2026-11-15）：选中的工程目录里同时有 clips/ 和 分镜清单.csv，
+     * 引擎却把「分镜清单.csv 同目录下别的 mp4」当成了工程素材。
+     *
+     * 正确顺序：
+     *   ① 先看所选目录**自己**里有没有 CSV（老板的目录就是这样，v71 新增）
+     *   ② 没有再按 rootId 反推上一级（v69 行为：用户选的是 clips/ 时的兜底）
+     * SAF 的 tree 授权不含父目录，②只能靠 rootId 反推；推不出来返回 found=false，
+     * JS 层再弹单文件选择器兜底。 */
     @PluginMethod
     public void findSiblingCsv(PluginCall call) {
         String uriStr = call.getString("uri");
@@ -408,6 +491,24 @@ public class MediaServerPlugin extends Plugin {
         res.put("found", false);
         try {
             Uri treeUri = Uri.parse(uriStr);
+            String want = call.getString("name");
+            if (want == null || want.isEmpty()) want = "分镜清单.csv";
+
+            /* ① 所选目录自己 */
+            try {
+                for (JSObject o : listChildren(treeUri)) {
+                    if (o.optBoolean("dir")) continue;
+                    String nm = o.optString("name", "");
+                    if (!nm.equalsIgnoreCase(want)) continue;
+                    res.put("found", true);
+                    res.put("name", nm);
+                    res.put("uri", o.optString("uri"));
+                    res.put("where", "self");
+                    call.resolve(res);
+                    return;
+                }
+            } catch (Exception ignore) { }
+
             String rootId = DocumentsContract.getTreeDocumentId(treeUri);
             String authority = treeUri.getAuthority();
             if (authority == null || rootId == null) { call.resolve(res); return; }
@@ -425,8 +526,6 @@ public class MediaServerPlugin extends Plugin {
                 call.resolve(res);
                 return;
             }
-            String want = call.getString("name");
-            if (want == null || want.isEmpty()) want = "分镜清单.csv";
             for (JSObject o : kids) {
                 if (o.optBoolean("dir")) continue;
                 String nm = o.optString("name", "");
@@ -434,6 +533,7 @@ public class MediaServerPlugin extends Plugin {
                 res.put("found", true);
                 res.put("name", nm);
                 res.put("uri", o.optString("uri"));
+                res.put("where", "parent");
                 break;
             }
             if (!res.optBoolean("found")) res.put("parentId", parentId);
@@ -480,15 +580,24 @@ public class MediaServerPlugin extends Plugin {
             rootUri = uriStr;
             index.clear();
             totalBytes = 0;
-            List<JSObject> children = listChildren(treeUri);
+            /* v71：老板的工程把片段放在 clips/ 子目录里。JS 会把 clipsUri 传进来，
+             * 这时索引子目录自己的子项，媒体服务器才找得到那些文件
+             * （否则页面按文件名请求会 404，只有父目录里的旁支 mp4 能播）。 */
+            String subUriStr = call.getString("subUri");
+            List<JSObject> children;
+            Uri scanBase;
+            if (subUriStr != null && !subUriStr.isEmpty()) {
+                scanBase = Uri.parse(subUriStr);
+                children = listChildrenRaw(scanBase);
+            } else {
+                scanBase = treeUri;
+                children = listChildren(treeUri);
+            }
             for (JSObject o : children) {
                 if (o.optBoolean("dir")) continue;
                 String name = o.optString("name", "");
-                String lower = name.toLowerCase();
-                int dot = lower.lastIndexOf('.');
-                if (dot < 0) continue;
-                if (!MIME.containsKey(lower.substring(dot + 1))) continue;
-                index.put(name, docUriForId(treeUri, o.optString("docId")));
+                if (!isMediaName(name)) continue;
+                index.put(name, Uri.parse(o.optString("uri")));
                 totalBytes += o.optLong("size");
             }
             if (index.isEmpty()) { call.reject("目录里没有可播放的媒体文件"); return; }

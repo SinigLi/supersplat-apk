@@ -65,6 +65,11 @@ public class MediaTranscodePlugin extends Plugin {
     private final Map<String, Uri> index = new ConcurrentHashMap<>();
     private volatile Uri treeUri;
     private final AtomicInteger running = new AtomicInteger(0);
+    /** v71：最近一次转码失败的原因（诊断用；此前只有一句 toast，看不到底层） */
+    private volatile String lastError = "";
+    /** v71：最近一次实际执行的 ffmpeg 命令行 + 尾部输出（诊断用） */
+    private volatile String lastCommand = "";
+    private volatile String lastOutput = "";
     private volatile String cancelFlag = null;
 
     private ContentResolver cr() { return getContext().getContentResolver(); }
@@ -386,9 +391,16 @@ public class MediaTranscodePlugin extends Plugin {
                         String out = safeOutput(session);
                         lastErr = (rc == null ? "unknown" : rc.toString()) +
                                 (out != null ? " | " + tail(out, 240) : "");
+                        /* v71：把完整命令与尾部输出留下来，diagnostics() 能读回 */
+                        lastCommand = joinArgs(attempts[ai]);
+                        lastOutput = out == null ? "" : tail(out, 3000);
                     }
 
                     if (!produced) {
+                        lastError = "转码失败：" + (lastErr == null ? "未知原因" : lastErr);
+                        StringBuilder tailSb = new StringBuilder(lastErr);
+                        if (lastCommand != null && lastCommand.length() > 0) tailSb.append(" || cmd: ").append(lastCommand);
+                        lastError = tailSb.toString();
                         failOnUi(call, "转码失败：" + (lastErr == null ? "未知原因" : lastErr));
                         return;
                     }
@@ -446,6 +458,104 @@ public class MediaTranscodePlugin extends Plugin {
             r.put("ffmpegLoaded", false);
         }
         call.resolve(r);
+    }
+
+    /* ---------- v71：全量诊断（老板 2026-11-15 要求「打印日志看尽量多信息」）----------
+     *
+     * 转码在 M6 上没成功，但此前只有一句 fail 消息，看不出到底卡在哪。
+     * 这个方法一次性把「环境 / ffmpeg 版本 / 可用编码器 / 可用解码器 /
+     * 容器 / 最近的失败原因」全吐出来，日志按钮能直接发回给我。
+     *
+     * 关键判断：
+     *  · ffmpeg-kit-video（LGPL）**不含 libx264**，所以软件 H.264 编码不可用；
+     *    只能走 h264_mediacodec（硬件）。如果这里 encoders 里没有
+     *    h264_mediacodec，那这台机器的转码就是不可能完成的。
+     */
+    @PluginMethod
+    public void diagnostics(final PluginCall call) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                JSObject r = new JSObject();
+                try {
+                    r.put("ffmpegKitVersion", com.arthenica.ffmpegkit.FFmpegKitConfig.getVersion());
+                } catch (Throwable t) {
+                    r.put("ffmpegKitVersion", "unavailable: " + t);
+                }
+                r.put("sdkInt", android.os.Build.VERSION.SDK_INT);
+                r.put("device", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
+
+                StringBuilder abis = new StringBuilder();
+                for (String a : android.os.Build.SUPPORTED_ABIS) {
+                    if (abis.length() > 0) abis.append(',');
+                    abis.append(a);
+                }
+                r.put("abis", abis.toString());
+
+                /* -encoders / -decoders 的完整输出（老板要的"尽量多信息"） */
+                String enc = runSync("-hide_banner", "-encoders");
+                String dec = runSync("-hide_banner", "-decoders");
+                r.put("encoders", filterLines(enc, "h264", "hevc", "mpeg4", "aac", "mediacodec"));
+                r.put("decoders", filterLines(dec, "h264", "hevc", "10"));
+                r.put("hasLibx264", enc.contains("libx264"));
+                r.put("hasMediaCodecH264", enc.contains("h264_mediacodec"));
+                r.put("hasHevcMediaCodec", enc.contains("hevc_mediacodec"));
+                r.put("encodersRaw", tail(enc, 4000));
+                r.put("decodersRaw", tail(dec, 3000));
+                r.put("lastError", lastError);
+                r.put("lastCommand", lastCommand);
+                r.put("lastOutput", lastOutput);
+                call.resolve(r);
+            }
+        }, "moyutai-tx-diag").start();
+    }
+
+    /** 同步跑一条 ffmpeg 命令，返回完整输出（诊断用，不关心成败） */
+    private String runSync(String... args) {
+        try {
+            StringBuilder cmd = new StringBuilder();
+            for (String a : args) {
+                if (cmd.length() > 0) cmd.append(' ');
+                cmd.append(a);
+            }
+            com.arthenica.ffmpegkit.FFmpegSession s =
+                    com.arthenica.ffmpegkit.FFmpegKit.execute(cmd.toString());
+            String out = s.getOutput() == null ? "" : s.getOutput();
+            return out;
+        } catch (Throwable t) {
+            return "ERROR: " + t;
+        }
+    }
+
+    /** 只留含关键字的行，避免把几十 KB 的清单全塞进桥 */
+    private String filterLines(String text, String... keys) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : text.split("\n")) {
+            String low = line.toLowerCase();
+            for (String k : keys) {
+                if (low.contains(k.toLowerCase())) {
+                    if (sb.length() > 0) sb.append('\n');
+                    sb.append(line.trim());
+                    break;
+                }
+            }
+        }
+        return sb.length() > 6000 ? sb.substring(0, 6000) : sb.toString();
+    }
+
+    private String tail(String s, int n) {
+        return s.length() <= n ? s : s.substring(s.length() - n);
+    }
+
+    /** String[] → 单行命令（诊断展示用） */
+    private String joinArgs(String[] args) {
+        if (args == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String a : args) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(a);
+        }
+        return sb.toString();
     }
 
     /* ===================== 工具 ===================== */

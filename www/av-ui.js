@@ -534,6 +534,16 @@ function build() {
         txBtn.style.display = 'none';
         txBtn.id = 'avTxBtn';
         txBtn.addEventListener('click', function () { startTranscode(); });
+        /* v71：长按 🔧 出一份转码诊断（老板 2026-11-15 要求：不确定原因就打日志）。
+         * 内容 = ffmpeg 版本 / 可用编码器解码器 / 上一条命令 / 上一条失败原因，
+         * 由具体测试决定下一步（例如这台机器根本没有 h264_mediacodec）。 */
+        var txHoldTimer = null;
+        txBtn.addEventListener('touchstart', function () {
+            txHoldTimer = setTimeout(function () { txHoldTimer = null; showTranscodeDiag(); }, 700);
+        });
+        txBtn.addEventListener('touchend', function () {
+            if (txHoldTimer) { clearTimeout(txHoldTimer); txHoldTimer = null; }
+        });
         topEl.appendChild(txBtn);
         sbBtn.addEventListener('click', function () {
             var p = ms();
@@ -1234,9 +1244,29 @@ function hasMerge(seg) {
             var names = [];
             var sizes = {};
             (r.files || []).forEach(function (f) { names.push(f.name); sizes[f.name] = f.size; });
-            S.files = L.buildFileList(names, S.meta.mode);
-            S.files.forEach(function (f) { f.size = sizes[f.name] || 0; });
-            dlog('listFiles n=' + S.files.length);
+            /* v71：老板的分镜工程布局 = <父目录>/clips/*.mp4 + <父目录>/分镜清单.csv。
+             * 选中父目录时，真正的工程片段全在 clips/ 里，直接列父目录会捞到
+             * 无关的 mp4（实测「第八集片段_无字幕.mp4」）。
+             * 原生 listFiles 已在有 clips/ 时回传 clipsUri + clipsCount，
+             * 这里只要 clips/ 里有媒体就改用它。 */
+            if (r && r.hasClips && r.clipsUri && r.clipsCount > 0 && p.listFilesIn) {
+                dlog('clips/ 命中 ' + r.clipsCount + ' 个媒体，改用子目录 ' + String(r.clipsUri).slice(0, 48));
+                S.meta.clipsUri = r.clipsUri;
+                S.meta.clipsName = r.clipsName || 'clips';
+                return p.listFilesIn({ uri: r.clipsUri }).then(function (r2) {
+                    var n2 = [];
+                    var s2 = {};
+                    (r2.files || []).forEach(function (f) { n2.push(f.name); s2[f.name] = f.size; });
+                    return { names: n2, sizes: s2, usedClips: true, clipsCount: r.clipsCount };
+                });
+            }
+            return { names: names, sizes: sizes, usedClips: false };
+        }).then(function (picked) {
+            S.meta.usedClips = !!picked.usedClips;
+            S.files = L.buildFileList(picked.names, S.meta.mode);
+            S.files.forEach(function (f) { f.size = picked.sizes[f.name] || 0; });
+            dlog('listFiles n=' + S.files.length + (picked.usedClips ? ' (from clips/)' : ''));
+            if (picked.usedClips) toast('已自动加载 clips/ 里的 ' + S.files.length + ' 个片段');
             if (!S.files.length) {
                 toast('目录里没有' + (S.meta.mode === 'audio' ? '音频' : '视频') + '文件');
             }
@@ -1262,7 +1292,10 @@ function hasMerge(seg) {
     function startServer() {
         var p = ms();
         if (!p) return Promise.reject(new Error('插件不可用'));
-        return p.start({ uri: S.meta.folderUri }).then(function (r) {
+        /* v71：片段在 clips/ 时告诉原生去索引那个子目录（否则按文件名请求会 404） */
+        var args = { uri: S.meta.folderUri };
+        if (S.meta.usedClips && S.meta.clipsUri) args.subUri = S.meta.clipsUri;
+        return p.start(args).then(function (r) {
             S.serverPort = r.port;
         });
     }
@@ -1656,6 +1689,62 @@ function hasMerge(seg) {
             if (s) s.textContent = codecBlockedText(i);
         }
         toast('10bit 素材：本机硬件解码不支持，需转 8bit');
+    }
+
+    /* ===== v71：转码诊断 =====
+     * 老板 2026-11-15：「你如果不确定什么原因，可以继续搞个包打印日记看看尽量多的信息」。
+     * 长按 🔧 调原生 diagnostics()，把 ffmpeg 版本 / 编解码器清单 / 上一条命令 /
+     * 上一条失败原因全打出来，同时写进 DebugLog（🐞 日志按钮可发回）。 */
+    function showTranscodeDiag() {
+        var p = txPlug();
+        if (!p || !p.diagnostics) {
+            toast('当前版本不含转码诊断（需更新 APK）');
+            return;
+        }
+        toast('正在采集转码诊断…');
+        p.diagnostics().then(function (d) {
+            var lines = [];
+            lines.push('== 环境 ==');
+            lines.push('设备: ' + (d.device || '?'));
+            lines.push('SDK: ' + (d.sdkInt || '?') + '  ABI: ' + (d.abis || '?'));
+            lines.push('ffmpeg-kit: ' + (d.ffmpegKitVersion || '?'));
+            lines.push('');
+            lines.push('== 能力 ==');
+            lines.push('libx264（软件编码）: ' + (d.hasLibx264 ? '有' : '无'));
+            lines.push('h264_mediacodec（硬件编码）: ' + (d.hasMediaCodecH264 ? '有' : '无'));
+            lines.push('hevc_mediacodec: ' + (d.hasHevcMediaCodec ? '有' : '无'));
+            lines.push('');
+            lines.push('== 编码器 ==');
+            lines.push(d.encoders || '(空)');
+            lines.push('');
+            lines.push('== 解码器 ==');
+            lines.push(d.decoders || '(空)');
+            lines.push('');
+            lines.push('== 上一条命令 ==');
+            lines.push(d.lastCommand || '(还没跑过)');
+            lines.push('');
+            lines.push('== 上一条错误 ==');
+            lines.push(d.lastError || '(无)');
+            if (d.lastOutput) {
+                lines.push('');
+                lines.push('== 输出尾部 ==');
+                lines.push(d.lastOutput);
+            }
+            var txt = lines.join('\n');
+            /* 写进 DebugLog（老板习惯用 🐞 日志按钮发回来） */
+            dlog('=== TX DIAG ===\n' + txt);
+            /* 同时弹窗展示，方便当场看 */
+            var ovl = document.createElement('div');
+            ovl.style.cssText = 'position:fixed;inset:8px;z-index:99999;background:rgba(16,18,24,0.96);' +
+                'color:#dfe3ea;font:11px/1.5 monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre-wrap';
+            ovl.textContent = txt;
+            ovl.addEventListener('click', function () { ovl.remove(); });
+            document.body.appendChild(ovl);
+            toast('诊断已生成（点任意处关闭，🐞 日志可发回）');
+        }).catch(function (e) {
+            dlog('TX DIAG ERR ' + (e && (e.message || e) || e));
+            toast('诊断失败：' + (e && (e.message || e) || e));
+        });
     }
 
     /* ===== v68：批量转码 10bit → 8bit =====
