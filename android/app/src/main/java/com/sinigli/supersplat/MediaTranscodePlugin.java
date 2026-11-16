@@ -543,10 +543,6 @@ public class MediaTranscodePlugin extends Plugin {
         return sb.length() > 6000 ? sb.substring(0, 6000) : sb.toString();
     }
 
-    private String tail(String s, int n) {
-        return s.length() <= n ? s : s.substring(s.length() - n);
-    }
-
     /** String[] → 单行命令（诊断展示用） */
     private String joinArgs(String[] args) {
         if (args == null) return "";
