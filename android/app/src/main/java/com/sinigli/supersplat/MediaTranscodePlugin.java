@@ -276,7 +276,8 @@ public class MediaTranscodePlugin extends Plugin {
                 File tmpIn = null, tmpOut = null;
                 try {
                     /* 1) 找原文件 */
-                    nlog("start " + name + " tree=" + String(tree).substring(0, Math.min(90, String(tree).length())));
+                    String treeStr2 = tree.toString();
+                    nlog("start " + name + " tree=" + treeStr2.substring(0, Math.min(90, treeStr2.length())));
                     Uri doc = resolveDocInTree(tree, name);
                     if (doc == null) { nlog("fail resolve " + name); failOnUi(call, "文件不在已授权目录: " + name); return; }
 
