@@ -1818,7 +1818,7 @@ function hasMerge(seg) {
 
             var p = txPlug();
             var est2 = (S.codec[f.name] && S.codec[f.name].durationMs) || 0;
-            p.transcode({ treeUri: S.meta.folderUri, name: f.name, totalMs: est2 })
+            p.transcode({ treeUri: S.meta.clipsUri || S.meta.folderUri, name: f.name, totalMs: est2 })
                 .then(function (r) {
                     if (r && r.ok) {
                         done++;

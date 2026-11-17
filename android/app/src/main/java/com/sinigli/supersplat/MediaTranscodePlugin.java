@@ -658,11 +658,14 @@ public class MediaTranscodePlugin extends Plugin {
     /** 在 tree 根下建（或复用）一个子目录，返回该子目录的 document URI */
     private Uri ensureSubDir(Uri tree, String dirName) {
         try {
-            Uri rootDoc = DocumentsContract.buildDocumentUriUsingTree(tree,
-                    DocumentsContract.getTreeDocumentId(tree));
-
+            /* v72：tree 参数可能是 document URI（clips/ 子目录），getTreeDocumentId
+             * 只认 tree://，遇到 document URI 会拼出非法 URI。两种形态统一用
+             * getDocumentId —— 它对 tree/document 两种都正确。 */
+            String rootId;
+            try { rootId = DocumentsContract.getDocumentId(tree); }
+            catch (Exception e2) { return null; }
+            Uri rootDoc = DocumentsContract.buildDocumentUriUsingTree(tree, rootId);
             /* 先看有没有 */
-            String rootId = DocumentsContract.getDocumentId(rootDoc);
             Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, rootId);
             Cursor c = null;
             try {
