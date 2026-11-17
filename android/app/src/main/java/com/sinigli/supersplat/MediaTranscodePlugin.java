@@ -28,6 +28,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -74,6 +76,23 @@ public class MediaTranscodePlugin extends Plugin {
 
     private ContentResolver cr() { return getContext().getContentResolver(); }
     private Activity act() { return getActivity(); }
+
+    /* v74：原生阶段日志写进同一份 cache/moyutai/debug.log。
+     * 为什么必须写文件：转码在第一轮 4K 硬编就整进程崩掉（v73 真机日志：
+     * 「tx write folder differs」之后 7 秒无任何 TX ok/TX ERR，紧接着
+     * boot-diag 冷启动），Java 的 catch (Exception) 抓不到 native 崩溃/
+     * OOM 杀进程，只有落盘的日志能活到下次启动被读出来。 */
+    private void nlog(String msg) {
+        try {
+            File dir = new File(getContext().getCacheDir(), "moyutai");
+            if (!dir.exists()) dir.mkdirs();
+            File f = new File(dir, "debug.log");
+            String line = new SimpleDateFormat("MM-dd HH:mm:ss.SSS").format(new Date())
+                    + " [tx] " + msg + "\n";
+            FileOutputStream fos = new FileOutputStream(f, true);
+            try { fos.write(line.getBytes("UTF-8")); } finally { try { fos.close(); } catch (Exception ignore) { } }
+        } catch (Exception ignore) { }
+    }
 
     /* ===================== 0) 写权限 ===================== */
 
@@ -257,12 +276,14 @@ public class MediaTranscodePlugin extends Plugin {
                 File tmpIn = null, tmpOut = null;
                 try {
                     /* 1) 找原文件 */
+                    nlog("start " + name + " tree=" + String(tree).substring(0, Math.min(90, String(tree).length())));
                     Uri doc = resolveDocInTree(tree, name);
-                    if (doc == null) { failOnUi(call, "文件不在已授权目录: " + name); return; }
+                    if (doc == null) { nlog("fail resolve " + name); failOnUi(call, "文件不在已授权目录: " + name); return; }
 
                     /* 2) 拷到缓存（ffmpeg 只吃普通文件路径，SAF 的 fd 它读不了） */
                     tmpIn = new File(getContext().getCacheDir(), "tx_in_" + System.nanoTime() + ".mp4");
-                    if (!copyDocToFile(doc, tmpIn)) { failOnUi(call, "原文件读取失败"); return; }
+                    if (!copyDocToFile(doc, tmpIn)) { nlog("fail copy in " + name); failOnUi(call, "原文件读取失败：" + name); return; }
+                    nlog("copied in " + name + " " + tmpIn.length() + "B");
 
                     /* 3) 输出目录：<tree>/8bit/ */
                     Uri outDir = ensureSubDir(tree, OUT_DIR);
@@ -285,26 +306,29 @@ public class MediaTranscodePlugin extends Plugin {
 
                     /* 4) 转码：软件解码 10bit → 硬件编码 8bit */
                     tmpOut = new File(getContext().getCacheDir(), "tx_out_" + System.nanoTime() + ".mp4");
-                    /* 两级尝试：先原尺寸硬件编码；设备不吃 4K 硬编时降到 1080p 再来一次。
+                    /* 两级尝试：v74 改为「低分辨率优先」。
+                     * v73 真机日志证明：4K 原尺寸硬编会让整个进程直接崩掉（native /
+                     * OOM 杀进程），「失败后降 1080p 重试」根本没机会跑到第二轮。
+                     * 所以把 1080p 放第一轮，先保证有可用输出；再用原尺寸作第二轮。
                      * 为什么只有硬件这条路：ffmpeg-kit-video（LGPL）没编进 libx264
                      * （那是 GPL），8bit H.264 软件编码器不可用。
                      * 为什么必须先解成 8bit：源是 High 10 / yuv420p10le，硬编只吃 8bit。 */
                     final String[][] attempts = new String[][]{
                             {
                                     "-y", "-i", tmpIn.getAbsolutePath(),
+                                    "-vf", "scale=1920:-2",
                                     "-c:v", "h264_mediacodec",
                                     "-pix_fmt", "yuv420p",
-                                    "-b:v", "6M",
+                                    "-b:v", "4M",
                                     "-c:a", "aac", "-b:a", "128k",
                                     "-movflags", "+faststart",
                                     "-f", "mp4", tmpOut.getAbsolutePath()
                             },
                             {
                                     "-y", "-i", tmpIn.getAbsolutePath(),
-                                    "-vf", "scale=1920:-2",
                                     "-c:v", "h264_mediacodec",
                                     "-pix_fmt", "yuv420p",
-                                    "-b:v", "3M",
+                                    "-b:v", "6M",
                                     "-c:a", "aac", "-b:a", "128k",
                                     "-movflags", "+faststart",
                                     "-f", "mp4", tmpOut.getAbsolutePath()
@@ -319,6 +343,7 @@ public class MediaTranscodePlugin extends Plugin {
                     final long hardDeadline = android.os.SystemClock.elapsedRealtime() + 15 * 60 * 1000L;
 
                     for (int ai = 0; ai < attempts.length && !produced; ai++) {
+                        nlog("attempt " + ai + "/" + (attempts.length - 1) + " " + name + " cmd=" + joinArgs(attempts[ai]));
                         if (ai > 0) {
                             /* 上一轮失败：清掉半成品，换 1080p 重来 */
                             try { if (tmpOut.exists()) tmpOut.delete(); } catch (Exception ignore) { }
@@ -397,6 +422,7 @@ public class MediaTranscodePlugin extends Plugin {
                     }
 
                     if (!produced) {
+                        nlog("all attempts failed " + name + " :: " + (lastErr == null ? "unknown" : lastErr));
                         lastError = "转码失败：" + (lastErr == null ? "未知原因" : lastErr);
                         StringBuilder tailSb = new StringBuilder(lastErr);
                         if (lastCommand != null && lastCommand.length() > 0) tailSb.append(" || cmd: ").append(lastCommand);
@@ -419,9 +445,14 @@ public class MediaTranscodePlugin extends Plugin {
                     r.put("outBytes", tmpOut.length());
                     r.put("ms", ms);
                     resolveOnUi(call, r);
-                } catch (Exception e) {
+                } catch (Throwable e) {
+                    /* v74：Throwable 而不是 Exception —— MediaCodec/ffmpeg 的 native
+                     * 崩溃或 OutOfMemoryError 都是 Error，catch(Exception) 抓不到，
+                     * 日志会断在半路（v73 真机现象）。这里至少留下最后一步。 */
+                    nlog("THROW " + name + " :: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
                     failOnUi(call, "转码异常: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
                 } finally {
+                    nlog("end " + name + " running=" + running.get());
                     try { if (tmpIn != null) tmpIn.delete(); } catch (Exception ignore) { }
                     try { if (tmpOut != null) tmpOut.delete(); } catch (Exception ignore) { }
                     running.decrementAndGet();

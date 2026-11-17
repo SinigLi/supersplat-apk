@@ -1767,9 +1767,16 @@ function hasMerge(seg) {
         if (!p || !p.pickWriteFolder) return Promise.resolve(false);
         return p.pickWriteFolder().then(function (r) {
             if (!r || !r.uri) return false;
-            if (r.uri !== S.meta.folderUri) {
-                /* 换了目录：不能悄悄换掉工程关联，让用户自己决定 */
+            var changed = r.uri !== S.meta.folderUri;
+            if (changed) {
+                /* v74：换了目录时必须同步清掉 clipsUri / clipsName。
+                 * 否则 folderUri 指向新目录、clipsUri 还指旧目录的 clips/，
+                 * 转码会在错误的地方找文件（v73 真机日志的
+                 * 「tx write folder differs」就是这情形）。 */
                 dlog('tx write folder differs: ' + String(r.uri).slice(0, 60));
+                S.meta.clipsUri = null;
+                S.meta.clipsName = null;
+                S.meta.usedClips = false;
             }
             S.meta.folderUri = r.uri;
             saveAll(false);
@@ -1784,17 +1791,21 @@ function hasMerge(seg) {
             toast('当前版本不含转码能力（请更新 APK）');
             return;
         }
-        var targets = S.files.filter(function (f) {
+        /* v74：转码的目标就是「本机解不了的」。旧逻辑写成 !c || c.decodable !== false，
+         * 正好把 10bit 全部排除，却把全集 S.files 传给队列，两个都不对。
+         * 这里只选 decodable === false 的；一个都没探测到时才退回全集。 */
+        var blocked = S.files.filter(function (f) {
             var c = S.codec[f.name];
-            return !c || c.decodable !== false;   // 未探测的先当可转（转码本身能解 10bit）
+            return c && c.decodable === false;
         });
+        var targets = blocked.length ? blocked : S.files;
         if (!targets.length) { toast('没有可转的文件'); return; }
 
-        var est = '共 ' + S.files.length + ' 个文件，逐个转码会花较长时间';
+        var est = '共 ' + targets.length + ' 个文件，逐个转码会花较长时间';
         toast(est);
         ensureWriteAccess().then(function (ok) {
             if (!ok) { toast('需要写权限：请重新选择同一个素材文件夹'); return; }
-            runTranscodeQueue(S.files);
+            runTranscodeQueue(targets);
         });
     }
 
