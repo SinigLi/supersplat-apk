@@ -466,7 +466,7 @@ var AV_CSS_V53 = [
         var dim = info && info.width ? (info.width + '×' + info.height) : '';
         return '这段素材是 H.264 ' + prof + (bits ? ' / ' + bits : '') +
             (dim ? ' / ' + dim : '') + '，本机硬件解码器不支持（只支持 8bit）。' +
-            '点右侧「转 8bit」可以把整个文件夹批量转成可播放的副本。';
+            '点右上角「📄」看需要的格式，在电脑上转好再放进来。';
     }
 
     /* 转码插件（v68 新增） */
@@ -534,23 +534,14 @@ function build() {
         /* v51c：📋 关联/更换分镜清单（SAF 单文件授权，持久化后全自动） */
         var sbBtn = el('button', 'av-top-btn', '📋');
         sbBtn.title = '关联分镜清单.csv';
-        /* v68：10bit → 8bit 批量转码入口。平时不显示，只有探测到不可解素材才亮，
-         * 免得把「转码」这个概念塞给用不到的人。 */
-        var txBtn = el('button', 'av-top-btn', '🔧');
-        txBtn.title = '本机解不了 10bit 素材，批量转 8bit';
+        /* v75：不再做 App 内转码（老板 2026-11-18：App 内转码闪退难维护，改成
+         * 「把问题说清楚 + 给出转换规格」，素材在电脑上转好再用）。
+         * 按钮平时不显示，只有探测到不可解素材才亮。 */
+        var txBtn = el('button', 'av-top-btn', '📄');
+        txBtn.title = '这段素材本机解不了，查看需要的格式';
         txBtn.style.display = 'none';
         txBtn.id = 'avTxBtn';
-        txBtn.addEventListener('click', function () { startTranscode(); });
-        /* v71：长按 🔧 出一份转码诊断（老板 2026-11-15 要求：不确定原因就打日志）。
-         * 内容 = ffmpeg 版本 / 可用编码器解码器 / 上一条命令 / 上一条失败原因，
-         * 由具体测试决定下一步（例如这台机器根本没有 h264_mediacodec）。 */
-        var txHoldTimer = null;
-        txBtn.addEventListener('touchstart', function () {
-            txHoldTimer = setTimeout(function () { txHoldTimer = null; showTranscodeDiag(); }, 700);
-        });
-        txBtn.addEventListener('touchend', function () {
-            if (txHoldTimer) { clearTimeout(txHoldTimer); txHoldTimer = null; }
-        });
+        txBtn.addEventListener('click', function () { showFormatHelp(); });
         topEl.appendChild(txBtn);
         sbBtn.addEventListener('click', function () {
             var p = ms();
@@ -1270,6 +1261,17 @@ function hasMerge(seg) {
             return { names: names, sizes: sizes, usedClips: false };
         }).then(function (picked) {
             S.meta.usedClips = !!picked.usedClips;
+            /* v75：没命中 clips/ 就必须把旧值清掉。v74 之前这段在 ensureWriteAccess 里，
+             * 转码入口移除后没了主人；但 clipsUri 还挂在 meta 上，换了目录会继续
+             * 往旧目录找文件（probeCodec 的 baseUri 也读它）。放在这里更稳：
+             * 每次刷新目录都以本次探测结果为准。 */
+            if (!picked.usedClips) {
+                if (S.meta.clipsUri || S.meta.clipsName) {
+                    dlog('clips/ 未命中，清掉旧 clipsUri');
+                }
+                S.meta.clipsUri = null;
+                S.meta.clipsName = null;
+            }
             S.files = L.buildFileList(picked.names, S.meta.mode);
             S.files.forEach(function (f) { f.size = picked.sizes[f.name] || 0; });
             dlog('listFiles n=' + S.files.length + (picked.usedClips ? ' (from clips/)' : ''));
@@ -1695,166 +1697,71 @@ function hasMerge(seg) {
             var s = emptyHint.querySelector('.av-empty-s');
             if (s) s.textContent = codecBlockedText(i);
         }
-        toast('10bit 素材：本机硬件解码不支持，需转 8bit');
+        toast('这段素材本机解不了，点右上角 📄 看需要的格式');
     }
 
-    /* ===== v71：转码诊断 =====
-     * 老板 2026-11-15：「你如果不确定什么原因，可以继续搞个包打印日记看看尽量多的信息」。
-     * 长按 🔧 调原生 diagnostics()，把 ffmpeg 版本 / 编解码器清单 / 上一条命令 /
-     * 上一条失败原因全打出来，同时写进 DebugLog（🐞 日志按钮可发回）。 */
-    function showTranscodeDiag() {
-        var p = txPlug();
-        if (!p || !p.diagnostics) {
-            toast('当前版本不含转码诊断（需更新 APK）');
-            return;
-        }
-        toast('正在采集转码诊断…');
-        p.diagnostics().then(function (d) {
-            var lines = [];
-            lines.push('== 环境 ==');
-            lines.push('设备: ' + (d.device || '?'));
-            lines.push('SDK: ' + (d.sdkInt || '?') + '  ABI: ' + (d.abis || '?'));
-            lines.push('ffmpeg-kit: ' + (d.ffmpegKitVersion || '?'));
-            lines.push('');
-            lines.push('== 能力 ==');
-            lines.push('libx264（软件编码）: ' + (d.hasLibx264 ? '有' : '无'));
-            lines.push('h264_mediacodec（硬件编码）: ' + (d.hasMediaCodecH264 ? '有' : '无'));
-            lines.push('hevc_mediacodec: ' + (d.hasHevcMediaCodec ? '有' : '无'));
-            lines.push('');
-            lines.push('== 编码器 ==');
-            lines.push(d.encoders || '(空)');
-            lines.push('');
-            lines.push('== 解码器 ==');
-            lines.push(d.decoders || '(空)');
-            lines.push('');
-            lines.push('== 上一条命令 ==');
-            lines.push(d.lastCommand || '(还没跑过)');
-            lines.push('');
-            lines.push('== 上一条错误 ==');
-            lines.push(d.lastError || '(无)');
-            if (d.lastOutput) {
-                lines.push('');
-                lines.push('== 输出尾部 ==');
-                lines.push(d.lastOutput);
-            }
-            var txt = lines.join('\n');
-            /* 写进 DebugLog（老板习惯用 🐞 日志按钮发回来） */
-            dlog('=== TX DIAG ===\n' + txt);
-            /* 同时弹窗展示，方便当场看 */
-            var ovl = document.createElement('div');
-            ovl.style.cssText = 'position:fixed;inset:8px;z-index:99999;background:rgba(16,18,24,0.96);' +
-                'color:#dfe3ea;font:11px/1.5 monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre-wrap';
-            ovl.textContent = txt;
-            ovl.addEventListener('click', function () { ovl.remove(); });
-            document.body.appendChild(ovl);
-            toast('诊断已生成（点任意处关闭，🐞 日志可发回）');
-        }).catch(function (e) {
-            dlog('TX DIAG ERR ' + (e && (e.message || e) || e));
-            toast('诊断失败：' + (e && (e.message || e) || e));
-        });
-    }
-
-    /* ===== v68：批量转码 10bit → 8bit =====
-     * 数据流：SAF 原文件 → 原生缓存临时文件 → ffmpeg 软件解码 10bit
-     *        → MediaCodec 硬件编码 8bit → <tree>/8bit/<原名>_8bit.mp4
-     * 不动原素材（原地覆盖等于毁素材，SAF 覆盖写还要看 provider 脸色）。
+    /* ===== v75：素材格式说明（替代 App 内转码） =====
+     * 老板 2026-11-18：「你现在不用管视频转码的问题了，你把问题描述清楚就行了，
+     * 后面让用户自己去把视频转成适合的格式就行」。
      *
-     * 需要写权限：v45 的 pickFolder 只申请了读权限，这里如果拿不到写权限，
-     * 让老板重新选一次同一个目录（pickWriteFolder 带 WRITE flag）。
-     */
-    function ensureWriteAccess() {
-        var p = txPlug();
-        if (!p || !p.pickWriteFolder) return Promise.resolve(false);
-        return p.pickWriteFolder().then(function (r) {
-            if (!r || !r.uri) return false;
-            var changed = r.uri !== S.meta.folderUri;
-            if (changed) {
-                /* v74：换了目录时必须同步清掉 clipsUri / clipsName。
-                 * 否则 folderUri 指向新目录、clipsUri 还指旧目录的 clips/，
-                 * 转码会在错误的地方找文件（v73 真机日志的
-                 * 「tx write folder differs」就是这情形）。 */
-                dlog('tx write folder differs: ' + String(r.uri).slice(0, 60));
-                S.meta.clipsUri = null;
-                S.meta.clipsName = null;
-                S.meta.usedClips = false;
-            }
-            S.meta.folderUri = r.uri;
-            saveAll(false);
-            return true;
-        }).catch(function () { return false; });
-    }
+     * 所以这里不再提供转码按钮，只把「为什么放不了 + 要什么格式 + 怎么转」讲清楚。
+     * 面板内容分三块：现状诊断（读到什么）、目标规格、ffmpeg 命令（可整段复制）。 */
+    function showFormatHelp() {
+        var f = S.files[S.cur] || null;
+        var info = (f && S.codec[f.name]) || null;
+        var lines = [];
 
-    function startTranscode() {
-        if (S.transcodeBusy) { toast('已经有一个转码任务在跑'); return; }
-        var p = txPlug();
-        if (!p || !p.transcode) {
-            toast('当前版本不含转码能力（请更新 APK）');
-            return;
+        lines.push('【为什么放不出来】');
+        if (info) {
+            var prof = info.profileName || '未知';
+            var bits = info.bitDepth ? info.bitDepth + 'bit' : '未知位深';
+            var dim = (info.width && info.height) ? (info.width + '×' + info.height) : '';
+            lines.push('当前素材：H.264 ' + prof + ' / ' + bits + (dim ? ' / ' + dim : ''));
+        } else {
+            lines.push('当前素材：探测不到编码信息（可能是容器或轨道异常）');
         }
-        /* v74：转码的目标就是「本机解不了的」。旧逻辑写成 !c || c.decodable !== false，
-         * 正好把 10bit 全部排除，却把全集 S.files 传给队列，两个都不对。
-         * 这里只选 decodable === false 的；一个都没探测到时才退回全集。 */
-        var blocked = S.files.filter(function (f) {
-            var c = S.codec[f.name];
-            return c && c.decodable === false;
-        });
-        var targets = blocked.length ? blocked : S.files;
-        if (!targets.length) { toast('没有可转的文件'); return; }
+        lines.push('安卓硬件解码器只保证 H.264 Baseline / Main / High 的 8bit。');
+        lines.push('10bit（yuv420p10le、High 10）一律解不了，<video> 会直接报错，');
+        lines.push('再小的文件也放不出来。这不是性能问题，是硬件能力问题。');
+        lines.push('');
+        lines.push('【需要的格式】');
+        lines.push('容器：MP4（.mp4）');
+        lines.push('视频：H.264 / AVC，8bit，yuv420p（4:2:0 8bit）');
+        lines.push('Profile：High（Level 4.0 / 4.1 即可）');
+        lines.push('分辨率：建议不超过 1920×1080（4K 能解但吃性能）');
+        lines.push('音频：AAC，48kHz 或 44.1kHz，立体声');
+        lines.push('关键帧：建议每 1 秒一个（-g 按帧率算）');
+        lines.push('');
+        lines.push('【在电脑上怎么转（ffmpeg）】');
+        lines.push('整个目录批量转，输出到 8bit/ 子目录：');
+        lines.push('');
+        lines.push('ffmpeg -i "输入.mp4" -c:v libx264 -profile:v high -level 4.1 \\');
+        lines.push('  -pix_fmt yuv420p -crf 18 -preset medium \\');
+        lines.push('  -vf scale=\'min(1920,iw)\':-2 \\');
+        lines.push('  -c:a aac -b:a 192k -movflags +faststart "输出.mp4"');
+        lines.push('');
+        lines.push('不想用命令行的话，HandBrake 选「Fast 1080p30」预设，');
+        lines.push('在 Video 页把 Encoder 设成 H.264 (x264)、Profile 设 High、');
+        lines.push('Level 设 4.1，输出的就是能放的格式。');
+        lines.push('');
+        lines.push('转好之后把整个文件夹重新导入本工程即可，文件名保持一致，');
+        lines.push('分镜清单里的镜号映射不用改。');
 
-        var est = '共 ' + targets.length + ' 个文件，逐个转码会花较长时间';
-        toast(est);
-        ensureWriteAccess().then(function (ok) {
-            if (!ok) { toast('需要写权限：请重新选择同一个素材文件夹'); return; }
-            runTranscodeQueue(targets);
-        });
-    }
+        var txt = lines.join('\n');
+        dlog('=== FORMAT HELP ===\n' + txt);
 
-    function runTranscodeQueue(files) {
-        S.transcodeBusy = true;
-        var i = 0, done = 0, failed = 0, skipped = 0;
-        var total = files.length;
-
-        function next() {
-            if (i >= total) {
-                S.transcodeBusy = false;
-                toast('转码完成：成功 ' + done + ' / 失败 ' + failed + ' / 跳过 ' + skipped +
-                    '。输出在素材目录下的 8bit 子文件夹');
-                dlog('TX done ok=' + done + ' fail=' + failed + ' skip=' + skipped);
-                return;
-            }
-            var f = files[i++];
-            var label = '转码 ' + i + '/' + total + '：' + f.name;
-            if (window.Prog) window.Prog.show(label + ' 0%');
-            else toast(label);
-
-            var p = txPlug();
-            var est2 = (S.codec[f.name] && S.codec[f.name].durationMs) || 0;
-            p.transcode({ treeUri: S.meta.clipsUri || S.meta.folderUri, name: f.name, totalMs: est2 })
-                .then(function (r) {
-                    if (r && r.ok) {
-                        done++;
-                        dlog('TX ok ' + f.name + ' -> ' + r.path + ' ' + r.outBytes + 'B ' + r.ms + 'ms');
-                    } else if (r && r.cancelled) {
-                        skipped++;
-                    } else if (r && r.needWrite) {
-                        skipped++;
-                        toast('写权限不足，已停止');
-                        i = total;
-                    } else {
-                        failed++;
-                        dlog('TX fail ' + f.name + ' ' + (r && r.error || ''));
-                    }
-                })
-                .catch(function (e) {
-                    failed++;
-                    dlog('TX ERR ' + f.name + ' ' + (e && (e.message || e) || e));
-                })
-                .then(function () {
-                    if (window.Prog) window.Prog.hide();
-                    setTimeout(next, 60);
-                });
-        }
-        next();
+        var ovl = document.createElement('div');
+        ovl.style.cssText = 'position:fixed;inset:8px;z-index:99999;background:rgba(16,18,24,0.97);' +
+            'color:#dfe3ea;font:12px/1.65 -apple-system,system-ui,sans-serif;padding:14px;' +
+            'border-radius:10px;overflow:auto;white-space:pre-wrap;-webkit-user-select:text;user-select:text';
+        ovl.textContent = txt;
+        var closeBtn = document.createElement('div');
+        closeBtn.textContent = '关闭';
+        closeBtn.style.cssText = 'position:sticky;bottom:0;margin-top:12px;text-align:center;' +
+            'padding:10px;background:#2a3140;border-radius:8px;font-size:14px';
+        closeBtn.addEventListener('click', function () { ovl.remove(); });
+        ovl.appendChild(closeBtn);
+        document.body.appendChild(ovl);
     }
 
     /* ---------- 位置显示 + 按钮状态 ---------- */
@@ -2903,10 +2810,8 @@ function hasMerge(seg) {
 
         _thumbState: function () { return { jobs: thumbJobs.length, live: thumbLive, cached: Object.keys(thumbCache).length, ok: thumbOkCount, fail: thumbFailCount, failed: Object.keys(thumbFailCache).length, mkCalls: mkThumbCalls, vq: videoThumbQueue.length, vbusy: videoThumbBusy, nativeOff: nativeThumbDisabled, nativeFails: consecutiveNativeFails }; },
         _codecState: function () { return { blocked: S.codecBlocked, cache: Object.keys(S.codec), probe: S.codec }; },
-        /* v68：转码与 10bit 探测的测试入口 */
-        _startTranscode: startTranscode,
-        _runTranscodeQueue: runTranscodeQueue,
-        _ensureWriteAccess: ensureWriteAccess,
+        /* v75：App 内转码已移除（老板 2026-11-18）。保留格式说明入口。 */
+        _showFormatHelp: showFormatHelp,
         _refreshFolder: refreshFolder,
         open: open,
         back: back,
